@@ -138,3 +138,4 @@ Read SECURITY.md before changing authentication, upload handling, history, stora
 ## Contribution
 
 See CONTRIBUTING.md. This project is internal and men's-only by design. Do not add generic fashion taxonomy, women's categories, arbitrary prompts, or unaudited public storage.
+
