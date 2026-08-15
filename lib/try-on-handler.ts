@@ -1,0 +1,524 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { AuthConfigurationError } from "@/lib/auth/config";
+import { requireRequestUser } from "@/lib/auth/session";
+import { CatalogCompatibilityError, validateCatalogSelection } from "@/lib/catalog/compatibility";
+import { findCatalogSelection } from "@/lib/catalog/store";
+import type { CatalogSelection, ReferenceImage, StyleOption, TryOnSelection } from "@/lib/catalog/types";
+import { MissingApiKeyError } from "@/lib/openai";
+import {
+  checkGenerationRateLimit,
+  RateLimitConfigurationError,
+} from "@/lib/rate-limit";
+import { isSameOriginRequest } from "@/lib/request-security";
+import { generateTryOn } from "@/lib/tryon";
+import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
+import { buildTryOnPrompt } from "@/lib/tryon/prompt";
+import {
+  BespokeConfigurationError,
+  buildOutfitSpecification,
+  compileVisualizationPrompt,
+  parseSubmittedBespokeConfiguration,
+  resolveBespokeConfiguration,
+  selectBespokeReferenceImages,
+} from "@/lib/bespoke/engine";
+import { storeGenerationAssets, type GenerationAssetRefs } from "@/lib/generation-storage";
+import {
+  getRequestDevice,
+  recordUsageEvent,
+  type UsageEvent,
+  type UsageStatus,
+} from "@/lib/usage-history";
+import {
+  MAX_REQUEST_BYTES,
+  UploadValidationError,
+  validateImageFile,
+} from "@/lib/validation";
+
+const JSON_HEADERS = {
+  "Cache-Control": "no-store, private",
+  "Content-Type": "application/json",
+  "X-Content-Type-Options": "nosniff",
+};
+
+type RouteDependencies = {
+  authenticate: typeof requireRequestUser;
+  rateLimit: typeof checkGenerationRateLimit;
+  generate: (input: TryOnInput) => Promise<TryOnOutput>;
+  recordUsage?: typeof recordUsageEvent;
+  resolveSelection?: typeof findCatalogSelection;
+};
+
+const DEFAULT_DEPENDENCIES: RouteDependencies = {
+  authenticate: requireRequestUser,
+  rateLimit: checkGenerationRateLimit,
+  generate: generateTryOn,
+  recordUsage: recordUsageEvent,
+  resolveSelection: findCatalogSelection,
+};
+
+function jsonError(error: string, status: number, headers?: HeadersInit) {
+  return Response.json(
+    { error },
+    { status, headers: { ...JSON_HEADERS, ...headers } },
+  );
+}
+
+function getExactlyOneFile(formData: FormData, name: string) {
+  const values = formData.getAll(name);
+  return values.length === 1 && values[0] instanceof File ? values[0] : null;
+}
+
+function hasUnexpectedFields(formData: FormData) {
+  for (const [name] of formData.entries()) {
+    if (![
+      "person",
+      "outfit",
+      "fabric",
+      "selectionMode",
+      "upperGarmentId",
+      "lowerGarmentId",
+      "garmentSubtypeId",
+      "upperStyleId",
+      "lowerStyleId",
+      "turbanStyleId",
+      "shoeStyleId",
+      "turbanId",
+      "shoeId",
+      "bespokeConfiguration",
+    ].includes(name)) return true;
+  }
+  return false;
+}
+
+function getExactlyOneText(formData: FormData, name: string, required: boolean) {
+  const values = formData.getAll(name);
+  if (values.length === 0 && !required) return undefined;
+  if (values.length !== 1 || typeof values[0] !== "string") return null;
+  const value = values[0].trim();
+  return value || (required ? null : undefined);
+}
+
+type ReferenceRole = TryOnInput["references"][number]["role"];
+
+async function readReference(reference: ReferenceImage, role: ReferenceRole) {
+  // Catalog paths are seeded and controlled by the server; never accept a browser-supplied path.
+  if (!reference.path.startsWith("/catalog/") || reference.path.includes("..")) {
+    throw new Error("Catalog reference path is invalid.");
+  }
+  const absolutePath = path.join(process.cwd(), "public", reference.path.slice(1));
+  const bytes = await readFile(absolutePath);
+  const extension = path.extname(absolutePath).toLowerCase();
+  const mime = extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg";
+  return {
+    role,
+    image: { file: new File([bytes], `${role}-reference${extension}`, { type: mime }), mime },
+  } as const;
+}
+
+async function buildReferenceInputs(selection?: CatalogSelection) {
+  const references: Array<Awaited<ReturnType<typeof readReference>>> = [];
+  if (!selection) return references;
+  if (selection.upper.category !== "no-change") {
+    const upperReference = selection.upper.aiReferences[0] ?? selection.upper.displayReference;
+    references.push(await readReference(upperReference, "upper"));
+  }
+
+  if (selection.upper.pieceType === "upper" && selection.lower && selection.lower.category !== "no-change") {
+    const lowerReference = selection.lower.aiReferences[0] ?? selection.lower.displayReference;
+    references.push(await readReference(lowerReference, "lower"));
+  }
+  if (selection.subtype && selection.subtype.id !== selection.upper.id) {
+    const subtypeReference = selection.subtype.aiReferences[0] ?? selection.subtype.displayReference;
+    references.push(await readReference(subtypeReference, "subtype"));
+  }
+  const firstStyleReference = (style: StyleOption | undefined) => style?.aiReferences[0];
+  const upperStyleReference = firstStyleReference(selection.upperStyle);
+  const lowerStyleReference = firstStyleReference(selection.lowerStyle);
+  const turbanStyleReference = firstStyleReference(selection.turbanStyle);
+  const shoeStyleReference = firstStyleReference(selection.shoeStyle);
+  if (upperStyleReference) references.push(await readReference(upperStyleReference, "upper-style"));
+  if (lowerStyleReference) references.push(await readReference(lowerStyleReference, "lower-style"));
+  if (selection.turban.aiReferences.length) references.push(await readReference(selection.turban.aiReferences[0], "turban"));
+  if (turbanStyleReference) references.push(await readReference(turbanStyleReference, "turban-style"));
+  if (selection.shoes.aiReferences.length) references.push(await readReference(selection.shoes.aiReferences[0], "shoes"));
+  if (shoeStyleReference) references.push(await readReference(shoeStyleReference, "shoe-style"));
+  return references;
+}
+
+async function buildBespokeReferenceInputs(references: ReferenceImage[]) {
+  return Promise.all(references.map((reference, index) => readReference(reference, index === 0 ? "bespoke-detail-1" : "bespoke-detail-2")));
+}
+
+function safeProviderError(error: unknown) {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : null;
+  return {
+    errorName: error instanceof Error ? error.name : "UnknownError",
+    status: typeof record?.status === "number" ? record.status : undefined,
+    code: typeof record?.code === "string" ? record.code : undefined,
+    providerRequestId: typeof record?.request_id === "string" ? record.request_id : undefined,
+  };
+}
+
+async function recordUsageSafely(
+  dependencies: RouteDependencies,
+  request: Request,
+  username: string,
+  requestId: string,
+  status: UsageStatus,
+  durationMs: number,
+  metadata?: Partial<TryOnOutput["metadata"]>,
+  generation?: NonNullable<UsageEvent["generation"]>,
+  assets?: GenerationAssetRefs,
+) {
+  if (!dependencies.recordUsage) return;
+  try {
+    await dependencies.recordUsage({
+      id: requestId,
+      occurredAt: new Date().toISOString(),
+      username,
+      status,
+      device: getRequestDevice(request),
+      durationMs,
+      provider: metadata?.provider ?? "openai",
+      model: metadata?.model ?? "gpt-image-2",
+      quality: metadata?.quality ?? "medium",
+      generation,
+      assets,
+    });
+  } catch (error) {
+    // Usage history must never make a try-on fail after the model has run.
+    console.error("try_on_usage_history_failed", {
+      requestId,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
+}
+
+export async function handleTryOnRequest(
+  request: Request,
+  dependencies: RouteDependencies = DEFAULT_DEPENDENCIES,
+) {
+  const requestId = crypto.randomUUID();
+
+  if (!isSameOriginRequest(request)) {
+    return jsonError("This request was blocked. Please refresh and try again.", 403);
+  }
+
+  let user;
+  try {
+    user = await dependencies.authenticate(request);
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) {
+      console.error("authentication_configuration_error", { requestId, route: "try-on" });
+      return jsonError("Authentication is not configured.", 503);
+    }
+    throw error;
+  }
+
+  if (!user) {
+    return jsonError("Your session has expired. Please sign in again.", 401);
+  }
+
+  let rateLimit;
+  try {
+    rateLimit = await dependencies.rateLimit(user.username);
+  } catch (error) {
+    if (error instanceof RateLimitConfigurationError) {
+      console.error("rate_limit_configuration_error", { requestId, route: "try-on" });
+      return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+    }
+    throw error;
+  }
+
+  const rateHeaders = {
+    "X-RateLimit-Limit": String(rateLimit.limit),
+    "X-RateLimit-Remaining": String(rateLimit.remaining),
+    "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
+  };
+  if (!rateLimit.allowed) {
+    console.warn("try_on_rate_limited", {
+      requestId,
+      username: user.username,
+      blockedBy: rateLimit.blockedBy,
+    });
+    return jsonError(
+      "You've made several try-ons in a short period. Please wait a moment and try again.",
+      429,
+      {
+        ...rateHeaders,
+        "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
+      },
+    );
+  }
+
+  const contentType = request.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
+    return jsonError("Please upload a person photo and fabric photo. Choose a library look or upload an outfit photo.", 400, rateHeaders);
+  }
+
+  const declaredLength = Number.parseInt(request.headers.get("content-length") || "0", 10);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+    return jsonError("The uploaded images are too large. Please choose smaller images.", 413, rateHeaders);
+  }
+
+  const startedAt = Date.now();
+  let generationAttempted = false;
+  try {
+    const formData = await request.formData();
+    const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
+    if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit")) {
+      return jsonError("Please choose a valid generation mode.", 400, rateHeaders);
+    }
+    const selectionMode: "catalog" | "outfit" = selectionModeValue === "outfit"
+      ? "outfit"
+      : selectionModeValue === "catalog"
+        ? "catalog"
+        : getExactlyOneFile(formData, "outfit") ? "outfit" : "catalog";
+    const personFile = getExactlyOneFile(formData, "person");
+    const outfitFile = getExactlyOneFile(formData, "outfit");
+    const fabricFile = getExactlyOneFile(formData, "fabric");
+    const upperGarmentId = getExactlyOneText(formData, "upperGarmentId", false);
+    const lowerGarmentId = getExactlyOneText(formData, "lowerGarmentId", false);
+    const garmentSubtypeId = getExactlyOneText(formData, "garmentSubtypeId", false);
+    const upperStyleId = getExactlyOneText(formData, "upperStyleId", false);
+    const lowerStyleId = getExactlyOneText(formData, "lowerStyleId", false);
+    const turbanStyleId = getExactlyOneText(formData, "turbanStyleId", false);
+    const shoeStyleId = getExactlyOneText(formData, "shoeStyleId", false);
+    const turbanId = getExactlyOneText(formData, "turbanId", false);
+    const shoeId = getExactlyOneText(formData, "shoeId", false);
+    const bespokeConfigurationText = getExactlyOneText(formData, "bespokeConfiguration", false);
+
+    const invalidCommonInput = !personFile || !fabricFile || bespokeConfigurationText === null || hasUnexpectedFields(formData);
+    const invalidModeInput = selectionMode === "outfit"
+      ? !outfitFile
+      : !upperGarmentId || !turbanId || !shoeId;
+    if (invalidCommonInput || invalidModeInput) {
+      return jsonError(
+        selectionMode === "outfit"
+          ? "Please upload a person photo, outfit photo, and fabric photo."
+          : "Please upload a person photo and fabric photo, then choose a men's garment and accessories.",
+        400,
+        rateHeaders,
+      );
+    }
+
+    const [person, outfit, fabric] = await Promise.all([
+      validateImageFile(personFile, "a person photo"),
+      selectionMode === "outfit" && outfitFile ? validateImageFile(outfitFile, "an outfit photo") : Promise.resolve(undefined),
+      validateImageFile(fabricFile, "a fabric photo"),
+    ]);
+
+    const selectionIds: TryOnSelection = {
+      mode: selectionMode,
+      ...(upperGarmentId ? { upperGarmentId } : {}),
+      ...(lowerGarmentId ? { lowerGarmentId } : {}),
+      ...(garmentSubtypeId ? { garmentSubtypeId } : {}),
+      ...(upperStyleId ? { upperStyleId } : {}),
+      ...(lowerStyleId ? { lowerStyleId } : {}),
+      ...(turbanStyleId ? { turbanStyleId } : {}),
+      ...(shoeStyleId ? { shoeStyleId } : {}),
+      ...(turbanId ? { turbanId } : {}),
+      ...(shoeId ? { shoeId } : {}),
+    };
+    let resolved: Awaited<ReturnType<typeof findCatalogSelection>> = null;
+    let catalogSelection: CatalogSelection | undefined;
+    let bespokeConfiguration: ReturnType<typeof resolveBespokeConfiguration> | undefined;
+    let outfitSpecification: ReturnType<typeof buildOutfitSpecification> | undefined;
+    let bespokeReferenceInputs: Array<Awaited<ReturnType<typeof readReference>>> = [];
+    if (selectionMode === "catalog") {
+      resolved = await (dependencies.resolveSelection ?? findCatalogSelection)(selectionIds as {
+        upperGarmentId: string;
+        lowerGarmentId?: string;
+        garmentSubtypeId?: string;
+        upperStyleId?: string;
+        lowerStyleId?: string;
+        turbanStyleId?: string;
+        shoeStyleId?: string;
+        turbanId: string;
+        shoeId: string;
+      });
+      if (!resolved) return jsonError("Please choose valid men's garments and accessories.", 400, rateHeaders);
+      const resolvedSelection = resolved;
+      catalogSelection = {
+        upper: resolvedSelection.upper,
+        ...(resolvedSelection.lower ? { lower: resolvedSelection.lower } : {}),
+        ...(resolvedSelection.subtype ? { subtype: resolvedSelection.subtype } : {}),
+        ...(resolvedSelection.upperStyle ? { upperStyle: resolvedSelection.upperStyle } : {}),
+        ...(resolvedSelection.lowerStyle ? { lowerStyle: resolvedSelection.lowerStyle } : {}),
+        turban: resolvedSelection.turban,
+        ...(resolvedSelection.turbanStyle ? { turbanStyle: resolvedSelection.turbanStyle } : {}),
+        shoes: resolvedSelection.shoes,
+        ...(resolvedSelection.shoeStyle ? { shoeStyle: resolvedSelection.shoeStyle } : {}),
+      };
+      validateCatalogSelection(catalogSelection);
+
+      if (resolvedSelection.upper.configurationProfileId) {
+        if (!bespokeConfigurationText) {
+          return jsonError("Please complete the bespoke suit configuration.", 400, rateHeaders);
+        }
+        const profile = resolvedSelection.catalog.configurationProfiles?.find((item) => item.id === resolvedSelection.upper.configurationProfileId);
+        if (!profile) return jsonError("The bespoke suit configuration is unavailable. Please refresh and try again.", 503, rateHeaders);
+        bespokeConfiguration = resolveBespokeConfiguration(profile, parseSubmittedBespokeConfiguration(bespokeConfigurationText));
+        const composition = bespokeConfiguration.selections["suit-composition"];
+        if (composition !== resolvedSelection.subtype?.id) {
+          return jsonError("Please choose a suit composition that matches the bespoke configuration.", 400, rateHeaders);
+        }
+        const configuredShoe = bespokeConfiguration.selections["shoe-family"];
+        if (configuredShoe && configuredShoe !== resolvedSelection.shoes.id) {
+          return jsonError("Please choose shoes that match the bespoke configuration.", 400, rateHeaders);
+        }
+        const configuredTurban = bespokeConfiguration.selections["turban-family"];
+        if (configuredTurban && configuredTurban !== resolvedSelection.turban.id) {
+          return jsonError("Please choose a turban that matches the bespoke configuration.", 400, rateHeaders);
+        }
+        outfitSpecification = buildOutfitSpecification(catalogSelection, bespokeConfiguration);
+        bespokeReferenceInputs = await buildBespokeReferenceInputs(selectBespokeReferenceImages(bespokeConfiguration, outfitSpecification.targetView));
+      }
+    }
+    const references = [...await buildReferenceInputs(catalogSelection), ...bespokeReferenceInputs];
+    const basePrompt = buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
+    const prompt = outfitSpecification && bespokeConfiguration
+      ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
+      : basePrompt;
+
+    generationAttempted = true;
+    const result = await dependencies.generate({
+      person,
+      ...(selectionMode === "outfit" && outfit ? { outfit } : {}),
+      fabric,
+      references,
+      selection: selectionIds,
+      catalogSelection,
+      prompt,
+      requestId,
+    });
+    let assets: GenerationAssetRefs | undefined;
+    try {
+      assets = (await storeGenerationAssets({
+        generationId: requestId,
+        person: person.file,
+        ...(selectionMode === "outfit" && outfit ? { outfit: outfit.file } : {}),
+        fabric: fabric.file,
+        references: references.map(({ role, image }) => ({ role, file: image.file })),
+        resultBytes: result.bytes,
+        resultContentType: result.contentType,
+      })) ?? undefined;
+    } catch (storageError) {
+      console.error("try_on_image_history_storage_failed", {
+        requestId,
+        errorName: storageError instanceof Error ? storageError.name : "UnknownError",
+      });
+    }
+    await recordUsageSafely(
+      dependencies,
+      request,
+      user.username,
+      requestId,
+      "success",
+      Date.now() - startedAt,
+      result.metadata,
+      selectionMode === "catalog" && resolved ? {
+        mode: "catalog",
+        upperGarmentId: resolved.upper.id,
+        upperGarmentName: resolved.upper.name,
+        ...(resolved.lower ? { lowerGarmentId: resolved.lower.id, lowerGarmentName: resolved.lower.name } : {}),
+        ...(resolved.subtype ? { garmentSubtypeId: resolved.subtype.id, garmentSubtypeName: resolved.subtype.name } : {}),
+        ...(resolved.upperStyle ? { upperStyleId: resolved.upperStyle.id, upperStyleName: resolved.upperStyle.name } : {}),
+        ...(resolved.lowerStyle ? { lowerStyleId: resolved.lowerStyle.id, lowerStyleName: resolved.lowerStyle.name } : {}),
+        turbanId: resolved.turban.id,
+        turbanName: resolved.turban.name,
+        ...(resolved.turbanStyle ? { turbanStyleId: resolved.turbanStyle.id, turbanStyleName: resolved.turbanStyle.name } : {}),
+        shoeId: resolved.shoes.id,
+        shoeName: resolved.shoes.name,
+        ...(resolved.shoeStyle ? { shoeStyleId: resolved.shoeStyle.id, shoeStyleName: resolved.shoeStyle.name } : {}),
+        ...(outfitSpecification ? { outfitSpecification } : {}),
+      } : { mode: "outfit" },
+      assets,
+    );
+    console.info("try_on_generation", {
+      requestId,
+      username: user.username,
+      success: true,
+      ...result.metadata,
+    });
+
+    return new Response(new Uint8Array(result.bytes).buffer as ArrayBuffer, {
+      status: 200,
+      headers: {
+        ...rateHeaders,
+        "Cache-Control": "no-store, private",
+        "Content-Disposition": 'inline; filename="nasir-bespoke-try-on.jpg"',
+        "Content-Type": result.contentType,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    if (generationAttempted) {
+      await recordUsageSafely(
+        dependencies,
+        request,
+        user.username,
+        requestId,
+        "failed",
+        durationMs,
+        {
+          provider: "openai",
+          model: "gpt-image-2",
+          quality: "medium",
+        },
+      );
+    }
+    if (error instanceof UploadValidationError) {
+      console.warn("try_on_validation_failed", {
+        requestId,
+        username: user.username,
+        success: false,
+        code: error.code,
+        durationMs,
+      });
+      return jsonError(error.message, error.code === "file_too_large" ? 413 : 400, rateHeaders);
+    }
+
+    if (error instanceof CatalogCompatibilityError) {
+      return jsonError(error.message, 400, rateHeaders);
+    }
+
+    if (error instanceof BespokeConfigurationError) {
+      return jsonError(error.message, 400, rateHeaders);
+    }
+
+    if (error instanceof MissingApiKeyError) {
+      console.error("try_on_configuration_error", {
+        requestId,
+        username: user.username,
+        success: false,
+        provider: "openai",
+        model: "gpt-image-2",
+        durationMs,
+      });
+      return jsonError("OpenAI API key is not configured.", 503, rateHeaders);
+    }
+
+    const errorMetadata = safeProviderError(error);
+    const isTimeout = errorMetadata.errorName.toLowerCase().includes("timeout");
+    console.error("try_on_generation_failed", {
+      requestId,
+      username: user.username,
+      success: false,
+      provider: "openai",
+      model: "gpt-image-2",
+      durationMs,
+      ...errorMetadata,
+    });
+
+    return jsonError(
+      isTimeout
+        ? "The generation took too long. Please try again."
+        : "We couldn't create the try-on. Please try again.",
+      isTimeout ? 504 : 502,
+      rateHeaders,
+    );
+  }
+}
