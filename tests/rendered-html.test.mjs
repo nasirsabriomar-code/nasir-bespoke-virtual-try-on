@@ -53,3 +53,19 @@ test("Level 1 catalogue component contains full-screen design viewer with access
   assert.match(component, /Inspect full silhouette and tailoring details/);
   assert.match(component, /Escape/);
 });
+
+test("UsageHistory renders through a React portal with proper stacking and accessibility", async () => {
+  const [component, css] = await Promise.all([
+    source("components/UsageHistory.tsx"),
+    source("app/globals.css"),
+  ]);
+  assert.match(component, /createPortal/);
+  assert.match(component, /document\.body/);
+  assert.match(component, /history-modal-root/);
+  assert.match(component, /role="dialog"/);
+  assert.match(component, /aria-modal="true"/);
+  assert.match(component, /aria-labelledby="history-title"/);
+  assert.match(component, /overflow = "hidden"/);
+  assert.match(css, /\.history-modal-root\s*\{[^}]*z-index:\s*99999/);
+  assert.match(css, /\.history-panel\s*\{[^}]*overflow-y:\s*auto/);
+});
