@@ -15,6 +15,7 @@ import {
 } from "@/lib/generation-guard";
 import { resetMemorySessionsForTests } from "@/lib/auth/session-store";
 import { resetMemoryRateLimitsForTests } from "@/lib/rate-limit";
+import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
 
 const PASSWORD = "Correct-Horse-Battery-Staple";
 const TEST_USER = {
@@ -77,7 +78,7 @@ function catalogForm() {
   return form;
 }
 
-function jpegResult() {
+function jpegResult(): TryOnOutput {
   return {
     bytes: Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]),
     contentType: "image/jpeg",
@@ -332,7 +333,7 @@ test("one user cannot replay another user's idempotency key", async () => {
 
 function countingDeps(overrides: {
   user?: typeof TEST_USER;
-  generate?: () => Promise<ReturnType<typeof jpegResult>>;
+  generate?: (input: TryOnInput) => Promise<TryOnOutput>;
 } = {}) {
   let generationCalls = 0;
   let rateCalls = 0;
@@ -345,9 +346,9 @@ function countingDeps(overrides: {
         rateCalls += 1;
         return { allowed: true, limit: 20, remaining: 19, resetAt: Date.now() + 60_000 };
       },
-      generate: async () => {
+      generate: async (input: TryOnInput) => {
         generationCalls += 1;
-        if (overrides.generate) return overrides.generate();
+        if (overrides.generate) return overrides.generate(input);
         return jpegResult();
       },
     },
