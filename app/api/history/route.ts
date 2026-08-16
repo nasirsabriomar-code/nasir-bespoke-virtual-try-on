@@ -1,6 +1,6 @@
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
-import { getUsageHistory } from "@/lib/usage-history";
+import { getUsageHistory, redactUsageHistoryForClient } from "@/lib/usage-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
     const rawLimit = Number.parseInt(new URL(request.url).searchParams.get("limit") ?? "100", 10);
     const history = await getUsageHistory(rawLimit);
-    return Response.json(history, { status: 200, headers: JSON_HEADERS });
+    return Response.json(redactUsageHistoryForClient(history), { status: 200, headers: JSON_HEADERS });
   } catch (error) {
     if (error instanceof AuthConfigurationError) {
       console.error("history_auth_configuration_error");

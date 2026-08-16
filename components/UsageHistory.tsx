@@ -19,7 +19,13 @@ type HistoryEvent = {
   model: string;
   quality: string;
   generation?: {
-    mode: "catalog" | "outfit";
+    mode: "catalog" | "outfit" | "level1";
+    categoryId?: string;
+    categoryName?: string;
+    curatedDesignId?: string;
+    curatedDesignName?: string;
+    curatedDesignVersion?: number;
+    curatedAssetStatus?: "ready" | "awaiting-approved-reference";
     upperGarmentName?: string;
     lowerGarmentName?: string;
     garmentSubtypeName?: string;
@@ -35,21 +41,23 @@ type HistoryEvent = {
     };
   };
   assets?: {
-    result?: { pathname: string; contentType: string };
-    person?: { pathname: string; contentType: string };
-    outfit?: { pathname: string; contentType: string };
-    fabric?: { pathname: string; contentType: string };
-    upper?: { pathname: string; contentType: string };
-    lower?: { pathname: string; contentType: string };
-    subtype?: { pathname: string; contentType: string };
-    turban?: { pathname: string; contentType: string };
-    shoes?: { pathname: string; contentType: string };
-    "upper-style"?: { pathname: string; contentType: string };
-    "lower-style"?: { pathname: string; contentType: string };
-    "turban-style"?: { pathname: string; contentType: string };
-    "shoe-style"?: { pathname: string; contentType: string };
-    "bespoke-detail-1"?: { pathname: string; contentType: string };
-    "bespoke-detail-2"?: { pathname: string; contentType: string };
+    result?: { contentType: string };
+    person?: { contentType: string };
+    outfit?: { contentType: string };
+    fabric?: { contentType: string };
+    upper?: { contentType: string };
+    lower?: { contentType: string };
+    subtype?: { contentType: string };
+    turban?: { contentType: string };
+    shoes?: { contentType: string };
+    "upper-style"?: { contentType: string };
+    "lower-style"?: { contentType: string };
+    "turban-style"?: { contentType: string };
+    "shoe-style"?: { contentType: string };
+    "bespoke-detail-1"?: { contentType: string };
+    "bespoke-detail-2"?: { contentType: string };
+    "curated-design"?: { contentType: string };
+    "curated-detail"?: { contentType: string };
   };
 };
 
@@ -76,6 +84,10 @@ function formatDevice(event: HistoryEvent) {
 function formatLook(event: HistoryEvent) {
   if (!event.generation) return "Legacy generation";
   if (event.generation.mode === "outfit") return "Uploaded outfit + uploaded fabric";
+  if (event.generation.mode === "level1") {
+    const version = event.generation.curatedDesignVersion ? ` · Catalogue v${event.generation.curatedDesignVersion}` : "";
+    return `${event.generation.categoryName ?? "Curated"} · ${event.generation.curatedDesignName ?? "Design"}${version}`;
+  }
   if (event.generation.outfitSpecification) return `${event.generation.outfitSpecification.garment.subtypeName ?? event.generation.outfitSpecification.garment.name} · Bespoke configuration`;
   return [
     event.generation.upperGarmentName,
@@ -213,10 +225,10 @@ export function UsageHistory() {
                       <button type="button" className="history-close" onClick={() => setSelectedEvent(null)} aria-label="Close generation details">×</button>
                     </div>
                     <div className="generation-details-grid">
-                      {["person", "outfit", "fabric", "upper", "subtype", "lower", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "result"].map((asset) => selectedEvent.assets?.[asset as keyof NonNullable<HistoryEvent["assets"]>] ? (
+                      {["person", "outfit", "fabric", "upper", "subtype", "lower", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail", "result"].map((asset) => selectedEvent.assets?.[asset as keyof NonNullable<HistoryEvent["assets"]>] ? (
                         <figure key={asset}>
                           <img src={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/${asset}`} alt={asset === "person" ? "Customer photo" : asset === "outfit" ? "Outfit style photo" : asset === "fabric" ? "Fabric photo" : "Generated men's try-on result"} loading="lazy" />
-                          <figcaption>{asset === "person" ? "Customer" : asset === "outfit" ? "Outfit photo" : asset === "fabric" ? "Fabric" : asset === "upper" ? "Upper blueprint" : asset === "lower" ? "Lower blueprint" : asset === "subtype" ? "Suit subtype" : asset === "upper-style" ? "Upper style" : asset === "lower-style" ? "Lower style" : asset === "turban" ? "Turban" : asset === "turban-style" ? "Turban style" : asset === "shoes" ? "Shoes" : asset === "shoe-style" ? "Shoe style" : asset.startsWith("bespoke-detail") ? "Bespoke visual reference" : "Final result"}</figcaption>
+                          <figcaption>{asset === "person" ? "Customer" : asset === "outfit" ? "Outfit photo" : asset === "fabric" ? "Fabric" : asset === "upper" ? "Upper blueprint" : asset === "lower" ? "Lower blueprint" : asset === "subtype" ? "Suit subtype" : asset === "upper-style" ? "Upper style" : asset === "lower-style" ? "Lower style" : asset === "turban" ? "Turban" : asset === "turban-style" ? "Turban style" : asset === "shoes" ? "Shoes" : asset === "shoe-style" ? "Shoe style" : asset === "curated-design" ? "Curated construction reference" : asset === "curated-detail" ? "Curated detail reference" : asset.startsWith("bespoke-detail") ? "Bespoke visual reference" : "Final result"}</figcaption>
                         </figure>
                       ) : null)}
                     </div>

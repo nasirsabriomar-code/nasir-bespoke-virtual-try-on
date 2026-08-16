@@ -5,6 +5,10 @@ import { requireRequestUser } from "@/lib/auth/session";
 import { CatalogCompatibilityError, validateCatalogSelection } from "@/lib/catalog/compatibility";
 import { findCatalogSelection } from "@/lib/catalog/store";
 import type { CatalogSelection, ReferenceImage, StyleOption, TryOnSelection } from "@/lib/catalog/types";
+import { getPrivateLevel1Asset } from "@/lib/catalog/level1-assets";
+import { Level1CatalogueError, type CuratedAsset, type ResolvedLevel1Design } from "@/lib/catalog/level1-types";
+import { buildLevel1TryOnPrompt } from "@/lib/catalog/level1-prompt";
+import { resolveLevel1Design } from "@/lib/catalog/level1-store";
 import { MissingApiKeyError } from "@/lib/openai";
 import {
   acquireGenerationLock,
@@ -57,6 +61,8 @@ type RouteDependencies = {
   generate: (input: TryOnInput) => Promise<TryOnOutput>;
   recordUsage?: typeof recordUsageEvent;
   resolveSelection?: typeof findCatalogSelection;
+  resolveLevel1Selection?: typeof resolveLevel1Design;
+  readLevel1Reference?: (asset: CuratedAsset, role: "curated-design" | "curated-detail") => Promise<TryOnInput["references"][number]>;
 };
 
 const DEFAULT_DEPENDENCIES: RouteDependencies = {
@@ -65,6 +71,8 @@ const DEFAULT_DEPENDENCIES: RouteDependencies = {
   generate: generateTryOn,
   recordUsage: recordUsageEvent,
   resolveSelection: findCatalogSelection,
+  resolveLevel1Selection: resolveLevel1Design,
+  readLevel1Reference: readLevel1Reference,
 };
 
 function jsonError(error: string, status: number, headers?: HeadersInit) {
@@ -126,7 +134,17 @@ function hasUnexpectedFields(formData: FormData) {
       "turbanId",
       "shoeId",
       "bespokeConfiguration",
+      "categoryId",
+      "designId",
     ].includes(name)) return true;
+  }
+  return false;
+}
+
+function hasLevel1ForbiddenFields(formData: FormData) {
+  const level1Fields = new Set(["person", "fabric", "selectionMode", "categoryId", "designId"]);
+  for (const [name] of formData.entries()) {
+    if (!level1Fields.has(name)) return true;
   }
   return false;
 }
@@ -188,6 +206,24 @@ async function buildReferenceInputs(selection?: CatalogSelection) {
 
 async function buildBespokeReferenceInputs(references: ReferenceImage[]) {
   return Promise.all(references.map((reference, index) => readReference(reference, index === 0 ? "bespoke-detail-1" : "bespoke-detail-2")));
+}
+
+async function readLevel1Reference(asset: CuratedAsset, role: "curated-design" | "curated-detail"): Promise<TryOnInput["references"][number]> {
+  const privateAsset = await getPrivateLevel1Asset(asset.id);
+  const blob = privateAsset?.blob;
+  if (!privateAsset || !blob || blob.statusCode !== 200 || !blob.stream) {
+    throw new Level1CatalogueError("asset_unavailable", "The approved catalogue reference is temporarily unavailable. Please try again shortly.");
+  }
+  const bytes = await new Response(blob.stream).arrayBuffer();
+  const contentType = privateAsset.asset.contentType;
+  if (!contentType) throw new Level1CatalogueError("asset_unavailable", "The approved catalogue reference is temporarily unavailable. Please try again shortly.");
+  return {
+    role,
+    image: {
+      file: new File([bytes], `${asset.id}.${contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg"}`, { type: contentType }),
+      mime: contentType,
+    },
+  };
 }
 
 function safeProviderError(error: unknown) {
@@ -295,10 +331,12 @@ export async function handleTryOnRequest(
   try {
     const formData = await request.formData();
     const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
-    if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit")) {
+    if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit" && selectionModeValue !== "level1")) {
       return jsonError("Please choose a valid generation mode.", 400, rateHeaders);
     }
-    const selectionMode: "catalog" | "outfit" = selectionModeValue === "outfit"
+    const selectionMode: "catalog" | "outfit" | "level1" = selectionModeValue === "level1"
+      ? "level1"
+      : selectionModeValue === "outfit"
       ? "outfit"
       : selectionModeValue === "catalog"
         ? "catalog"
@@ -316,16 +354,22 @@ export async function handleTryOnRequest(
     const turbanId = getExactlyOneText(formData, "turbanId", false);
     const shoeId = getExactlyOneText(formData, "shoeId", false);
     const bespokeConfigurationText = getExactlyOneText(formData, "bespokeConfiguration", false);
+    const categoryId = getExactlyOneText(formData, "categoryId", false);
+    const designId = getExactlyOneText(formData, "designId", false);
 
     const invalidCommonInput = !personFile || !fabricFile || bespokeConfigurationText === null || hasUnexpectedFields(formData);
     const invalidModeInput = selectionMode === "outfit"
       ? !outfitFile
-      : !upperGarmentId || !turbanId || !shoeId;
+      : selectionMode === "level1"
+        ? !categoryId || !designId || hasLevel1ForbiddenFields(formData)
+        : !upperGarmentId || !turbanId || !shoeId;
     if (invalidCommonInput || invalidModeInput) {
       return jsonError(
         selectionMode === "outfit"
           ? "Please upload a person photo, outfit photo, and fabric photo."
-          : "Please upload a person photo and fabric photo, then choose a men's garment and accessories.",
+          : selectionMode === "level1"
+            ? "Please upload a person photo and fabric photo, then choose a curated design."
+            : "Please upload a person photo and fabric photo, then choose a men's garment and accessories.",
         400,
         rateHeaders,
       );
@@ -337,19 +381,22 @@ export async function handleTryOnRequest(
       validateImageFile(fabricFile, "a fabric photo"),
     ]);
 
-    const selectionIds: TryOnSelection = {
-      mode: selectionMode,
-      ...(upperGarmentId ? { upperGarmentId } : {}),
-      ...(lowerGarmentId ? { lowerGarmentId } : {}),
-      ...(garmentSubtypeId ? { garmentSubtypeId } : {}),
-      ...(upperStyleId ? { upperStyleId } : {}),
-      ...(lowerStyleId ? { lowerStyleId } : {}),
-      ...(turbanStyleId ? { turbanStyleId } : {}),
-      ...(shoeStyleId ? { shoeStyleId } : {}),
-      ...(turbanId ? { turbanId } : {}),
-      ...(shoeId ? { shoeId } : {}),
-    };
+    const selectionIds: TryOnSelection = selectionMode === "level1"
+      ? { mode: "level1", categoryId: categoryId as string, designId: designId as string }
+      : {
+        mode: selectionMode,
+        ...(upperGarmentId ? { upperGarmentId } : {}),
+        ...(lowerGarmentId ? { lowerGarmentId } : {}),
+        ...(garmentSubtypeId ? { garmentSubtypeId } : {}),
+        ...(upperStyleId ? { upperStyleId } : {}),
+        ...(lowerStyleId ? { lowerStyleId } : {}),
+        ...(turbanStyleId ? { turbanStyleId } : {}),
+        ...(shoeStyleId ? { shoeStyleId } : {}),
+        ...(turbanId ? { turbanId } : {}),
+        ...(shoeId ? { shoeId } : {}),
+      };
     let resolved: Awaited<ReturnType<typeof findCatalogSelection>> = null;
+    let level1Resolved: ResolvedLevel1Design | undefined;
     let catalogSelection: CatalogSelection | undefined;
     let bespokeConfiguration: ReturnType<typeof resolveBespokeConfiguration> | undefined;
     let outfitSpecification: ReturnType<typeof buildOutfitSpecification> | undefined;
@@ -403,13 +450,9 @@ export async function handleTryOnRequest(
         outfitSpecification = buildOutfitSpecification(catalogSelection, bespokeConfiguration);
         bespokeReferenceInputs = await buildBespokeReferenceInputs(selectBespokeReferenceImages(bespokeConfiguration, outfitSpecification.targetView));
       }
+    } else if (selectionMode === "level1") {
+      level1Resolved = await (dependencies.resolveLevel1Selection ?? resolveLevel1Design)(categoryId as string, designId as string);
     }
-    const references = [...await buildReferenceInputs(catalogSelection), ...bespokeReferenceInputs];
-    const basePrompt = buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
-    const prompt = outfitSpecification && bespokeConfiguration
-      ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
-      : basePrompt;
-
     if (idempotencyKey) {
       const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
       if (blocked) return blocked;
@@ -468,6 +511,27 @@ export async function handleTryOnRequest(
       );
     }
 
+    // Level 1 resolves only trusted server-owned asset IDs. The actual private
+    // blob reads happen after the lock and rate checks so a valid session cannot
+    // use this endpoint to turn catalogue-reference reads into an unbounded
+    // pre-generation workload. Asset-pending designs were rejected above,
+    // before the guard/rate-limit path and before any provider call.
+    const level1ReferenceInputs = level1Resolved
+      ? [
+        await (dependencies.readLevel1Reference ?? readLevel1Reference)(level1Resolved.primaryAsset, "curated-design"),
+        ...await Promise.all(level1Resolved.detailAssets.map((asset) => (dependencies.readLevel1Reference ?? readLevel1Reference)(asset, "curated-detail"))),
+      ]
+      : [];
+    const references = level1Resolved
+      ? level1ReferenceInputs
+      : [...await buildReferenceInputs(catalogSelection), ...bespokeReferenceInputs];
+    const basePrompt = level1Resolved
+      ? buildLevel1TryOnPrompt(level1Resolved)
+      : buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
+    const prompt = outfitSpecification && bespokeConfiguration
+      ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
+      : basePrompt;
+
     if (idempotencyKey && lease) {
       await writeIdempotencyRecord(user.username, idempotencyKey, {
         status: "pending",
@@ -511,7 +575,15 @@ export async function handleTryOnRequest(
       "success",
       Date.now() - startedAt,
       result.metadata,
-      selectionMode === "catalog" && resolved ? {
+      level1Resolved ? {
+        mode: "level1",
+        categoryId: level1Resolved.category.id,
+        categoryName: level1Resolved.category.name,
+        curatedDesignId: level1Resolved.design.id,
+        curatedDesignName: level1Resolved.design.customer.name,
+        curatedDesignVersion: level1Resolved.design.version,
+        curatedAssetStatus: "ready",
+      } : selectionMode === "catalog" && resolved ? {
         mode: "catalog",
         upperGarmentId: resolved.upper.id,
         upperGarmentName: resolved.upper.name,
@@ -596,6 +668,10 @@ export async function handleTryOnRequest(
 
     if (error instanceof BespokeConfigurationError) {
       return jsonError(error.message, 400, rateHeaders);
+    }
+
+    if (error instanceof Level1CatalogueError) {
+      return jsonError(error.message, error.code === "asset_unavailable" ? 503 : 400, rateHeaders);
     }
 
     if (!generationAttempted && (error instanceof GenerationGuardUnavailableError || error instanceof RateLimitConfigurationError)) {

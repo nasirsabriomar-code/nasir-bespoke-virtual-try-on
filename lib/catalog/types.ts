@@ -128,6 +128,10 @@ export type TryOnSelection = {
   shoeStyleId?: string;
   turbanId?: string;
   shoeId?: string;
+} | {
+  mode: "level1";
+  categoryId: string;
+  designId: string;
 };
 
 export type CatalogSelection = {

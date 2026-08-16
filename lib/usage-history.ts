@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { Redis } from "@upstash/redis";
-import type { GenerationAssetRefs } from "@/lib/generation-storage";
+import type { GenerationAssetKey, GenerationAssetRefs } from "@/lib/generation-storage";
 import type { OutfitSpecification } from "@/lib/bespoke/engine";
 
 const HISTORY_KEY = "nasir-tryon:history:events:v1";
@@ -30,7 +30,13 @@ export type UsageEvent = {
   quality: string;
   assets?: GenerationAssetRefs;
   generation?: {
-    mode: "catalog" | "outfit";
+    mode: "catalog" | "outfit" | "level1";
+    categoryId?: string;
+    categoryName?: string;
+    curatedDesignId?: string;
+    curatedDesignName?: string;
+    curatedDesignVersion?: number;
+    curatedAssetStatus?: "ready" | "awaiting-approved-reference";
     upperGarmentId?: string;
     upperGarmentName?: string;
     lowerGarmentId?: string;
@@ -59,6 +65,39 @@ export type UsageHistory = {
   retained: number;
 };
 
+export type PublicGenerationAssetRefs = Partial<Record<GenerationAssetKey, {
+  contentType: string;
+}>>;
+
+export type PublicUsageEvent = Omit<UsageEvent, "assets"> & {
+  assets?: PublicGenerationAssetRefs;
+};
+
+export type PublicUsageHistory = Omit<UsageHistory, "events"> & {
+  events: PublicUsageEvent[];
+};
+
+/**
+ * The browser receives only an availability marker and content type per asset.
+ * Private Blob pathnames stay server-side and are resolved by the authenticated
+ * history-asset route.
+ */
+export function redactUsageHistoryForClient(history: UsageHistory): PublicUsageHistory {
+  return {
+    ...history,
+    events: history.events.map(({ assets, ...event }) => ({
+      ...event,
+      ...(assets
+        ? {
+            assets: Object.fromEntries(
+              Object.entries(assets).map(([asset, reference]) => [asset, { contentType: reference.contentType }]),
+            ) as PublicGenerationAssetRefs,
+          }
+        : {}),
+    })),
+  };
+}
+
 class UsageHistoryConfigurationError extends Error {
   constructor() {
     super("Usage history storage is not configured.");
@@ -79,7 +118,7 @@ function parseAssetRefs(value: unknown): GenerationAssetRefs | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const result: GenerationAssetRefs = {};
-  for (const asset of ["person", "outfit", "fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2"] as const) {
+  for (const asset of ["person", "outfit", "fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail"] as const) {
     const item = record[asset];
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;
@@ -109,7 +148,8 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const isOutfitMode = record.mode === "outfit";
-  if (!isOutfitMode && (
+  const isLevel1Mode = record.mode === "level1";
+  if (!isOutfitMode && !isLevel1Mode && (
     typeof record.upperGarmentId !== "string" ||
     typeof record.upperGarmentName !== "string" ||
     typeof record.turbanId !== "string" ||
@@ -119,8 +159,21 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
   )) return undefined;
   const optionalString = (key: string) => typeof record[key] === "string" ? record[key] as string : undefined;
   const outfitSpecification = parseOutfitSpecification(record.outfitSpecification);
+  const curatedDesignVersion = typeof record.curatedDesignVersion === "number" && Number.isSafeInteger(record.curatedDesignVersion)
+    ? record.curatedDesignVersion
+    : undefined;
+  const curatedAssetStatus = record.curatedAssetStatus === "ready" || record.curatedAssetStatus === "awaiting-approved-reference"
+    ? record.curatedAssetStatus
+    : undefined;
+  if (isLevel1Mode && (!optionalString("categoryId") || !optionalString("curatedDesignId") || !optionalString("curatedDesignName") || !curatedDesignVersion || !curatedAssetStatus)) return undefined;
   return {
-    mode: isOutfitMode ? "outfit" : "catalog",
+    mode: isOutfitMode ? "outfit" : isLevel1Mode ? "level1" : "catalog",
+    ...(isLevel1Mode && optionalString("categoryId") ? { categoryId: optionalString("categoryId") } : {}),
+    ...(isLevel1Mode && optionalString("categoryName") ? { categoryName: optionalString("categoryName") } : {}),
+    ...(isLevel1Mode && optionalString("curatedDesignId") ? { curatedDesignId: optionalString("curatedDesignId") } : {}),
+    ...(isLevel1Mode && optionalString("curatedDesignName") ? { curatedDesignName: optionalString("curatedDesignName") } : {}),
+    ...(isLevel1Mode && curatedDesignVersion ? { curatedDesignVersion } : {}),
+    ...(isLevel1Mode && curatedAssetStatus ? { curatedAssetStatus } : {}),
     ...(optionalString("upperGarmentId") ? { upperGarmentId: optionalString("upperGarmentId") } : {}),
     ...(optionalString("upperGarmentName") ? { upperGarmentName: optionalString("upperGarmentName") } : {}),
     ...(optionalString("lowerGarmentId") ? { lowerGarmentId: optionalString("lowerGarmentId") } : {}),

@@ -4,7 +4,7 @@ import { del, get, put } from "@vercel/blob";
 
 const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
-export type GenerationAssetKey = "person" | "outfit" | "fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2";
+export type GenerationAssetKey = "person" | "outfit" | "fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail";
 
 export type GenerationAssetRefs = Partial<Record<GenerationAssetKey, {
   pathname: string;

@@ -22,6 +22,8 @@ const ASSET_KEYS = new Set<GenerationAssetKey>([
   "shoe-style",
   "bespoke-detail-1",
   "bespoke-detail-2",
+  "curated-design",
+  "curated-detail",
 ]);
 
 export async function GET(request: Request, context: { params: Promise<{ id: string; asset: string }> }) {
