@@ -166,6 +166,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [error, setError] = useState<string | null>(null);
   const resultRef = useRef<HTMLElement>(null);
   const objectUrls = useRef(new Set<string>());
+  const generationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const urls = objectUrls.current;
@@ -293,6 +294,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       return;
     }
 
+    if (generationKeyRef.current) return;
+
+    const idempotencyKey = crypto.randomUUID();
+    generationKeyRef.current = idempotencyKey;
     setIsGenerating(true);
     setError(null);
     const controller = new AbortController();
@@ -320,7 +325,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       const response = await fetch("/api/try-on", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "X-Nasir-Device": getClientDeviceHint() },
+        headers: {
+          "X-Nasir-Device": getClientDeviceHint(),
+          "Idempotency-Key": idempotencyKey,
+        },
         body: formData,
         signal: controller.signal,
       });
@@ -352,6 +360,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       );
     } finally {
       window.clearTimeout(timeout);
+      generationKeyRef.current = null;
       setIsGenerating(false);
     }
   }

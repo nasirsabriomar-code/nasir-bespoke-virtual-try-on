@@ -7,6 +7,16 @@ import { findCatalogSelection } from "@/lib/catalog/store";
 import type { CatalogSelection, ReferenceImage, StyleOption, TryOnSelection } from "@/lib/catalog/types";
 import { MissingApiKeyError } from "@/lib/openai";
 import {
+  acquireGenerationLock,
+  GenerationGuardUnavailableError,
+  parseIdempotencyKey,
+  releaseGenerationLock,
+  resolveIdempotencyForRequest,
+  writeIdempotencyRecord,
+  type GenerationLease,
+  type IdempotencyRecord,
+} from "@/lib/generation-guard";
+import {
   checkGenerationRateLimit,
   RateLimitConfigurationError,
 } from "@/lib/rate-limit";
@@ -62,6 +72,36 @@ function jsonError(error: string, status: number, headers?: HeadersInit) {
     { error },
     { status, headers: { ...JSON_HEADERS, ...headers } },
   );
+}
+
+function imageResultResponse(bytes: Uint8Array, contentType: string, extraHeaders?: HeadersInit) {
+  const exactBytes = bytes.slice();
+  return new Response(exactBytes, {
+    status: 200,
+    headers: {
+      "Cache-Control": "no-store, private",
+      "Content-Disposition": 'inline; filename="nasir-bespoke-try-on.jpg"',
+      "Content-Type": contentType,
+      "X-Content-Type-Options": "nosniff",
+      ...extraHeaders,
+    },
+  });
+}
+
+async function replayOrBlockIdempotency(username: string, key: string) {
+  const decision = await resolveIdempotencyForRequest(username, key);
+  if (decision.kind === "replay") return replayIdempotentResult(decision.record);
+  if (decision.kind === "in_progress") {
+    return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
+  }
+  return null;
+}
+
+function replayIdempotentResult(record: Extract<IdempotencyRecord, { status: "complete" } | { status: "failed" }>) {
+  if (record.status === "failed") return jsonError(record.error, record.httpStatus);
+  return imageResultResponse(Uint8Array.from(Buffer.from(record.body, "base64")), record.contentType, {
+    "Idempotency-Replayed": "true",
+  });
 }
 
 function getExactlyOneFile(formData: FormData, name: string) {
@@ -220,50 +260,38 @@ export async function handleTryOnRequest(
     return jsonError("Your session has expired. Please sign in again.", 401);
   }
 
-  let rateLimit;
-  try {
-    rateLimit = await dependencies.rateLimit(user.username);
-  } catch (error) {
-    if (error instanceof RateLimitConfigurationError) {
-      console.error("rate_limit_configuration_error", { requestId, route: "try-on" });
-      return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
-    }
-    throw error;
+  const idempotencyKey = parseIdempotencyKey(request);
+  if (idempotencyKey === "") {
+    return jsonError("Invalid idempotency key.", 400);
   }
 
-  const rateHeaders = {
-    "X-RateLimit-Limit": String(rateLimit.limit),
-    "X-RateLimit-Remaining": String(rateLimit.remaining),
-    "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
-  };
-  if (!rateLimit.allowed) {
-    console.warn("try_on_rate_limited", {
-      requestId,
-      username: user.username,
-      blockedBy: rateLimit.blockedBy,
-    });
-    return jsonError(
-      "You've made several try-ons in a short period. Please wait a moment and try again.",
-      429,
-      {
-        ...rateHeaders,
-        "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
-      },
-    );
+  if (idempotencyKey) {
+    try {
+      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+      if (blocked) return blocked;
+    } catch (error) {
+      if (error instanceof GenerationGuardUnavailableError) {
+        console.error("generation_guard_unavailable", { requestId, route: "try-on" });
+        return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+      }
+      throw error;
+    }
   }
 
   const contentType = request.headers.get("content-type") || "";
   if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
-    return jsonError("Please upload a person photo and fabric photo. Choose a library look or upload an outfit photo.", 400, rateHeaders);
+    return jsonError("Please upload a person photo and fabric photo. Choose a library look or upload an outfit photo.", 400);
   }
 
   const declaredLength = Number.parseInt(request.headers.get("content-length") || "0", 10);
   if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
-    return jsonError("The uploaded images are too large. Please choose smaller images.", 413, rateHeaders);
+    return jsonError("The uploaded images are too large. Please choose smaller images.", 413);
   }
 
   const startedAt = Date.now();
   let generationAttempted = false;
+  let lease: GenerationLease | null = null;
+  let rateHeaders: HeadersInit = {};
   try {
     const formData = await request.formData();
     const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
@@ -382,6 +410,71 @@ export async function handleTryOnRequest(
       ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
       : basePrompt;
 
+    if (idempotencyKey) {
+      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+      if (blocked) return blocked;
+    }
+
+    try {
+      lease = await acquireGenerationLock(user.username);
+    } catch (error) {
+      if (error instanceof GenerationGuardUnavailableError) {
+        console.error("generation_guard_unavailable", { requestId, route: "try-on" });
+        return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+      }
+      throw error;
+    }
+    if (!lease) {
+      if (idempotencyKey) {
+        const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+        if (blocked) return blocked;
+      }
+      return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
+    }
+
+    if (idempotencyKey) {
+      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+      if (blocked) return blocked;
+    }
+
+    let rateLimit;
+    try {
+      rateLimit = await dependencies.rateLimit(user.username);
+    } catch (error) {
+      if (error instanceof RateLimitConfigurationError) {
+        console.error("rate_limit_configuration_error", { requestId, route: "try-on" });
+        return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+      }
+      throw error;
+    }
+    rateHeaders = {
+      "X-RateLimit-Limit": String(rateLimit.limit),
+      "X-RateLimit-Remaining": String(rateLimit.remaining),
+      "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
+    };
+    if (!rateLimit.allowed) {
+      console.warn("try_on_rate_limited", {
+        requestId,
+        username: user.username,
+        blockedBy: rateLimit.blockedBy,
+      });
+      return jsonError(
+        "You've made several try-ons in a short period. Please wait a moment and try again.",
+        429,
+        {
+          ...rateHeaders,
+          "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
+        },
+      );
+    }
+
+    if (idempotencyKey && lease) {
+      await writeIdempotencyRecord(user.username, idempotencyKey, {
+        status: "pending",
+        leaseId: lease.leaseId,
+      });
+    }
+
     generationAttempted = true;
     const result = await dependencies.generate({
       person,
@@ -443,19 +536,35 @@ export async function handleTryOnRequest(
       ...result.metadata,
     });
 
-    return new Response(new Uint8Array(result.bytes).buffer as ArrayBuffer, {
-      status: 200,
-      headers: {
-        ...rateHeaders,
-        "Cache-Control": "no-store, private",
-        "Content-Disposition": 'inline; filename="nasir-bespoke-try-on.jpg"',
-        "Content-Type": result.contentType,
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    if (idempotencyKey) {
+      try {
+        await writeIdempotencyRecord(user.username, idempotencyKey, {
+          status: "complete",
+          contentType: result.contentType,
+          body: Buffer.from(result.bytes).toString("base64"),
+        });
+      } catch (error) {
+        // The paid call already succeeded. Do not turn a store failure into a
+        // client retry that would mint a new key and bill again.
+        if (!(error instanceof GenerationGuardUnavailableError)) throw error;
+        console.error("generation_idempotency_store_failed", { requestId, route: "try-on" });
+      }
+    }
+
+    return imageResultResponse(result.bytes, result.contentType, rateHeaders);
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     if (generationAttempted) {
+      if (idempotencyKey) {
+        const isTimeout = error instanceof Error && error.name.toLowerCase().includes("timeout");
+        await writeIdempotencyRecord(user.username, idempotencyKey, {
+          status: "failed",
+          error: isTimeout
+            ? "The generation took too long. Please try again."
+            : "We couldn't create the try-on. Please try again.",
+          httpStatus: isTimeout ? 504 : 502,
+        }).catch(() => undefined);
+      }
       await recordUsageSafely(
         dependencies,
         request,
@@ -489,6 +598,11 @@ export async function handleTryOnRequest(
       return jsonError(error.message, 400, rateHeaders);
     }
 
+    if (!generationAttempted && (error instanceof GenerationGuardUnavailableError || error instanceof RateLimitConfigurationError)) {
+      console.error("generation_control_unavailable", { requestId, route: "try-on" });
+      return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+    }
+
     if (error instanceof MissingApiKeyError) {
       console.error("try_on_configuration_error", {
         requestId,
@@ -520,5 +634,16 @@ export async function handleTryOnRequest(
       isTimeout ? 504 : 502,
       rateHeaders,
     );
+  } finally {
+    if (lease) {
+      try {
+        await releaseGenerationLock(lease);
+      } catch (error) {
+        console.error("generation_lock_release_failed", {
+          requestId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    }
   }
 }

@@ -9,6 +9,7 @@ This file documents the current implementation, not a claim of formal compliance
 - Sessions use signed JWTs plus an active-session record.
 - Production cookies are HttpOnly, Secure, SameSite=Strict, and __Host__ prefixed.
 - Login and generation requests are rate-limited.
+- Paid try-on generation uses a per-user distributed in-flight lock and user-scoped idempotency keys so one account cannot run two OpenAI calls at once and retries cannot double-charge. A leftover in-progress record for the same user and key is treated as in-flight while its lease is alive, or settled to a terminal failure after the lease expires, and never starts another paid call. Generation-guard Redis calls use a 3-second timeout and fail closed.
 - Generation requires authentication before upload parsing or OpenAI invocation.
 - Same-origin and Fetch Metadata checks protect state-changing requests.
 - Multipart fields are allowlisted.
@@ -40,7 +41,7 @@ Prototype catalog references live in public/catalog. Do not place confidential N
 5. Password change/reset and session invalidation.
 6. Blob retention, deletion, and orphan cleanup.
 7. Server-side image decode/re-encode and pixel limits.
-8. Per-IP generation limits, concurrency limits, idempotency, and spend alerts.
+8. Per-IP generation limits and spend alerts.
 9. Security-event logging for authentication, authorization, and asset access.
 10. Private storage for proprietary catalog references.
 11. Watermarking, DLP, and export controls where business policy requires them.

@@ -13,7 +13,7 @@
     "build:next": "next build --webpack",
     "start:next": "next start",
     "test": "npm run test:security && npm run test:catalog && npm run test:bespoke && npm run test:render",
-    "test:security": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/security.test.ts",
+    "test:security": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/security.test.ts tests/generation-guard.test.ts",
     "test:catalog": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/catalog.test.ts",
     "test:bespoke": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/bespoke.test.ts",
     "test:render": "node --test tests/rendered-html.test.mjs",

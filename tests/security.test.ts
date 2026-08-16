@@ -12,6 +12,7 @@ import {
   getSessionCookieOptions,
 } from "@/lib/auth/session";
 import { resetMemorySessionsForTests } from "@/lib/auth/session-store";
+import { resetMemoryGenerationGuardsForTests } from "@/lib/generation-guard";
 import {
   checkGenerationRateLimit,
   RateLimitConfigurationError,
@@ -47,6 +48,7 @@ beforeEach(() => {
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   resetMemoryRateLimitsForTests();
   resetMemorySessionsForTests();
+  resetMemoryGenerationGuardsForTests();
 });
 
 function sameOriginHeaders(extra: Record<string, string> = {}) {
@@ -170,9 +172,18 @@ test("unauthenticated and cross-origin API requests are rejected before rate lim
 
 test("rate-limited authenticated requests never invoke generation", async () => {
   let generationCalls = 0;
+  const form = new FormData();
+  form.append("person", tinyPng("person.png"));
+  form.append("fabric", tinyPng("fabric.png"));
+  form.append("selectionMode", "catalog");
+  form.append("upperGarmentId", "coat-blazer");
+  form.append("lowerGarmentId", "trousers-tailored");
+  form.append("turbanId", "turban-none");
+  form.append("shoeId", "shoes-keep-existing");
   const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
     method: "POST",
     headers: sameOriginHeaders(),
+    body: form,
   }), {
     authenticate: async () => TEST_USER,
     rateLimit: async () => ({
