@@ -1,6 +1,7 @@
 "use client";
 
-import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
+import { useEffect, useRef, useState } from "react";
+import type { Level1CatalogueDesignView, Level1CatalogueView } from "@/lib/catalog/level1-types";
 
 type Level1CatalogueProps = {
   catalogue: Level1CatalogueView;
@@ -19,6 +20,30 @@ export function Level1Catalogue({
 }: Level1CatalogueProps) {
   const activeCategory = catalogue.categories.find((category) => category.id === categoryId) ?? catalogue.categories[0];
   const designs = catalogue.designs.filter((design) => design.categoryId === activeCategory?.id);
+  const [inspectingDesign, setInspectingDesign] = useState<Level1CatalogueDesignView | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Close modal on Escape key & manage body scroll lock
+  useEffect(() => {
+    if (!inspectingDesign) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setInspectingDesign(null);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [inspectingDesign]);
 
   return (
     <div className="level1-catalogue">
@@ -55,38 +80,140 @@ export function Level1Catalogue({
         {designs.map((design) => {
           const selected = design.id === designId;
           const ready = design.generation.state === "ready";
+          const hasImage = design.cardImage.state === "ready" && Boolean(design.cardImage.url);
 
           return (
-            <button
+            <div
               className={`level1-design-card${selected ? " is-selected" : ""}`}
-              type="button"
               key={design.id}
+              role="button"
+              tabIndex={0}
               aria-pressed={selected}
               onClick={() => onDesignChange(design.id)}
+              onKeyDown={(e) => {
+                if (e.key === " " || e.key === "Enter") {
+                  e.preventDefault();
+                  onDesignChange(design.id);
+                }
+              }}
             >
-              {design.cardImage.state === "ready" && design.cardImage.url ? (
-                // The URL is a protected application route, never a storage URL.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={design.cardImage.url} alt="" className="level1-card-image" />
-              ) : (
-                <div className="level1-card-placeholder" aria-hidden="true">
-                  <span>NB</span>
-                  <small>Catalogue image awaiting approval</small>
-                </div>
-              )}
-              <span className="level1-card-body">
-                <span className="level1-card-title-row">
+              <div className="level1-card-image-wrap">
+                {hasImage ? (
+                  <>
+                    {/* Protected application route proxy — never a storage URL */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={design.cardImage.url}
+                      alt={`Full silhouette catalogue reference for ${design.name}`}
+                      className="level1-card-image"
+                      loading="lazy"
+                    />
+                    <button
+                      type="button"
+                      className="level1-card-inspect-btn"
+                      aria-label={`Inspect ${design.name} in full screen`}
+                      title="Inspect full silhouette and tailoring details"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInspectingDesign(design);
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        <line x1="11" y1="8" x2="11" y2="14" />
+                        <line x1="8" y1="11" x2="14" y2="11" />
+                      </svg>
+                      <span>Inspect</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="level1-card-placeholder" aria-hidden="true">
+                    <span>NB</span>
+                    <small>Catalogue image awaiting approval</small>
+                  </div>
+                )}
+              </div>
+
+              <div className="level1-card-body">
+                <div className="level1-card-title-row">
                   <strong>{design.name}</strong>
                   {selected ? <span className="level1-selected-mark">Selected</span> : null}
-                </span>
-                <span className="level1-card-description">{design.description}</span>
-                <span className="level1-card-intent">{design.intent}</span>
+                </div>
+                <p className="level1-card-description">{design.description}</p>
+                <p className="level1-card-intent">{design.intent}</p>
                 {!ready ? <span className="level1-card-state">Awaiting approved reference</span> : null}
-              </span>
-            </button>
+              </div>
+            </div>
           );
         })}
       </div>
+
+      {/* FULL-SCREEN EXPANDED DESIGN VIEWER MODAL */}
+      {inspectingDesign ? (
+        <div className="level1-viewer-backdrop">
+          <button
+            type="button"
+            className="level1-viewer-backdrop-dismiss"
+            aria-label="Close expanded viewer"
+            tabIndex={-1}
+            onClick={() => setInspectingDesign(null)}
+          />
+          <div
+            className="level1-viewer-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="viewer-design-name"
+          >
+            <div className="level1-viewer-header">
+              <div className="level1-viewer-title-group">
+                <span className="eyebrow">Nasir Bespoke Catalogue</span>
+                <h3 id="viewer-design-name">{inspectingDesign.name}</h3>
+              </div>
+              <button
+                type="button"
+                className="level1-viewer-close-btn"
+                aria-label="Close design viewer (Esc)"
+                ref={closeButtonRef}
+                onClick={() => setInspectingDesign(null)}
+              >
+                <span aria-hidden="true">✕</span>
+                <span>Close</span>
+              </button>
+            </div>
+
+            <div className="level1-viewer-stage">
+              {inspectingDesign.cardImage.state === "ready" && inspectingDesign.cardImage.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={inspectingDesign.cardImage.url}
+                  alt={`Full silhouette view of ${inspectingDesign.name}`}
+                  className="level1-viewer-image"
+                />
+              ) : null}
+            </div>
+
+            <div className="level1-viewer-footer">
+              <div className="level1-viewer-info">
+                <p className="level1-viewer-description">{inspectingDesign.description}</p>
+                <p className="level1-viewer-intent">{inspectingDesign.intent}</p>
+              </div>
+              <div className="level1-viewer-actions">
+                <button
+                  type="button"
+                  className={`level1-viewer-select-btn${designId === inspectingDesign.id ? " is-selected" : ""}`}
+                  onClick={() => {
+                    onDesignChange(inspectingDesign.id);
+                    setInspectingDesign(null);
+                  }}
+                >
+                  {designId === inspectingDesign.id ? "✓ Selected for Try-On" : "Select this Look"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

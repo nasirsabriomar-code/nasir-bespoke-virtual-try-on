@@ -33,3 +33,23 @@ test("security headers and private metadata are configured", async () => {
   assert.match(layout, /index: false/);
   assert.match(layout, /follow: false/);
 });
+
+test("Level 1 catalogue CSS enforces 4:5 aspect ratio and object-fit contain without cropping", async () => {
+  const css = await source("app/globals.css");
+  assert.match(css, /aspect-ratio:\s*4\s*\/\s*5/);
+  assert.match(css, /\.atelier-shell \.level1-card-image \{[^}]*object-fit:\s*contain/);
+  assert.match(css, /\.level1-viewer-image \{[^}]*object-fit:\s*contain/);
+  assert.match(css, /\.level1-viewer-backdrop/);
+  assert.match(css, /\.level1-viewer-dialog/);
+});
+
+test("Level 1 catalogue component contains full-screen design viewer with accessibility attributes", async () => {
+  const component = await source("components/Level1Catalogue.tsx");
+  assert.match(component, /level1-card-inspect-btn/);
+  assert.match(component, /level1-viewer-dialog/);
+  assert.match(component, /role="dialog"/);
+  assert.match(component, /aria-modal="true"/);
+  assert.match(component, /aria-labelledby="viewer-design-name"/);
+  assert.match(component, /Inspect full silhouette and tailoring details/);
+  assert.match(component, /Escape/);
+});

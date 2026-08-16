@@ -1953,20 +1953,24 @@ a:focus-visible {
 .atelier-shell .level1-catalogue-heading h3 { color: var(--atelier-text); font-family: var(--font-serif); font-size: 30px; font-weight: 400; margin: 0; }
 .atelier-shell .level1-catalogue-heading p { color: var(--atelier-muted); margin: 7px 0 0; }
 .atelier-shell .level1-catalogue-heading > span { color: var(--atelier-subdued); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
-.atelier-shell .level1-design-grid { display: grid; gap: 13px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.atelier-shell .level1-design-card { background: var(--atelier-surface); border: 1px solid var(--atelier-line); color: var(--atelier-text); cursor: pointer; overflow: hidden; padding: 0; text-align: left; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
-.atelier-shell .level1-design-card:hover { background: var(--atelier-interactive); border-color: var(--atelier-line-strong); box-shadow: 0 12px 27px rgba(0,0,0,.22); transform: translateY(-2px); }
-.atelier-shell .level1-design-card.is-selected { border-color: var(--atelier-gold); box-shadow: inset 0 0 0 1px rgba(201,154,61,.27), 0 15px 32px rgba(0,0,0,.23); }
-.atelier-shell .level1-card-placeholder { align-items: center; background: linear-gradient(145deg, #171714, #101110); color: var(--atelier-gold); display: grid; justify-items: center; min-height: 220px; padding: 22px; text-align: center; }
-.atelier-shell .level1-card-placeholder span { border: 1px solid rgba(201,154,61,.46); border-radius: 50%; display: grid; font-family: var(--font-serif); font-size: 24px; height: 56px; place-items: center; width: 56px; }
-.atelier-shell .level1-card-placeholder small { color: var(--atelier-muted); font-size: 10px; line-height: 1.45; max-width: 136px; }
-.atelier-shell .level1-card-image { display: block; height: 220px; object-fit: cover; width: 100%; }
-.atelier-shell .level1-card-body { display: grid; gap: 8px; padding: 15px; }
-.atelier-shell .level1-card-title-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
-.atelier-shell .level1-card-title-row strong { font-family: var(--font-serif); font-size: 21px; font-weight: 400; }
-.atelier-shell .level1-selected-mark { color: var(--atelier-gold); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.atelier-shell .level1-card-description { color: var(--atelier-text); font-size: 13px; }
-.atelier-shell .level1-card-intent { color: var(--atelier-muted); font-size: 11px; line-height: 1.45; }
+.atelier-shell .level1-design-grid { display: grid; gap: 18px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.atelier-shell .level1-design-card { background: var(--atelier-surface); border: 1px solid var(--atelier-line); border-radius: 2px; color: var(--atelier-text); cursor: pointer; display: flex; flex-direction: column; overflow: hidden; position: relative; text-align: left; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.atelier-shell .level1-design-card:hover { background: var(--atelier-interactive); border-color: var(--atelier-line-strong); box-shadow: 0 16px 36px rgba(0,0,0,.35); transform: translateY(-2px); }
+.atelier-shell .level1-design-card.is-selected { border-color: var(--atelier-gold); box-shadow: inset 0 0 0 1px rgba(201,154,61,.35), 0 18px 40px rgba(0,0,0,.45); }
+.atelier-shell .level1-card-image-wrap { align-items: center; aspect-ratio: 4 / 5; background: radial-gradient(circle at 50% 35%, #181917 0%, #0c0d0c 100%); display: flex; justify-content: center; overflow: hidden; position: relative; width: 100%; }
+.atelier-shell .level1-card-image { display: block; height: 100%; max-height: 100%; max-width: 100%; object-fit: contain; object-position: center; transition: transform 240ms ease; width: 100%; }
+.atelier-shell .level1-design-card:hover .level1-card-image { transform: scale(1.02); }
+.atelier-shell .level1-card-inspect-btn { align-items: center; background: rgba(12, 13, 12, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(201, 154, 61, 0.45); border-radius: 2px; bottom: 10px; color: var(--atelier-gold); cursor: pointer; display: inline-flex; font-size: 10px; font-weight: 600; gap: 5px; letter-spacing: 0.08em; opacity: 0.9; padding: 5px 9px; position: absolute; right: 10px; text-transform: uppercase; transition: opacity 160ms ease, background-color 160ms ease, border-color 160ms ease; z-index: 2; }
+.atelier-shell .level1-card-inspect-btn:hover { background: rgba(20, 22, 20, 0.96); border-color: var(--atelier-gold); opacity: 1; }
+.atelier-shell .level1-card-placeholder { align-items: center; aspect-ratio: 4 / 5; background: linear-gradient(145deg, #171714, #101110); color: var(--atelier-gold); display: flex; flex-direction: column; justify-content: center; padding: 22px; text-align: center; width: 100%; }
+.atelier-shell .level1-card-placeholder span { border: 1px solid rgba(201,154,61,.46); border-radius: 50%; display: grid; font-family: var(--font-serif); font-size: 24px; height: 56px; margin-bottom: 12px; place-items: center; width: 56px; }
+.atelier-shell .level1-card-placeholder small { color: var(--atelier-muted); font-size: 11px; line-height: 1.45; max-width: 140px; }
+.atelier-shell .level1-card-body { display: flex; flex-direction: column; flex: 1; gap: 8px; padding: 15px; }
+.atelier-shell .level1-card-title-row { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
+.atelier-shell .level1-card-title-row strong { font-family: var(--font-serif); font-size: 19px; font-weight: 400; letter-spacing: -0.01em; }
+.atelier-shell .level1-selected-mark { color: var(--atelier-gold); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+.atelier-shell .level1-card-description { color: var(--atelier-text); font-size: 12px; line-height: 1.4; }
+.atelier-shell .level1-card-intent { color: var(--atelier-muted); font-size: 11px; line-height: 1.45; margin-top: auto; }
 .atelier-shell .level1-card-state { color: var(--atelier-gold); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 .atelier-shell .level1-review { align-items: end; background: rgba(18,19,18,.88); border: 1px solid var(--atelier-line); display: flex; gap: 26px; justify-content: space-between; margin-top: 29px; padding: 24px; }
 .atelier-shell .level1-review h2 { font-size: 31px; }
@@ -1980,21 +1984,48 @@ a:focus-visible {
 .atelier-shell .form-error { background: rgba(160,70,55,.14); border: 1px solid rgba(229,139,112,.38); color: #ffd6cb; margin: 14px 0 0; padding: 12px 14px; }
 .atelier-shell > .atelier-main > .privacy-note { color: var(--atelier-subdued); font-size: 11px; margin: 25px 0 0; text-align: center; }
 
-@media (max-width: 1120px) { .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 840px) {
+/* EXPANDED FULL-SCREEN DESIGN VIEWER MODAL */
+.level1-viewer-backdrop { align-items: center; background: rgba(6, 7, 6, 0.88); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); bottom: 0; display: flex; justify-content: center; left: 0; padding: 20px; position: fixed; right: 0; top: 0; z-index: 1000; animation: viewerFadeIn 180ms ease forwards; }
+@keyframes viewerFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.level1-viewer-backdrop-dismiss { background: transparent; border: none; bottom: 0; cursor: pointer; height: 100%; left: 0; position: absolute; right: 0; top: 0; width: 100%; z-index: 1; }
+.level1-viewer-dialog { background: #111311; border: 1px solid var(--atelier-line-strong); border-radius: 4px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; max-height: 94vh; max-width: 920px; overflow: hidden; position: relative; width: 100%; z-index: 2; animation: viewerSlideUp 200ms ease forwards; }
+@keyframes viewerSlideUp { from { transform: translateY(12px) scale(0.98); } to { transform: translateY(0) scale(1); } }
+.level1-viewer-header { align-items: center; border-bottom: 1px solid var(--atelier-line); display: flex; justify-content: space-between; padding: 16px 22px; background: #141614; }
+.level1-viewer-title-group h3 { color: var(--atelier-text); font-family: var(--font-serif); font-size: 24px; font-weight: 400; margin: 2px 0 0; }
+.level1-viewer-close-btn { align-items: center; background: transparent; border: 1px solid var(--atelier-line); border-radius: 2px; color: var(--atelier-muted); cursor: pointer; display: inline-flex; font-size: 11px; gap: 6px; letter-spacing: 0.08em; padding: 8px 14px; text-transform: uppercase; transition: all 160ms ease; }
+.level1-viewer-close-btn:hover { background: var(--atelier-interactive); border-color: var(--atelier-gold); color: var(--atelier-gold); }
+.level1-viewer-stage { align-items: center; background: radial-gradient(circle at 50% 40%, #191b19 0%, #0b0c0b 100%); display: flex; justify-content: center; min-height: 380px; max-height: 65vh; overflow: hidden; padding: 16px; }
+.level1-viewer-image { display: block; height: 100%; max-height: 60vh; max-width: 100%; object-fit: contain; object-position: center; border-radius: 2px; }
+.level1-viewer-footer { align-items: center; background: #141614; border-top: 1px solid var(--atelier-line); display: flex; gap: 20px; justify-content: space-between; padding: 18px 22px; }
+.level1-viewer-description { color: var(--atelier-text); font-size: 14px; margin: 0; }
+.level1-viewer-intent { color: var(--atelier-muted); font-size: 12px; margin: 4px 0 0; }
+.level1-viewer-select-btn { background: var(--atelier-gold); border: 1px solid var(--atelier-gold); color: #18150f; cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; min-height: 44px; padding: 0 20px; text-transform: uppercase; white-space: nowrap; transition: background-color 160ms ease; border-radius: 2px; }
+.level1-viewer-select-btn:hover { background: #dbad51; }
+.level1-viewer-select-btn.is-selected { background: #252824; border-color: var(--atelier-gold); color: var(--atelier-gold); }
+
+@media (max-width: 1380px) {
+  .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+}
+@media (max-width: 900px) {
   .atelier-shell .atelier-sidebar { display: none; }
   .atelier-shell { display: block; }
   .atelier-shell .atelier-main { padding: 0 18px 38px; }
-  .atelier-shell .level1-design-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .atelier-shell .level1-design-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
 }
-@media (max-width: 620px) {
+@media (max-width: 640px) {
   .atelier-shell .atelier-main { padding: 0 13px 28px; }
-  .atelier-shell .level1-upload-grid,
-  .atelier-shell .level1-design-grid { grid-template-columns: 1fr; }
+  .atelier-shell .level1-upload-grid { grid-template-columns: 1fr; gap: 14px; }
+  .atelier-shell .level1-design-grid { grid-template-columns: 1fr; gap: 16px; max-width: 440px; margin: 0 auto; width: 100%; }
   .atelier-shell .level1-review { align-items: stretch; flex-direction: column; }
   .atelier-shell .level1-generate { width: 100%; }
   .atelier-shell .level1-catalogue-heading { align-items: flex-start; flex-direction: column; }
   .atelier-shell .level1-upload-grid .upload-dropzone,
   .atelier-shell .level1-upload-grid .upload-preview,
   .atelier-shell .level1-upload-grid .upload-preview img { height: 245px; min-height: 245px; }
+  .level1-viewer-backdrop { padding: 0; }
+  .level1-viewer-dialog { border-radius: 0; height: 100vh; max-height: 100vh; border: none; }
+  .level1-viewer-stage { flex: 1; max-height: none; min-height: auto; }
+  .level1-viewer-image { max-height: 52vh; }
+  .level1-viewer-footer { flex-direction: column; align-items: stretch; gap: 14px; padding: 16px; }
+  .level1-viewer-select-btn { width: 100%; }
 }

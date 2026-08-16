@@ -1,5 +1,8 @@
 import "server-only";
 
+import { existsSync, createReadStream } from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
 import { get, put } from "@vercel/blob";
 import { getLevel1Catalogue, getActiveLevel1Asset, replaceLevel1Catalogue } from "@/lib/catalog/level1-store";
@@ -18,7 +21,7 @@ export class CuratedAssetStorageError extends Error {
 
 function getBlobToken() {
   const token = process.env[BLOB_TOKEN_ENV]?.trim();
-  if (!token) throw new CuratedAssetStorageError();
+  if (!token || token === "[SENSITIVE]") throw new CuratedAssetStorageError();
   return token;
 }
 
@@ -34,8 +37,26 @@ function canonicalPath(asset: CuratedAsset, contentType: SupportedImageMime) {
 export async function getPrivateLevel1Asset(assetId: string) {
   const asset = await getActiveLevel1Asset(assetId);
   if (!asset) return null;
-  const blob = await get(asset.privatePath as string, { access: "private", token: getBlobToken() });
-  return { asset, blob };
+  try {
+    const blob = await get(asset.privatePath as string, { access: "private", token: getBlobToken() });
+    return { asset, blob };
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      const localCachePath = path.join(process.cwd(), ".cache/catalog-assets", `${assetId}.png`);
+      if (existsSync(localCachePath)) {
+        const stream = Readable.toWeb(createReadStream(localCachePath));
+        return {
+          asset,
+          blob: {
+            statusCode: 200,
+            stream: stream as unknown as ReadableStream,
+            blob: { contentType: asset.contentType || "image/png" },
+          },
+        };
+      }
+    }
+    throw error;
+  }
 }
 
 /** Server-only approved-asset activation for a future internal ingestion tool. */

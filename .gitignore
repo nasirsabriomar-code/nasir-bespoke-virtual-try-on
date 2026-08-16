@@ -26,6 +26,8 @@
 /build/
 /dist/
 /tmp/
+/backups/
+/.cache/
 *.zip
 *.tar
 *.tgz
