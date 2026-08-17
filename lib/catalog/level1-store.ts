@@ -37,6 +37,9 @@ function isStoredCatalogue(value: unknown): value is Level1Catalogue {
 }
 
 export async function getLevel1Catalogue(): Promise<Level1Catalogue> {
+  if (process.env.NODE_ENV === "development") {
+    return cloneDefault();
+  }
   const redis = getRedis();
   if (!redis) {
     memoryCatalogue ??= cloneDefault();
@@ -59,10 +62,13 @@ function findAsset(catalogue: Level1Catalogue, assetId: string) {
 
 export async function getLevel1CatalogueView(): Promise<Level1CatalogueView> {
   const catalogue = await getLevel1Catalogue();
-  const categories = activeCategories(catalogue);
-  const activeCategoryIds = new Set(categories.map((category) => category.id));
+  const isDevPreview = process.env.NODE_ENV === "development";
+  const categories = isDevPreview
+    ? [...catalogue.categories].sort((a, b) => a.sortOrder - b.sortOrder)
+    : activeCategories(catalogue);
+  const allowedCategoryIds = new Set(categories.map((category) => category.id));
   const designs = catalogue.designs
-    .filter((design) => design.status === "active" && activeCategoryIds.has(design.categoryId))
+    .filter((design) => (isDevPreview || design.status === "active") && allowedCategoryIds.has(design.categoryId))
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((design) => {
       const card = findAsset(catalogue, design.assetIds.card);

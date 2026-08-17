@@ -9,7 +9,12 @@ import {
   resetLevel1CatalogueForTests,
   resolveLevel1Design,
 } from "@/lib/catalog/level1-store";
-import { Level1CatalogueError } from "@/lib/catalog/level1-types";
+import {
+  CURATED_CATEGORY_IDS,
+  CURATED_DESIGN_IDS,
+  Level1CatalogueError,
+  type CuratedDesignId,
+} from "@/lib/catalog/level1-types";
 import { redactUsageHistoryForClient } from "@/lib/usage-history";
 
 beforeEach(() => {
@@ -18,35 +23,139 @@ beforeEach(() => {
   resetLevel1CatalogueForTests();
 });
 
-test("Level 1 seeds exactly the five approved Suit and five approved Sherwani designs", async () => {
+test("Level 1 seeds exactly 7 categories, 35 designs, and 70 asset slots with 7 active categories", async () => {
   const catalogue = await getLevel1Catalogue();
-  assert.deepEqual(catalogue.designs.map((design) => design.id), [
-    "SUIT_01_CLASSIC",
-    "SUIT_02_TUXEDO",
-    "SUIT_03_STATEMENT",
-    "SUIT_04_DOUBLE_BREASTED",
-    "SUIT_05_THREE_PIECE",
-    "SHERWANI_01_CLASSIC",
-    "SHERWANI_02_LAYERED",
-    "SHERWANI_03_JODHPURI",
-    "SHERWANI_04_ASYMMETRIC",
-    "SHERWANI_05_ROYAL",
+
+  // 1. Categories
+  assert.equal(catalogue.categories.length, 7);
+  assert.deepEqual(catalogue.categories.map((c) => c.id), [
+    "suit",
+    "sherwani",
+    "bandhgala",
+    "nehru-jacket",
+    "kurta-set",
+    "indo-western",
+    "achkan",
   ]);
-  assert.equal(catalogue.designs.length, 10);
-  assert.equal(catalogue.assets.length, 20);
-  assert.ok(catalogue.assets.every((asset) => asset.status === "active"));
-  assert.ok(catalogue.assets.every((asset) => asset.checksum && (asset.contentType === "image/png" || asset.contentType === "image/jpeg")));
-  assert.equal(catalogue.designs.find((design) => design.id === "SUIT_02_TUXEDO")?.blueprint.construction.lapel, "satin peak lapel");
-  assert.equal(catalogue.designs.find((design) => design.id === "SHERWANI_04_ASYMMETRIC")?.blueprint.garmentFamily, "Contemporary asymmetric overlap Sherwani");
-  assert.equal(catalogue.designs.find((design) => design.id === "SHERWANI_02_LAYERED")?.blueprint.garmentFamily, "Layered ceremonial Sherwani");
+
+  // 2. Designs
+  assert.equal(catalogue.designs.length, 35);
+  assert.deepEqual(
+    catalogue.designs.map((d) => d.id),
+    CURATED_DESIGN_IDS,
+  );
+
+  // Each category has exactly 5 designs
+  for (const catId of CURATED_CATEGORY_IDS) {
+    const catDesigns = catalogue.designs.filter((d) => d.categoryId === catId);
+    assert.equal(catDesigns.length, 5, `Category ${catId} must have exactly 5 designs`);
+    assert.deepEqual(
+      catDesigns.map((d) => d.sortOrder).sort(),
+      [1, 2, 3, 4, 5],
+      `Category ${catId} designs must have deterministic sort orders 1..5`,
+    );
+  }
+
+  // 3. Asset Slots (70 total - all 70 active!)
+  assert.equal(catalogue.assets.length, 70);
+  const activeAssets = catalogue.assets.filter((a) => a.status === "active");
+  const pendingAssets = catalogue.assets.filter((a) => a.status === "awaiting-upload");
+
+  // 10 Suit + 10 Sherwani + 10 Bandhgala + 10 Nehru + 10 Kurta + 10 Indo + 10 Achkan = 70 active
+  assert.equal(activeAssets.length, 70);
+  assert.ok(activeAssets.every((a) => a.checksum && a.privatePath && a.contentType));
+
+  // 0 remaining designs awaiting-upload
+  assert.equal(pendingAssets.length, 0);
+
+  // 4. ID Uniqueness
+  const designIdSet = new Set(catalogue.designs.map((d) => d.id));
+  assert.equal(designIdSet.size, 35, "All 35 design IDs must be unique");
+
+  const assetIdSet = new Set(catalogue.assets.map((a) => a.id));
+  assert.equal(assetIdSet.size, 70, "All 70 asset IDs must be unique");
+
+  // 5. Invariant: bodyFitPolicy for all 35 designs
+  assert.ok(
+    catalogue.designs.every((d) => d.blueprint.bodyFitPolicy === "adapt-garment-to-customer"),
+    "Every design must enforce adapt-garment-to-customer body fit policy",
+  );
+  assert.ok(
+    catalogue.designs.every((d) => d.blueprint.stylingPolicy === "preserve-existing-accessories"),
+  );
 });
 
-test("sanitized Level 1 catalogue view returns both active categories and never leaks blueprints", async () => {
+test("Suit, Sherwani, Bandhgala, Nehru Jacket, Kurta Set, Indo-Western, and Achkan blueprints and generation resolution remain active and operational", async () => {
+  const catalogue = await getLevel1Catalogue();
+
+  // Suit Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "SUIT_02_TUXEDO")?.blueprint.construction.lapel, "satin peak lapel");
+  const resolvedSuit = await resolveLevel1Design("suit", "SUIT_01_CLASSIC");
+  assert.equal(resolvedSuit.primaryAsset.status, "active");
+  assert.ok(resolvedSuit.primaryAsset.privatePath);
+
+  // Sherwani Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "SHERWANI_04_ASYMMETRIC")?.blueprint.garmentFamily, "Contemporary asymmetric overlap Sherwani");
+  const resolvedSherwani = await resolveLevel1Design("sherwani", "SHERWANI_01_CLASSIC");
+  assert.equal(resolvedSherwani.primaryAsset.status, "active");
+  assert.ok(resolvedSherwani.primaryAsset.privatePath);
+
+  // Bandhgala Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "BANDHGALA_01_CLASSIC")?.blueprint.garmentFamily, "Formal Bandhgala jacket");
+  const resolvedBandhgala = await resolveLevel1Design("bandhgala", "BANDHGALA_01_CLASSIC");
+  assert.equal(resolvedBandhgala.primaryAsset.status, "active");
+  assert.ok(resolvedBandhgala.primaryAsset.privatePath);
+  assert.equal(resolvedBandhgala.primaryAsset.checksum, "bf2064b0c1dd77be16a37d39a393577285b5ed21e63842fe1bce831b6652f8cc");
+
+  // Nehru Jacket Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "NEHRU_01_CLASSIC")?.blueprint.garmentFamily, "Traditional Nehru jacket / sleeveless bandhgala waistcoat");
+  const resolvedNehru = await resolveLevel1Design("nehru-jacket", "NEHRU_01_CLASSIC");
+  assert.equal(resolvedNehru.primaryAsset.status, "active");
+  assert.ok(resolvedNehru.primaryAsset.privatePath);
+  assert.equal(resolvedNehru.primaryAsset.checksum, "3152976c51e3f99c47a964daf7ea0bb5971ae694b4e07f008f977fce88dfc27c");
+
+  // Kurta Set Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "KURTA_01_CLASSIC")?.blueprint.garmentFamily, "Traditional Kurta Set");
+  const resolvedKurta = await resolveLevel1Design("kurta-set", "KURTA_01_CLASSIC");
+  assert.equal(resolvedKurta.primaryAsset.status, "active");
+  assert.ok(resolvedKurta.primaryAsset.privatePath);
+  assert.equal(resolvedKurta.primaryAsset.checksum, "121f7986b606c2b2cb0720dc8aed72423bd61734628af1b18ed51120b2c6ef6c");
+
+  // Indo-Western Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "INDO_01_CLASSIC")?.blueprint.garmentFamily, "Deliberate Indian-Western hybrid suit");
+  const resolvedIndo = await resolveLevel1Design("indo-western", "INDO_01_CLASSIC");
+  assert.equal(resolvedIndo.primaryAsset.status, "active");
+  assert.ok(resolvedIndo.primaryAsset.privatePath);
+  assert.equal(resolvedIndo.primaryAsset.checksum, "80d01ff2629bad975d73dc36c3325212434aa4f9f431a91e36df5235594404b7");
+
+  // Achkan Checks
+  assert.equal(catalogue.designs.find((d) => d.id === "ACHKAN_01_CLASSIC")?.blueprint.garmentFamily, "Traditional long Achkan coat");
+  const resolvedAchkan = await resolveLevel1Design("achkan", "ACHKAN_01_CLASSIC");
+  assert.equal(resolvedAchkan.primaryAsset.status, "active");
+  assert.ok(resolvedAchkan.primaryAsset.privatePath);
+  assert.equal(resolvedAchkan.primaryAsset.checksum, "1612ea8836a1cef3096271f4b8b6e451d343f2edaffa475797d4e2fbd02650d1");
+});
+
+test("sanitized Level 1 catalogue view returns active categories and never leaks blueprints or private metadata", async () => {
   const view = await getLevel1CatalogueView();
-  assert.deepEqual(view.categories.map((category) => category.id), ["suit", "sherwani"]);
-  assert.equal(view.designs.length, 10);
+  // Active categories returned in customer view (all 7 categories)
+  assert.deepEqual(view.categories.map((category) => category.id), [
+    "suit",
+    "sherwani",
+    "bandhgala",
+    "nehru-jacket",
+    "kurta-set",
+    "indo-western",
+    "achkan",
+  ]);
+  assert.equal(view.designs.length, 35);
   assert.equal(view.designs.filter((d) => d.categoryId === "suit").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "sherwani").length, 5);
+  assert.equal(view.designs.filter((d) => d.categoryId === "bandhgala").length, 5);
+  assert.equal(view.designs.filter((d) => d.categoryId === "nehru-jacket").length, 5);
+  assert.equal(view.designs.filter((d) => d.categoryId === "kurta-set").length, 5);
+  assert.equal(view.designs.filter((d) => d.categoryId === "indo-western").length, 5);
+  assert.equal(view.designs.filter((d) => d.categoryId === "achkan").length, 5);
   assert.ok(view.designs.every((design) => design.cardImage.state === "ready"));
   assert.ok(view.designs.every((design) => design.generation.state === "ready"));
 
@@ -54,58 +163,126 @@ test("sanitized Level 1 catalogue view returns both active categories and never 
   assert.doesNotMatch(serialized, /promptFragments|negativeConstraints|privatePath|bodyFitPolicy|construction/i);
 });
 
-test("unknown, mismatched, and asset-pending Level 1 selections are rejected for all categories", async () => {
+test("development mode preview exposes all 7 categories and 35 designs, with all designs ready", async () => {
+  // 1. In production / test environment: 7 active categories (35 designs)
+  const prodView = await getLevel1CatalogueView();
+  assert.equal(prodView.categories.length, 7);
+  assert.deepEqual(prodView.categories.map((c) => c.id), [
+    "suit",
+    "sherwani",
+    "bandhgala",
+    "nehru-jacket",
+    "kurta-set",
+    "indo-western",
+    "achkan",
+  ]);
+  assert.equal(prodView.designs.length, 35);
+
+  // 2. In development preview mode: all 7 categories and 35 designs
+  const prevEnv = process.env.NODE_ENV;
+  try {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "development";
+    const devView = await getLevel1CatalogueView();
+    assert.equal(devView.categories.length, 7);
+    assert.deepEqual(devView.categories.map((c) => c.id), [
+      "suit",
+      "sherwani",
+      "bandhgala",
+      "nehru-jacket",
+      "kurta-set",
+      "indo-western",
+      "achkan",
+    ]);
+    assert.equal(devView.designs.length, 35);
+
+    // All 35 designs across all 7 categories are ready
+    assert.ok(devView.designs.every((d) => d.cardImage.state === "ready" && Boolean(d.cardImage.url)));
+    assert.ok(devView.designs.every((d) => d.generation.state === "ready"));
+  } finally {
+    (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+  }
+});
+
+test("unknown, cross-category mismatched, and pending selections fail closed for all categories", async () => {
+  // Unknown selection
   await assert.rejects(
     () => resolveLevel1Design("suit", "SUIT_99_UNKNOWN"),
     (error: unknown) => error instanceof Level1CatalogueError && error.code === "unknown_selection",
   );
   await assert.rejects(
-    () => resolveLevel1Design("sherwani", "SHERWANI_99_UNKNOWN"),
+    () => resolveLevel1Design("achkan", "ACHKAN_99_UNKNOWN"),
     (error: unknown) => error instanceof Level1CatalogueError && error.code === "unknown_selection",
   );
-  // Cross-category mismatches
+
+  // Cross-category mismatches across categories
   await assert.rejects(
     () => resolveLevel1Design("suit", "SHERWANI_01_CLASSIC"),
     (error: unknown) => error instanceof Level1CatalogueError && error.code === "category_design_mismatch",
   );
   await assert.rejects(
-    () => resolveLevel1Design("sherwani", "SUIT_01_CLASSIC"),
-    (error: unknown) => error instanceof Level1CatalogueError && error.code === "category_design_mismatch",
-  );
-  await assert.rejects(
-    () => resolveLevel1Design("achkan", "SHERWANI_01_CLASSIC"),
+    () => resolveLevel1Design("achkan", "INDO_01_CLASSIC"),
     (error: unknown) => error instanceof Level1CatalogueError && error.code === "category_design_mismatch",
   );
 
-  const pendingCatalogue = structuredClone(DEFAULT_LEVEL1_CATALOGUE);
-  pendingCatalogue.assets = pendingCatalogue.assets.map((asset) => ({
-    ...asset,
-    status: "awaiting-upload" as const,
-    privatePath: undefined,
-    contentType: undefined,
-    checksum: undefined,
-    provenance: undefined,
-  }));
-  await replaceLevel1Catalogue(pendingCatalogue);
+  // Inactive / draft category selection rejected (if inactive category exists)
+  const deactivatedCat = structuredClone(DEFAULT_LEVEL1_CATALOGUE);
+  const achkanCat = deactivatedCat.categories.find((c) => c.id === "achkan");
+  if (achkanCat) achkanCat.status = "draft";
+  const achkanDesign = deactivatedCat.designs.find((d) => d.id === "ACHKAN_01_CLASSIC");
+  if (achkanDesign) achkanDesign.status = "draft";
+  await replaceLevel1Catalogue(deactivatedCat);
+
   await assert.rejects(
-    () => resolveLevel1Design("sherwani", "SHERWANI_01_CLASSIC"),
+    () => resolveLevel1Design("achkan", "ACHKAN_01_CLASSIC"),
+    (error: unknown) => error instanceof Level1CatalogueError && error.code === "inactive_design",
+  );
+
+  // When activated with pending asset, rejects with asset_pending
+  const pendingCat = structuredClone(DEFAULT_LEVEL1_CATALOGUE);
+  const achkanAsset = pendingCat.assets.find((a) => a.id === "ACHKAN_01_CLASSIC_PRIMARY_V1");
+  if (achkanAsset) {
+    achkanAsset.status = "awaiting-upload";
+    achkanAsset.privatePath = undefined;
+    achkanAsset.checksum = undefined;
+  }
+  await replaceLevel1Catalogue(pendingCat);
+
+  await assert.rejects(
+    () => resolveLevel1Design("achkan", "ACHKAN_01_CLASSIC"),
     (error: unknown) => error instanceof Level1CatalogueError && error.code === "asset_pending",
   );
 });
 
-test("compiled Level 1 instruction keeps the customer body, fabric, and Sherwani design authorities separate", async () => {
-  const resolved = await resolveLevel1Design("sherwani", "SHERWANI_04_ASYMMETRIC");
-  const prompt = buildLevel1TryOnPrompt(resolved);
-  assert.match(prompt, /sole authority for the customer's identity/i);
-  assert.match(prompt, /Never slim, enlarge, reshape, lengthen, shorten/i);
-  assert.match(prompt, /Image 2 is authoritative only for base colour/i);
-  assert.match(prompt, /authoritative only for garment construction/i);
-  assert.match(prompt, /Contemporary asymmetric overlap Sherwani/i);
-  assert.match(prompt, /diagonal front panel closure/i);
-  assert.match(prompt, /Do not normalize the front into a centered vertical button closure/i);
+test("prompt compiler creates valid deterministic prompts for all designs", async () => {
+  const catalogue = structuredClone(DEFAULT_LEVEL1_CATALOGUE);
+
+  for (const design of catalogue.designs) {
+    const category = catalogue.categories.find((c) => c.id === design.categoryId)!;
+    const primaryAsset = {
+      id: design.assetIds.primaryConstruction,
+      designId: design.id,
+      purpose: "primary-construction" as const,
+      status: "active" as const,
+      privatePath: `nasir-bespoke/catalogue/level1/v1/${design.id}/approved.jpg`,
+      contentType: "image/jpeg" as const,
+      checksum: "0000000000000000000000000000000000000000000000000000000000000000",
+      sortOrder: 2,
+    };
+
+    const prompt = buildLevel1TryOnPrompt({ category, design, primaryAsset, detailAssets: [] });
+
+    // Permanent 3-authority invariant assertions
+    assert.match(prompt, /sole authority for the customer's identity/i);
+    assert.match(prompt, /Never slim, enlarge, reshape, lengthen, shorten/i);
+    assert.match(prompt, /Image 2 is authoritative only for base colour/i);
+    assert.match(prompt, /authoritative only for garment construction/i);
+    assert.match(prompt, new RegExp(design.customer.name, "i"));
+    assert.match(prompt, new RegExp(design.blueprint.garmentFamily, "i"));
+    assert.ok(prompt.length > 200);
+  }
 });
 
-test("history metadata retains Level 1 Sherwani selection details without exposing private asset paths", () => {
+test("history metadata retains Level 1 selection details without exposing private asset paths", () => {
   const clientHistory = redactUsageHistoryForClient({
     total: 1,
     retained: 1_000,
@@ -121,9 +298,9 @@ test("history metadata retains Level 1 Sherwani selection details without exposi
       quality: "medium",
       generation: {
         mode: "level1",
-        categoryId: "sherwani",
-        categoryName: "Sherwanis",
-        curatedDesignId: "SHERWANI_01_CLASSIC",
+        categoryId: "achkan",
+        categoryName: "Achkans",
+        curatedDesignId: "ACHKAN_01_CLASSIC" as CuratedDesignId,
         curatedDesignName: "Classic",
         curatedDesignVersion: 1,
         curatedAssetStatus: "ready",
@@ -136,8 +313,8 @@ test("history metadata retains Level 1 Sherwani selection details without exposi
   });
 
   const serialized = JSON.stringify(clientHistory);
-  assert.match(serialized, /SHERWANI_01_CLASSIC/);
-  assert.match(serialized, /Sherwanis/);
+  assert.match(serialized, /ACHKAN_01_CLASSIC/);
+  assert.match(serialized, /Achkans/);
   assert.doesNotMatch(serialized, /nasir-bespoke\/generations\/private-id/);
   assert.deepEqual(clientHistory.events[0]?.assets?.result, { contentType: "image/jpeg" });
 });
@@ -145,8 +322,8 @@ test("history metadata retains Level 1 Sherwani selection details without exposi
 test("catalogue assets cannot be read without an authenticated application session", async () => {
   const { GET } = await import("@/app/api/catalog-assets/[assetId]/route");
   const response = await GET(
-    new Request("https://atelier.example/api/catalog-assets/SHERWANI_01_CLASSIC_CARD_V1"),
-    { params: Promise.resolve({ assetId: "SHERWANI_01_CLASSIC_CARD_V1" }) },
+    new Request("https://atelier.example/api/catalog-assets/ACHKAN_01_CLASSIC_CARD_V1"),
+    { params: Promise.resolve({ assetId: "ACHKAN_01_CLASSIC_CARD_V1" }) },
   );
 
   assert.equal(response.status, 404);

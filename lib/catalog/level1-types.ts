@@ -26,14 +26,64 @@ export const SHERWANI_DESIGN_IDS = [
   "SHERWANI_05_ROYAL",
 ] as const;
 
+export const BANDHGALA_DESIGN_IDS = [
+  "BANDHGALA_01_CLASSIC",
+  "BANDHGALA_02_DOUBLE_BREASTED",
+  "BANDHGALA_03_VELVET",
+  "BANDHGALA_04_TEXTURED",
+  "BANDHGALA_05_STATEMENT",
+] as const;
+
+export const NEHRU_DESIGN_IDS = [
+  "NEHRU_01_CLASSIC",
+  "NEHRU_02_FORMAL",
+  "NEHRU_03_TEXTURED",
+  "NEHRU_04_CONTEMPORARY",
+  "NEHRU_05_STATEMENT",
+] as const;
+
+export const KURTA_DESIGN_IDS = [
+  "KURTA_01_CLASSIC",
+  "KURTA_02_PATHANI",
+  "KURTA_03_LAYERED",
+  "KURTA_04_FESTIVE",
+  "KURTA_05_CONTEMPORARY",
+] as const;
+
+export const INDO_WESTERN_DESIGN_IDS = [
+  "INDO_01_CLASSIC",
+  "INDO_02_ASYMMETRIC",
+  "INDO_03_LAYERED",
+  "INDO_04_DRAPED",
+  "INDO_05_STATEMENT",
+] as const;
+
+export const ACHKAN_DESIGN_IDS = [
+  "ACHKAN_01_CLASSIC",
+  "ACHKAN_02_JODHPURI",
+  "ACHKAN_03_ASYMMETRIC",
+  "ACHKAN_04_EMBROIDERED",
+  "ACHKAN_05_ROYAL",
+] as const;
+
 export const CURATED_DESIGN_IDS = [
   ...SUIT_DESIGN_IDS,
   ...SHERWANI_DESIGN_IDS,
+  ...BANDHGALA_DESIGN_IDS,
+  ...NEHRU_DESIGN_IDS,
+  ...KURTA_DESIGN_IDS,
+  ...INDO_WESTERN_DESIGN_IDS,
+  ...ACHKAN_DESIGN_IDS,
 ] as const;
 
 export type CuratedCategoryId = (typeof CURATED_CATEGORY_IDS)[number];
 export type SuitDesignId = (typeof SUIT_DESIGN_IDS)[number];
 export type SherwaniDesignId = (typeof SHERWANI_DESIGN_IDS)[number];
+export type BandhgalaDesignId = (typeof BANDHGALA_DESIGN_IDS)[number];
+export type NehruDesignId = (typeof NEHRU_DESIGN_IDS)[number];
+export type KurtaDesignId = (typeof KURTA_DESIGN_IDS)[number];
+export type IndoWesternDesignId = (typeof INDO_WESTERN_DESIGN_IDS)[number];
+export type AchkanDesignId = (typeof ACHKAN_DESIGN_IDS)[number];
 export type CuratedDesignId = (typeof CURATED_DESIGN_IDS)[number];
 export type CuratedStatus = "draft" | "active" | "retired";
 export type CuratedAssetStatus = "awaiting-upload" | "active" | "retired";

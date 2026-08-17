@@ -19,6 +19,7 @@
     "test:render": "node --test tests/rendered-html.test.mjs",
     "auth:create-user": "node scripts/hash-password.mjs",
     "db:migrate:catalog:level1": "node --import=tsx scripts/migrate-level1-catalogue.mjs",
+    "db:migrate:catalog:full": "node --import=tsx scripts/migrate-level1-full-catalog.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "next typegen && tsc --noEmit"
   },
