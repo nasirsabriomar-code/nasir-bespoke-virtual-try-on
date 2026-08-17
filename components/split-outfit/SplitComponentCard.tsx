@@ -1,0 +1,240 @@
+"use client";
+
+import type {
+  CompatibilityStatus,
+  SplitComponentOption,
+} from "@/lib/split-outfit/types";
+
+type SplitComponentCardProps = {
+  option: SplitComponentOption;
+  selected: boolean;
+  onSelect: () => void;
+  compatibilityStatus?: CompatibilityStatus;
+  isMultiSelect?: boolean;
+};
+
+function renderPlaceholderSilhouette(categoryId: string, optionId: string) {
+  if (categoryId === "upper") {
+    // Upper Suit Jacket Silhouette
+    return (
+      <svg
+        className="split-silhouette-svg"
+        viewBox="0 0 120 150"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          d="M38 20L60 65L82 20L98 35L108 140H12L22 35L38 20Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        {/* Lapels */}
+        <path d="M38 20L54 62L60 92L66 62L82 20" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M38 20L48 55L32 60L54 100" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M82 20L72 55L88 60L66 100" stroke="currentColor" strokeWidth="1.2" />
+        {/* Center line & buttons */}
+        <line x1="60" y1="92" x2="60" y2="140" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="60" cy="100" r="1.5" fill="currentColor" />
+        <circle cx="60" cy="115" r="1.5" fill="currentColor" />
+        {/* Breast pocket */}
+        <line x1="38" y1="70" x2="48" y2="68" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+
+  if (categoryId === "lower") {
+    // Trousers Silhouette
+    return (
+      <svg
+        className="split-silhouette-svg"
+        viewBox="0 0 120 150"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          d="M30 15H90V25L84 140H66L60 70L54 140H36L30 25V15Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        {/* Waistband & Creases */}
+        <line x1="30" y1="25" x2="90" y2="25" stroke="currentColor" strokeWidth="1.5" />
+        <line x1="45" y1="30" x2="48" y2="135" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2" />
+        <line x1="75" y1="30" x2="72" y2="135" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2" />
+      </svg>
+    );
+  }
+
+  if (categoryId === "inner-shirt") {
+    // Shirt Collar Silhouette
+    return (
+      <svg
+        className="split-silhouette-svg"
+        viewBox="0 0 120 150"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          d="M25 45L42 20L60 40L78 20L95 45L100 135H20L25 45Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M42 20L60 55L78 20" stroke="currentColor" strokeWidth="1.5" />
+        <line x1="60" y1="55" x2="60" y2="135" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="60" cy="75" r="1.5" fill="currentColor" />
+        <circle cx="60" cy="95" r="1.5" fill="currentColor" />
+        <circle cx="60" cy="115" r="1.5" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (categoryId === "inner-waistcoat") {
+    // Waistcoat Silhouette
+    if (optionId === "SUIT_WAISTCOAT_NONE") {
+      return (
+        <svg
+          className="split-silhouette-svg"
+          viewBox="0 0 120 150"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <circle cx="60" cy="75" r="30" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 4" />
+          <line x1="42" y1="57" x2="78" y2="93" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    }
+    return (
+      <svg
+        className="split-silhouette-svg"
+        viewBox="0 0 120 150"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          d="M40 25L60 70L80 25L94 40L88 125L60 140L32 125L26 40L40 25Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <line x1="60" y1="70" x2="60" y2="140" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="60" cy="80" r="1.5" fill="currentColor" />
+        <circle cx="60" cy="95" r="1.5" fill="currentColor" />
+        <circle cx="60" cy="110" r="1.5" fill="currentColor" />
+        <circle cx="60" cy="125" r="1.5" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (categoryId === "footwear") {
+    // Shoe Silhouette
+    return (
+      <svg
+        className="split-silhouette-svg"
+        viewBox="0 0 120 150"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path
+          d="M15 95C25 80 45 75 60 75C75 75 90 85 105 85C110 85 112 95 105 100L95 105L85 105L30 105C20 105 15 100 15 95Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M20 95H100V105H20V95Z" fill="currentColor" fillOpacity="0.1" />
+        <line x1="20" y1="105" x2="35" y2="105" stroke="currentColor" strokeWidth="3" />
+        <line x1="60" y1="80" x2="70" y2="92" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+
+  // Accessories Silhouette
+  return (
+    <svg
+      className="split-silhouette-svg"
+      viewBox="0 0 120 150"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M60 30L68 50L60 125L52 50L60 30Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="60" cy="30" r="4" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+export function SplitComponentCard({
+  option,
+  selected,
+  onSelect,
+  compatibilityStatus,
+  isMultiSelect = false,
+}: SplitComponentCardProps) {
+  const isRecommended = compatibilityStatus === "RECOMMENDED";
+  const isRequired = compatibilityStatus === "REQUIRED";
+  const isDisallowed = compatibilityStatus === "DISALLOWED";
+
+  return (
+    <button
+      type="button"
+      role={isMultiSelect ? "checkbox" : "radio"}
+      aria-checked={selected}
+      aria-disabled={isDisallowed}
+      disabled={isDisallowed}
+      className={`split-component-card ${selected ? "is-selected" : ""} ${isRecommended ? "is-recommended" : ""} ${isDisallowed ? "is-disallowed" : ""}`}
+      onClick={onSelect}
+    >
+      <div className="split-card-media">
+        <div className="split-card-silhouette-wrap">
+          {renderPlaceholderSilhouette(option.categoryId, option.id)}
+        </div>
+        <span className="split-card-badge">{option.imagePlaceholderLabel}</span>
+      </div>
+
+      <div className="split-card-body">
+        <div className="split-card-header">
+          <div className="split-card-title-group">
+            <strong className="split-card-name">{option.name}</strong>
+            {option.subtitle ? (
+              <span className="split-card-subtitle">{option.subtitle}</span>
+            ) : null}
+          </div>
+
+          <div className="split-card-status-indicators">
+            {isRecommended ? (
+              <span className="split-tag split-tag-recommended">Recommended</span>
+            ) : isRequired ? (
+              <span className="split-tag split-tag-required">Required</span>
+            ) : null}
+
+            <span className={`split-select-indicator ${isMultiSelect ? "is-checkbox" : "is-radio"}`}>
+              {selected ? "✓" : ""}
+            </span>
+          </div>
+        </div>
+
+        <p className="split-card-desc">{option.description}</p>
+
+        {option.details && option.details.length > 0 ? (
+          <ul className="split-card-details" aria-label="Key specifications">
+            {option.details.map((detail, i) => (
+              <li key={i}>{detail}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </button>
+  );
+}

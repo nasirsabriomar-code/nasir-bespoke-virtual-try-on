@@ -7,6 +7,11 @@ import { Level1Catalogue } from "@/components/Level1Catalogue";
 import { LogoutButton } from "@/components/LogoutButton";
 import { TryOnResult } from "@/components/TryOnResult";
 import { UsageHistory } from "@/components/UsageHistory";
+import { ModeSelector } from "@/components/split-outfit/ModeSelector";
+import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
+import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
+import { isSplitOutfitEnabled } from "@/lib/split-outfit/config";
+import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
 
 type UploadedImage = {
@@ -145,6 +150,9 @@ function getClientDeviceHint() {
 export function TryOnApp({ displayName }: TryOnAppProps) {
   const [person, setPerson] = useState<UploadedImage | null>(null);
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
+  const [mode, setMode] = useState<VisualTryOnMode>("full");
+  const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
+  const [splitOutfitEnabled, setSplitOutfitEnabled] = useState(false);
   const [catalogue, setCatalogue] = useState<Level1CatalogueView | null>(null);
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
@@ -154,6 +162,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const objectUrls = useRef(new Set<string>());
   const generationKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setSplitOutfitEnabled(isSplitOutfitEnabled());
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -397,60 +409,80 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         </div>
       </section>
 
-      <section className="level1-flow" aria-label="Choose a curated design">
-        <div className="level1-step-heading">
-          <span>02</span>
-          <div>
-            <p className="eyebrow">Catalogue</p>
-            <h2>Choose the look</h2>
-          </div>
-        </div>
-        {catalogueError ? <p className="form-error" role="alert">{catalogueError}</p> : null}
-        {catalogue ? (
-          <Level1Catalogue
-            catalogue={catalogue}
-            categoryId={categoryId}
-            designId={designId}
-            onCategoryChange={(nextCategoryId) => {
-              setCategoryId(nextCategoryId);
-              setDesignId(null);
-              clearResult();
-              setError(null);
-            }}
-            onDesignChange={(nextDesignId) => {
-              setDesignId(nextDesignId);
-              clearResult();
-              setError(null);
-            }}
-          />
-        ) : !catalogueError ? <p className="catalogue-loading">Preparing the curated catalogue…</p> : null}
-      </section>
-
-      <section className="level1-review" aria-label="Review your selection">
-        <div>
-          <p className="eyebrow">03 · Review</p>
-          <h2>Your selected look</h2>
-          <p className="level1-review-copy">
-            {selectedDesign
-              ? `${selectedDesign.name} — ${selectedDesign.description}`
-              : "Choose a curated design to continue."}
-          </p>
-        </div>
-        <button
-          className="button button-primary level1-generate"
-          type="button"
-          onClick={generate}
-          disabled={isGenerating || !person || !fabric || !selectedDesign || selectedDesign.generation.state !== "ready"}
-        >
-          {isGenerating ? "Constructing your look…" : "Generate Try-On"}
-        </button>
-      </section>
-
-      {selectedDesign?.generation.state === "awaiting-approved-reference" ? (
-        <p className="level1-pending-note" role="status">
-          This design is ready for review. Generation unlocks when its approved private catalogue reference is added.
-        </p>
+      {splitOutfitEnabled ? (
+        <ModeSelector
+          mode={mode}
+          onModeChange={(nextMode) => {
+            setMode(nextMode);
+            clearResult();
+            setError(null);
+          }}
+        />
       ) : null}
+
+      {mode === "full" ? (
+        <>
+          <section className="level1-flow" aria-label="Choose a curated design">
+            <div className="level1-step-heading">
+              <span>02</span>
+              <div>
+                <p className="eyebrow">Catalogue</p>
+                <h2>Choose the look</h2>
+              </div>
+            </div>
+            {catalogueError ? <p className="form-error" role="alert">{catalogueError}</p> : null}
+            {catalogue ? (
+              <Level1Catalogue
+                catalogue={catalogue}
+                categoryId={categoryId}
+                designId={designId}
+                onCategoryChange={(nextCategoryId) => {
+                  setCategoryId(nextCategoryId);
+                  setDesignId(null);
+                  clearResult();
+                  setError(null);
+                }}
+                onDesignChange={(nextDesignId) => {
+                  setDesignId(nextDesignId);
+                  clearResult();
+                  setError(null);
+                }}
+              />
+            ) : !catalogueError ? <p className="catalogue-loading">Preparing the curated catalogue…</p> : null}
+          </section>
+
+          <section className="level1-review" aria-label="Review your selection">
+            <div>
+              <p className="eyebrow">03 · Review</p>
+              <h2>Your selected look</h2>
+              <p className="level1-review-copy">
+                {selectedDesign
+                  ? `${selectedDesign.name} — ${selectedDesign.description}`
+                  : "Choose a curated design to continue."}
+              </p>
+            </div>
+            <button
+              className="button button-primary level1-generate"
+              type="button"
+              onClick={generate}
+              disabled={isGenerating || !person || !fabric || !selectedDesign || selectedDesign.generation.state !== "ready"}
+            >
+              {isGenerating ? "Constructing your look…" : "Generate Try-On"}
+            </button>
+          </section>
+
+          {selectedDesign?.generation.state === "awaiting-approved-reference" ? (
+            <p className="level1-pending-note" role="status">
+              This design is ready for review. Generation unlocks when its approved private catalogue reference is added.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <SplitOutfitWorkspace
+          state={splitOutfit}
+          onChange={setSplitOutfit}
+        />
+      )}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
       {isGenerating ? <GenerationState /> : null}

@@ -29,6 +29,7 @@ function usernameHash(username: string) {
 }
 
 function getRedis() {
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") return null;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
@@ -48,8 +49,13 @@ export async function activateSession(sessionId: string, username: string, ttlSe
   const key = sessionKey(sessionId);
   const userHash = usernameHash(username);
   if (redis) {
-    await redis.set(key, userHash, { ex: ttlSeconds });
-    return;
+    try {
+      const redisPromise = redis.set(key, userHash, { ex: ttlSeconds });
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 2500));
+      await Promise.race([redisPromise, timeoutPromise]);
+    } catch {
+      // Fallback to memory
+    }
   }
   memorySessions.set(key, { usernameHash: userHash, expiresAt: Date.now() + ttlSeconds * 1000 });
 }
@@ -58,7 +64,16 @@ export async function isSessionActive(sessionId: string, username: string) {
   const redis = getRedis();
   const key = sessionKey(sessionId);
   const userHash = usernameHash(username);
-  if (redis) return (await redis.get<string>(key)) === userHash;
+  if (redis) {
+    try {
+      const redisPromise = redis.get<string>(key);
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+      const val = await Promise.race([redisPromise, timeoutPromise]);
+      if (val !== null) return val === userHash;
+    } catch {
+      // Fallback to memory
+    }
+  }
 
   const session = memorySessions.get(key);
   if (!session || session.expiresAt <= Date.now()) {
@@ -72,8 +87,13 @@ export async function revokeSession(sessionId: string) {
   const redis = getRedis();
   const key = sessionKey(sessionId);
   if (redis) {
-    await redis.del(key);
-    return;
+    try {
+      const redisPromise = redis.del(key);
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 2500));
+      await Promise.race([redisPromise, timeoutPromise]);
+    } catch {
+      // Fallback
+    }
   }
   memorySessions.delete(key);
 }

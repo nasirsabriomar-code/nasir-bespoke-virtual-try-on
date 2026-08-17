@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
-  "connect-src 'self'",
+  `connect-src 'self'${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
   "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
@@ -36,12 +36,26 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
   experimental: {
-    // Keep production builds deterministic on constrained showroom/dev machines.
-    // This affects build-time workers only, not deployed request concurrency.
-    cpus: 1,
     serverActions: {
       bodySizeLimit: "25mb",
     },
+  },
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.watchOptions = {
+        ignored: [
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/.next/**",
+          "**/scratch/**",
+          "**/backups/**",
+          "**/.gemini/**",
+          "**/outputs/**",
+          "**/work/**",
+        ],
+      };
+    }
+    return config;
   },
   async headers() {
     return [

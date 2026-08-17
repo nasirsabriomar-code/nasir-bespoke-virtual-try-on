@@ -73,6 +73,7 @@ function memoryLimit(name: LimitName, identifier: string, limit: number, windowM
 let redisCache: { key: string; redis: Redis } | null = null;
 
 function getRedis() {
+  if (process.env.NODE_ENV === "development" || (process.env.NODE_ENV === "test" && process.env.RATE_LIMIT_BACKEND === "memory")) return null;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {

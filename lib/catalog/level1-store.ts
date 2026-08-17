@@ -37,7 +37,7 @@ function isStoredCatalogue(value: unknown): value is Level1Catalogue {
 }
 
 export async function getLevel1Catalogue(): Promise<Level1Catalogue> {
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
     return cloneDefault();
   }
   const redis = getRedis();

@@ -40,6 +40,13 @@
     "node_modules",
     "dist",
     "outputs",
-    "work"
+    "work",
+    "worker",
+    "scratch",
+    "backups",
+    ".cache",
+    ".vinext",
+    ".vercel",
+    ".openai"
   ]
 }
