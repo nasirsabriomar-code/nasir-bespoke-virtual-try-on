@@ -42,17 +42,20 @@ export async function getPrivateLevel1Asset(assetId: string) {
     return { asset, blob };
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
-      const localCachePath = path.join(process.cwd(), ".cache/catalog-assets", `${assetId}.png`);
-      if (existsSync(localCachePath)) {
-        const stream = Readable.toWeb(createReadStream(localCachePath));
-        return {
-          asset,
-          blob: {
-            statusCode: 200,
-            stream: stream as unknown as ReadableStream,
-            blob: { contentType: asset.contentType || "image/png" },
-          },
-        };
+      const exts = [extensionFor(asset.contentType || "image/png"), "png", "jpg", "jpeg", "webp"];
+      for (const ext of exts) {
+        const localCachePath = path.join(process.cwd(), ".cache/catalog-assets", `${assetId}.${ext}`);
+        if (existsSync(localCachePath)) {
+          const stream = Readable.toWeb(createReadStream(localCachePath));
+          return {
+            asset,
+            blob: {
+              statusCode: 200,
+              stream: stream as unknown as ReadableStream,
+              blob: { contentType: asset.contentType || (ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg") },
+            },
+          };
+        }
       }
     }
     throw error;

@@ -76,7 +76,7 @@ export function Level1Catalogue({
         </div>
       ) : null}
 
-      <div className="level1-design-grid" role="list" aria-label="Curated Suit designs">
+      <div className="level1-design-grid" role="list" aria-label={`Curated ${activeCategory?.name ?? "garment"} designs`}>
         {designs.map((design) => {
           const selected = design.id === designId;
           const ready = design.generation.state === "ready";

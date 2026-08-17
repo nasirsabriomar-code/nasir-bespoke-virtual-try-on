@@ -18,9 +18,23 @@ export const SUIT_DESIGN_IDS = [
   "SUIT_05_THREE_PIECE",
 ] as const;
 
+export const SHERWANI_DESIGN_IDS = [
+  "SHERWANI_01_CLASSIC",
+  "SHERWANI_02_LAYERED",
+  "SHERWANI_03_JODHPURI",
+  "SHERWANI_04_ASYMMETRIC",
+  "SHERWANI_05_ROYAL",
+] as const;
+
+export const CURATED_DESIGN_IDS = [
+  ...SUIT_DESIGN_IDS,
+  ...SHERWANI_DESIGN_IDS,
+] as const;
+
 export type CuratedCategoryId = (typeof CURATED_CATEGORY_IDS)[number];
 export type SuitDesignId = (typeof SUIT_DESIGN_IDS)[number];
-export type CuratedDesignId = SuitDesignId;
+export type SherwaniDesignId = (typeof SHERWANI_DESIGN_IDS)[number];
+export type CuratedDesignId = (typeof CURATED_DESIGN_IDS)[number];
 export type CuratedStatus = "draft" | "active" | "retired";
 export type CuratedAssetStatus = "awaiting-upload" | "active" | "retired";
 export type CuratedAssetPurpose = "card" | "primary-construction" | "detail";
@@ -48,7 +62,7 @@ export type CuratedAsset = {
 export type CuratedDesign = {
   id: CuratedDesignId;
   version: 1;
-  categoryId: "suit";
+  categoryId: CuratedCategoryId;
   status: CuratedStatus;
   sortOrder: number;
   customer: {
@@ -85,7 +99,7 @@ export type Level1Catalogue = {
 
 export type Level1CatalogueDesignView = {
   id: CuratedDesignId;
-  categoryId: "suit";
+  categoryId: CuratedCategoryId;
   name: string;
   description: string;
   intent: string;
@@ -126,5 +140,5 @@ export function isCuratedCategoryId(value: string): value is CuratedCategoryId {
 }
 
 export function isCuratedDesignId(value: string): value is CuratedDesignId {
-  return SUIT_DESIGN_IDS.includes(value as CuratedDesignId);
+  return (CURATED_DESIGN_IDS as readonly string[]).includes(value);
 }
