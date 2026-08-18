@@ -2420,6 +2420,9 @@ a:focus-visible {
   gap: 28px;
 }
 .split-subsection-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--atelier-text);
   font-size: 14px;
   font-weight: 600;
@@ -2428,6 +2431,34 @@ a:focus-visible {
   margin: 0 0 12px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--atelier-line);
+}
+.split-requirement-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+.split-requirement-tag.is-required {
+  background: rgba(220, 90, 70, 0.2);
+  color: #ff9d88;
+  border: 1px solid rgba(220, 90, 70, 0.4);
+}
+.split-requirement-tag.is-optional {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--atelier-muted);
+  border: 1px solid var(--atelier-line);
+}
+.split-requirement-tag.is-conditional {
+  background: rgba(200, 155, 60, 0.2);
+  color: var(--atelier-gold);
+  border: 1px solid rgba(200, 155, 60, 0.4);
+}
+.split-requirement-tag.is-unavailable {
+  background: rgba(255, 255, 255, 0.04);
+  color: #6f6c63;
+  border: 1px solid var(--atelier-line);
 }
 
 /* FABRICS & MATERIALS SECTION */
@@ -2517,6 +2548,20 @@ a:focus-visible {
   box-shadow: 0 0 6px var(--atelier-gold);
 }
 
+.split-material-link-groups {
+  list-style: none;
+  padding: 0;
+  margin: -6px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.split-material-link-group {
+  font-size: 11px;
+  color: var(--atelier-muted);
+  letter-spacing: 0.02em;
+}
+
 /* OUTFIT REVIEW SECTION */
 .split-outfit-review {
   margin-top: 20px;
@@ -2559,32 +2604,49 @@ a:focus-visible {
   line-height: 1.35;
 }
 
-.split-dev-notice {
+/* Deterministic recipe status — computed by the compatibility engine */
+.split-status-notice {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: rgba(200, 155, 60, 0.08);
   border-left: 3px solid var(--atelier-gold);
   border-radius: 0 3px 3px 0;
   padding: 14px 18px;
   margin: 0 0 20px;
+  background: rgba(200, 155, 60, 0.08);
 }
-.split-dev-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: var(--atelier-gold);
-  color: #121412;
-  padding: 4px 8px;
-  border-radius: 2px;
-  white-space: nowrap;
-}
-.split-dev-notice p {
+.split-status-notice p {
   margin: 0;
   font-size: 12px;
   color: var(--atelier-text);
   line-height: 1.45;
+}
+.split-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+  background: var(--atelier-gold);
+  color: #121412;
+}
+.split-status-notice.is-incomplete {
+  border-left-color: #d8a13a;
+  background: rgba(216, 161, 58, 0.08);
+}
+.split-status-notice.is-incomplete .split-status-badge {
+  background: #d8a13a;
+  color: #121412;
+}
+.split-status-notice.is-conflict {
+  border-left-color: #dc5a46;
+  background: rgba(220, 90, 70, 0.1);
+}
+.split-status-notice.is-conflict .split-status-badge {
+  background: #dc5a46;
+  color: #fff;
 }
 
 .split-generate-disabled {
@@ -2614,7 +2676,7 @@ a:focus-visible {
   .split-cards-grid { grid-template-columns: 1fr; }
   .split-materials-grid { grid-template-columns: 1fr; }
   .split-summary-grid { grid-template-columns: 1fr; }
-  .split-dev-notice { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .split-status-notice { flex-direction: column; align-items: flex-start; gap: 8px; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }
   .atelier-shell .level1-review { align-items: stretch; flex-direction: column; }

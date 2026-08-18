@@ -25,6 +25,14 @@ export type CompatibilityStatus =
   | "DISALLOWED"
   | "CONDITIONAL";
 
+// Whether a waistcoat may/must appear at all for the currently selected
+// upper garment. Distinct from CompatibilityStatus, which is per-option.
+export type WaistcoatRequirement = "REQUIRED" | "OPTIONAL" | "UNAVAILABLE" | "CONDITIONAL";
+
+// Deterministic recipe status. Computed entirely by the rule engine in
+// lib/split-outfit/compatibility.ts — never inferred by the AI model.
+export type RecipeStatus = "INCOMPLETE" | "VALID" | "CONFLICT";
+
 export type MaterialSlotId =
   | "jacket-primary"
   | "trouser-primary"
@@ -88,4 +96,9 @@ export type SplitOutfitSummary = {
   accessories: SplitComponentOption[];
   activeMaterialSlots: MaterialSlotState[];
   isComplete: boolean;
+  // Deterministic rule-engine outputs (see lib/split-outfit/compatibility.ts).
+  recipeStatus: RecipeStatus;
+  missingComponents: string[];
+  waistcoatRequirement: WaistcoatRequirement;
+  materialLinkGroups: MaterialSlotId[][];
 };

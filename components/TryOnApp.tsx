@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GenerationState } from "@/components/GenerationState";
 import { ImageUpload } from "@/components/ImageUpload";
 import { Level1Catalogue } from "@/components/Level1Catalogue";
@@ -138,6 +138,16 @@ async function prepareImage(file: File): Promise<File> {
   return optimizeForUpload(file);
 }
 
+// Split Outfit's enabled state depends on window.location.search, which
+// isn't safe to read during SSR. useSyncExternalStore lets the client
+// re-derive the correct value on its first render (via getSnapshot) while
+// still matching the server's render (via getServerSnapshot) to avoid a
+// hydration mismatch — the React-recommended alternative to computing this
+// in a useEffect + setState, which forces an extra render pass.
+function subscribeToNothing() {
+  return () => {};
+}
+
 function getClientDeviceHint() {
   if (typeof navigator === "undefined") return "unknown";
   const userAgent = navigator.userAgent;
@@ -152,7 +162,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
   const [mode, setMode] = useState<VisualTryOnMode>("full");
   const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
-  const [splitOutfitEnabled, setSplitOutfitEnabled] = useState(false);
+  const splitOutfitEnabled = useSyncExternalStore(subscribeToNothing, isSplitOutfitEnabled, () => false);
   const [catalogue, setCatalogue] = useState<Level1CatalogueView | null>(null);
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
@@ -162,10 +172,6 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const objectUrls = useRef(new Set<string>());
   const generationKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    setSplitOutfitEnabled(isSplitOutfitEnabled());
-  }, []);
 
   useEffect(() => {
     let active = true;

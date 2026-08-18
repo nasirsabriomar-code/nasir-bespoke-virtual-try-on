@@ -15,6 +15,16 @@ import {
   deriveActiveMaterialSlots,
   evaluateOptionCompatibility,
   findSplitOption,
+  getMaterialLinkGroups,
+  getMissingRequiredComponents,
+  getSplitOutfitRecipeStatus,
+  getVisibleAccessoryOptions,
+  getVisibleFootwearOptions,
+  getVisibleLowerOptions,
+  getVisibleShirtOptions,
+  getVisibleWaistcoatOptions,
+  getWaistcoatRequirement,
+  sanitizeSplitOutfitState,
 } from "@/lib/split-outfit/compatibility";
 import { isSplitOutfitEnabled } from "@/lib/split-outfit/config";
 import type { SplitOutfitState } from "@/lib/split-outfit/types";
@@ -83,6 +93,29 @@ test("Split Outfit data model has authoritative Suit options seeded", () => {
     "Tuxedo Trouser",
     "Contemporary",
   ]);
+
+  // SPLIT_CATALOGUE_BY_FAMILY.suit must reference the same exported arrays
+  // above, not a copy — catches a future refactor accidentally forking them.
+  assert.equal(SPLIT_CATALOGUE_BY_FAMILY.suit.uppers, SUIT_UPPER_OPTIONS);
+  assert.equal(SPLIT_CATALOGUE_BY_FAMILY.suit.lowers, SUIT_LOWER_OPTIONS);
+  assert.equal(SPLIT_CATALOGUE_BY_FAMILY.suit.shirts, SUIT_SHIRT_OPTIONS);
+  assert.equal(SPLIT_CATALOGUE_BY_FAMILY.suit.waistcoats, SUIT_WAISTCOAT_OPTIONS);
+  assert.equal(SPLIT_CATALOGUE_BY_FAMILY.suit.footwear, SUIT_FOOTWEAR_OPTIONS);
+  assert.equal(SPLIT_CATALOGUE_BY_FAMILY.suit.accessories, SUIT_ACCESSORY_OPTIONS);
+
+  // The other six garment families are deliberately empty scaffolding —
+  // Phase 1 is Suit-only architecture, not catalogue expansion. This guards
+  // against a family silently gaining designs outside a real catalogue task.
+  const nonSuitEntries = Object.entries(SPLIT_CATALOGUE_BY_FAMILY).filter(([family]) => family !== "suit");
+  assert.deepEqual(
+    nonSuitEntries.map(([family]) => family).sort(),
+    ["achkan", "bandhgala", "indo-western", "kurta-set", "nehru-jacket", "sherwani"].sort(),
+  );
+  for (const [family, entry] of nonSuitEntries) {
+    for (const category of ["uppers", "lowers", "shirts", "waistcoats", "footwear", "accessories"] as const) {
+      assert.deepEqual(entry[category], [], `${family}.${category} must remain empty until Phase 2 catalogue expansion`);
+    }
+  }
 });
 
 test("findSplitOption correctly resolves component IDs in suit family", () => {
@@ -231,4 +264,142 @@ test("State isolation: Full Outfit state and Split Outfit state are decoupled", 
   const updatedSplit = { ...splitOutfitSelection, upperId: "SUIT_UPPER_STATEMENT" };
   assert.equal(fullOutfitSelection.designId, "SHERWANI_01_CLASSIC");
   assert.equal(updatedSplit.upperId, "SUIT_UPPER_STATEMENT");
+});
+
+// ============================================================
+// SUIT COMPATIBILITY RULE ENGINE — deterministic filtering
+// ============================================================
+
+test("Tuxedo hides ordinary trousers, shirts, footwear, and standard tie", () => {
+  const tuxedoState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_TUXEDO" };
+
+  const lowerIds = getVisibleLowerOptions(tuxedoState).map((o) => o.id);
+  assert.deepEqual(lowerIds, ["SUIT_LOWER_TUXEDO_TROUSER"]);
+
+  const shirtIds = getVisibleShirtOptions(tuxedoState).map((o) => o.id);
+  assert.deepEqual(shirtIds, ["SUIT_SHIRT_TUXEDO_PLEATED"]);
+
+  const footwearIds = getVisibleFootwearOptions(tuxedoState).map((o) => o.id);
+  assert.ok(footwearIds.includes("SUIT_SHOE_PATENT_OXFORD"));
+  assert.equal(footwearIds.includes("SUIT_SHOE_DERBY"), false, "Derby must not be shown for Tuxedo");
+  assert.equal(footwearIds.includes("SUIT_SHOE_LOAFER"), false, "Loafer must not be shown for Tuxedo");
+
+  const accessoryIds = getVisibleAccessoryOptions(tuxedoState).map((o) => o.id);
+  assert.ok(accessoryIds.includes("SUIT_ACC_BOW_TIE"));
+  assert.equal(accessoryIds.includes("SUIT_ACC_TIE"), false, "Standard tie must be hidden for Tuxedo by default");
+});
+
+test("Waistcoat requirement is deterministic per upper design", () => {
+  const classicState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC" };
+  assert.equal(getWaistcoatRequirement(classicState), "OPTIONAL");
+  assert.ok(getVisibleWaistcoatOptions(classicState).some((o) => o.id === "SUIT_WAISTCOAT_NONE"));
+
+  const doubleBreastedState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_DOUBLE_BREASTED" };
+  assert.equal(getWaistcoatRequirement(doubleBreastedState), "UNAVAILABLE");
+  assert.deepEqual(getVisibleWaistcoatOptions(doubleBreastedState), []);
+
+  const threePieceState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_THREE_PIECE" };
+  assert.equal(getWaistcoatRequirement(threePieceState), "REQUIRED");
+  const threePieceWaistcoatIds = getVisibleWaistcoatOptions(threePieceState).map((o) => o.id);
+  assert.equal(threePieceWaistcoatIds.includes("SUIT_WAISTCOAT_NONE"), false, "'None' must not be offered when a waistcoat is required");
+
+  const tuxedoState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_TUXEDO" };
+  assert.equal(getWaistcoatRequirement(tuxedoState), "CONDITIONAL");
+  const tuxedoWaistcoatIds = getVisibleWaistcoatOptions(tuxedoState).map((o) => o.id);
+  assert.deepEqual(tuxedoWaistcoatIds.sort(), ["SUIT_WAISTCOAT_NONE", "SUIT_WAISTCOAT_TUXEDO"].sort());
+});
+
+test("sanitizeSplitOutfitState clears stale selections when the upper design changes", () => {
+  // Start fully dressed for Three-Piece (waistcoat required + selected)…
+  const threePieceState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: ["SUIT_ACC_TIE", "SUIT_ACC_CUFFLINKS"],
+    materials: {},
+  };
+
+  // …then switch to Double-Breasted, which cannot offer a waistcoat at all.
+  const switchedToDoubleBreasted = sanitizeSplitOutfitState({
+    ...threePieceState,
+    upperId: "SUIT_UPPER_DOUBLE_BREASTED",
+  });
+  assert.equal(switchedToDoubleBreasted.waistcoatId, "SUIT_WAISTCOAT_NONE", "Waistcoat must be forced to None, not left dangling");
+  assert.equal(switchedToDoubleBreasted.lowerId, "SUIT_LOWER_CLASSIC_STRAIGHT", "Still-valid lower selection must be preserved");
+  assert.deepEqual(switchedToDoubleBreasted.accessoryIds, ["SUIT_ACC_TIE", "SUIT_ACC_CUFFLINKS"], "Still-valid accessories must be preserved");
+
+  // …then switch to Tuxedo, which invalidates the trouser, shirt, and tie.
+  const switchedToTuxedo = sanitizeSplitOutfitState({ ...threePieceState, upperId: "SUIT_UPPER_TUXEDO" });
+  assert.equal(switchedToTuxedo.lowerId, null, "Classic trouser is invalid for Tuxedo and must be cleared");
+  assert.equal(switchedToTuxedo.shirtId, null, "Classic shirt is invalid for Tuxedo and must be cleared");
+  assert.equal(
+    switchedToTuxedo.waistcoatId,
+    "SUIT_WAISTCOAT_NONE",
+    "Invalid Classic waistcoat must reset to None — Tuxedo waistcoat is CONDITIONAL, not REQUIRED, so it must not be left null",
+  );
+  assert.deepEqual(switchedToTuxedo.accessoryIds, ["SUIT_ACC_CUFFLINKS"], "Tie must be dropped; Cufflinks remain valid");
+  assert.equal(switchedToTuxedo.footwearId, "SUIT_SHOE_OXFORD", "Oxford remains valid for Tuxedo and must be preserved");
+});
+
+test("sanitizeSplitOutfitState leaves a REQUIRED-but-unselected waistcoat null rather than auto-picking one", () => {
+  const noWaistcoatState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_CLASSIC",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+  };
+
+  const switchedToThreePiece = sanitizeSplitOutfitState({ ...noWaistcoatState, upperId: "SUIT_UPPER_THREE_PIECE" });
+  assert.equal(switchedToThreePiece.waistcoatId, null, "A required-but-empty waistcoat must stay null, not be auto-selected");
+});
+
+test("getSplitOutfitRecipeStatus reports INCOMPLETE, VALID, and CONFLICT correctly", () => {
+  // INCOMPLETE: Three-Piece with no waistcoat selected.
+  const incompleteState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: null,
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+  };
+  assert.equal(getSplitOutfitRecipeStatus(incompleteState), "INCOMPLETE");
+  assert.deepEqual(getMissingRequiredComponents(incompleteState), ["waistcoat"]);
+
+  // VALID: Three-Piece with every required category correctly filled.
+  const validState: SplitOutfitState = { ...incompleteState, waistcoatId: "SUIT_WAISTCOAT_CLASSIC" };
+  assert.equal(getSplitOutfitRecipeStatus(validState), "VALID");
+  assert.deepEqual(getMissingRequiredComponents(validState), []);
+
+  // CONFLICT: stale Tuxedo trouser stored under a Classic upper (should never
+  // happen once sanitizeSplitOutfitState runs on every change, but the status
+  // function must still detect and honestly report it rather than hide it).
+  const conflictState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_CLASSIC",
+    lowerId: "SUIT_LOWER_TUXEDO_TROUSER",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+  };
+  assert.equal(getSplitOutfitRecipeStatus(conflictState), "CONFLICT");
+});
+
+test("Material link groups are deterministic per upper design", () => {
+  const classicGroups = getMaterialLinkGroups({ ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC" });
+  assert.deepEqual(classicGroups, [["jacket-primary", "trouser-primary"]]);
+
+  const threePieceGroups = getMaterialLinkGroups({ ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_THREE_PIECE" });
+  assert.deepEqual(threePieceGroups, [["jacket-primary", "trouser-primary", "waistcoat-material"]]);
 });
