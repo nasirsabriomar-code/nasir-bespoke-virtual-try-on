@@ -31,6 +31,12 @@ test("Full Outfit remains the authoritative default catalogue and is untouched",
   }
 });
 
+function setNodeEnv(value: string | undefined) {
+  const environment = process.env as Record<string, string | undefined>;
+  if (value === undefined) delete environment.NODE_ENV;
+  else environment.NODE_ENV = value;
+}
+
 test("Feature flag behaves correctly across environments", () => {
   // Test explicit environment flag
   const originalEnvFlag = process.env.NEXT_PUBLIC_ENABLE_SPLIT_OUTFIT;
@@ -41,14 +47,14 @@ test("Feature flag behaves correctly across environments", () => {
     assert.equal(isSplitOutfitEnabled(), true);
 
     process.env.NEXT_PUBLIC_ENABLE_SPLIT_OUTFIT = "false";
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     assert.equal(isSplitOutfitEnabled(), false);
 
-    process.env.NODE_ENV = "development";
+    setNodeEnv("development");
     assert.equal(isSplitOutfitEnabled(), true);
   } finally {
     process.env.NEXT_PUBLIC_ENABLE_SPLIT_OUTFIT = originalEnvFlag;
-    process.env.NODE_ENV = originalNodeEnv;
+    setNodeEnv(originalNodeEnv);
   }
 });
 

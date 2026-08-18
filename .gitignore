@@ -56,3 +56,6 @@ yarn-error.log*
 /dist/
 /outputs/
 /work/
+
+# graphify knowledge graph (local navigation aid, regenerable)
+/graphify-out/
