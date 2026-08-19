@@ -27,6 +27,13 @@ import type { FinalOutfitSnapshot } from "@/lib/showroom/final-outfit";
  */
 export type StaffRole = "OWNER" | "MANAGER" | "STAFF" | "STYLE_CONSULTANT" | "MASTER_TAILOR" | "QC_STAFF";
 
+/** Safe identity projection for assignment UI — never includes passwordHash or secrets. */
+export type AssignableStaff = {
+  username: string;
+  displayName: string;
+  role: "MASTER_TAILOR";
+};
+
 // ============================================================
 // CUSTOMER
 // ============================================================

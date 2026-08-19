@@ -52,6 +52,10 @@ import type { StaffRole } from "./types";
  *     "quality stage updates" only, nothing else.
  * production:create (a MANAGER/OWNER call, same rationale as order:update)
  * is intentionally absent from all three new roles.
+ * production:assign (Phase 4D) is likewise MANAGER/OWNER only — listing
+ * assignable tailors and writing assignedStaffId. MASTER_TAILOR/QC_STAFF
+ * keep production:update for stage movement of in-scope jobs but cannot
+ * assign or reassign.
  */
 export type CustomerAction =
   | "customer:create"
@@ -72,7 +76,8 @@ export type CustomerAction =
   | "order:material:update"
   | "production:create"
   | "production:read"
-  | "production:update";
+  | "production:update"
+  | "production:assign";
 
 const ALL_ACTIONS: CustomerAction[] = [
   "customer:create",
@@ -94,6 +99,7 @@ const ALL_ACTIONS: CustomerAction[] = [
   "production:create",
   "production:read",
   "production:update",
+  "production:assign",
 ];
 
 const STAFF_ACTIONS: CustomerAction[] = [

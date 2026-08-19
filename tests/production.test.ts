@@ -8,9 +8,13 @@ import {
   handleCreateProductionJobRequest,
   handleGetProductionJobByOrderRequest,
   handleGetProductionJobRequest,
+  handleListAssignableStaffRequest,
   handleListProductionJobsRequest,
   handleUpdateProductionJobStageRequest,
 } from "@/lib/production-handler";
+import { AuthConfigurationError } from "@/lib/auth/config";
+import { CustomerValidationError } from "@/lib/customer/validation";
+import type { AssignableStaff } from "@/lib/customer/types";
 import { createFakeCustomerRepository } from "./customer-fake-repository";
 import {
   authAs,
@@ -24,6 +28,26 @@ import {
 } from "./customer-test-http";
 
 const repository = createFakeCustomerRepository();
+
+const TEST_ASSIGNABLE: AssignableStaff[] = [
+  { username: MASTER_TAILOR_USER.username, displayName: MASTER_TAILOR_USER.displayName, role: "MASTER_TAILOR" },
+  { username: "othertailor", displayName: "Other Tailor", role: "MASTER_TAILOR" },
+  { username: "tailora", displayName: "Tailor A", role: "MASTER_TAILOR" },
+  { username: "tailorb", displayName: "Tailor B", role: "MASTER_TAILOR" },
+];
+
+const testStaffDirectory = {
+  listAssignable: () => TEST_ASSIGNABLE,
+  assertAssignable(username: string) {
+    if (!TEST_ASSIGNABLE.some((staff) => staff.username === username)) {
+      throw new CustomerValidationError("invalid_staff_id", "Please provide a valid staff username.");
+    }
+  },
+};
+
+function prodDeps(user: Parameters<typeof authAs>[0]) {
+  return { authenticate: authAs(user), repository, staffDirectory: testStaffDirectory };
+}
 
 beforeEach(() => {
   repository.reset();
@@ -50,7 +74,7 @@ async function createTestCustomer() {
       email: null,
       preferences: { preferredStyles: [], preferredColours: [], preferredFit: null, preferredOccasions: [] },
     }),
-    { authenticate: authAs(OWNER_USER), repository },
+    prodDeps(OWNER_USER),
   );
   return response.json();
 }
@@ -63,7 +87,7 @@ async function recordMeasurement(customerId: string) {
       shirtMeasurements: { neck: 15.5 },
     }),
     customerId,
-    { authenticate: authAs(OWNER_USER), repository },
+    prodDeps(OWNER_USER),
   );
   return response.json();
 }
@@ -72,7 +96,7 @@ async function saveOutfit(customerId: string) {
   const response = await handleCreateSavedOutfitRequest(
     jsonRequest(`http://localhost/api/customers/${customerId}/outfits`, "POST", VALID_MANUAL_OUTFIT),
     customerId,
-    { authenticate: authAs(STAFF_USER), repository },
+    prodDeps(STAFF_USER),
   );
   return response.json();
 }
@@ -84,7 +108,7 @@ async function createTestOrder() {
   const response = await handleCreateOrderRequest(
     jsonRequest(`http://localhost/api/customers/${customer.id}/orders`, "POST", { savedOutfitId: outfit.id }),
     customer.id,
-    { authenticate: authAs(STAFF_USER), repository },
+    prodDeps(STAFF_USER),
   );
   return response.json();
 }
@@ -99,7 +123,7 @@ async function createProductionJob(
   const response = await handleCreateProductionJobRequest(
     jsonRequest(`http://localhost/api/orders/${orderId}/production`, "POST", body),
     orderId,
-    { authenticate: authAs(options.user ?? MANAGER_USER), repository },
+    prodDeps(options.user ?? MANAGER_USER),
   );
   const payload = await response.json();
   return payload.job;
@@ -109,7 +133,7 @@ async function patchStage(jobId: string, body: Record<string, unknown>, user: Pa
   return handleUpdateProductionJobStageRequest(
     jsonRequest(`http://localhost/api/production/${jobId}`, "PATCH", body),
     jobId,
-    { authenticate: authAs(user), repository },
+    prodDeps(user),
   );
 }
 
@@ -124,7 +148,7 @@ test("creates a valid production job with an assigned staff member", async () =>
       assignedStaffId: MASTER_TAILOR_USER.username,
     }),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 201);
   const payload = await response.json();
@@ -141,7 +165,7 @@ test("creates a production job with no assignedStaffId (defaults to null)", asyn
   const response = await handleCreateProductionJobRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", {}),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 201);
   const payload = await response.json();
@@ -154,7 +178,7 @@ test("rejects a second production job for the same order (409)", async () => {
   const response = await handleCreateProductionJobRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", {}),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 409);
 });
@@ -163,7 +187,7 @@ test("rejects creating a production job for an unknown order id (404)", async ()
   const response = await handleCreateProductionJobRequest(
     jsonRequest("http://localhost/api/orders/00000000-0000-4000-8000-000000000000/production", "POST", {}),
     "00000000-0000-4000-8000-000000000000",
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 404);
 });
@@ -174,7 +198,7 @@ test("gets a production job by order id", async () => {
   const response = await handleGetProductionJobByOrderRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "GET"),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 200);
   const payload = await response.json();
@@ -188,7 +212,7 @@ test("gets a production job by job id", async () => {
   const response = await handleGetProductionJobRequest(
     jsonRequest(`http://localhost/api/production/${job.id}`, "GET"),
     job.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 200);
   const payload = await response.json();
@@ -202,7 +226,7 @@ test("lists all production jobs", async () => {
   await createProductionJob(orderB.id);
   const response = await handleListProductionJobsRequest(
     jsonRequest("http://localhost/api/production", "GET"),
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 200);
   const { jobs } = await response.json();
@@ -218,7 +242,7 @@ test("lists production jobs filtered by stage", async () => {
 
   const response = await handleListProductionJobsRequest(
     jsonRequest("http://localhost/api/production?stage=FABRIC_READY", "GET"),
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 200);
   const { jobs } = await response.json();
@@ -468,7 +492,7 @@ test("MASTER_TAILOR reading a job by order id that is not assigned to them retur
   const response = await handleGetProductionJobByOrderRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "GET"),
     order.id,
-    { authenticate: authAs(MASTER_TAILOR_USER), repository },
+    prodDeps(MASTER_TAILOR_USER),
   );
   assert.equal(response.status, 404);
 });
@@ -479,7 +503,7 @@ test("MASTER_TAILOR reading a job by job id that is not assigned to them returns
   const response = await handleGetProductionJobRequest(
     jsonRequest(`http://localhost/api/production/${job.id}`, "GET"),
     job.id,
-    { authenticate: authAs(MASTER_TAILOR_USER), repository },
+    prodDeps(MASTER_TAILOR_USER),
   );
   assert.equal(response.status, 404);
 });
@@ -490,7 +514,7 @@ test("MASTER_TAILOR reading a job assigned to them succeeds", async () => {
   const response = await handleGetProductionJobRequest(
     jsonRequest(`http://localhost/api/production/${job.id}`, "GET"),
     job.id,
-    { authenticate: authAs(MASTER_TAILOR_USER), repository },
+    prodDeps(MASTER_TAILOR_USER),
   );
   assert.equal(response.status, 200);
 });
@@ -502,7 +526,7 @@ for (const user of [OWNER_USER, MANAGER_USER, STAFF_USER, STYLE_CONSULTANT_USER,
     const response = await handleGetProductionJobRequest(
       jsonRequest(`http://localhost/api/production/${job.id}`, "GET"),
       job.id,
-      { authenticate: authAs(user), repository },
+      prodDeps(user),
     );
     assert.equal(response.status, 200);
   });
@@ -516,7 +540,7 @@ test("MASTER_TAILOR's production job list is filtered to only jobs assigned to t
 
   const response = await handleListProductionJobsRequest(
     jsonRequest("http://localhost/api/production", "GET"),
-    { authenticate: authAs(MASTER_TAILOR_USER), repository },
+    prodDeps(MASTER_TAILOR_USER),
   );
   assert.equal(response.status, 200);
   const { jobs } = await response.json();
@@ -533,7 +557,7 @@ for (const user of [STYLE_CONSULTANT_USER, STAFF_USER, QC_STAFF_USER, MANAGER_US
 
     const response = await handleListProductionJobsRequest(
       jsonRequest("http://localhost/api/production", "GET"),
-      { authenticate: authAs(user), repository },
+      prodDeps(user),
     );
     assert.equal(response.status, 200);
     const { jobs } = await response.json();
@@ -565,7 +589,7 @@ test("SECURITY: rejects creating a production job against a fake/unknown order I
   const response = await handleCreateProductionJobRequest(
     jsonRequest("http://localhost/api/orders/00000000-0000-4000-8000-000000000000/production", "POST", {}),
     "00000000-0000-4000-8000-000000000000",
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 404);
 });
@@ -574,7 +598,7 @@ test("SECURITY: rejects getting a fake/unknown production job ID", async () => {
   const response = await handleGetProductionJobRequest(
     jsonRequest("http://localhost/api/production/00000000-0000-4000-8000-000000000000", "GET"),
     "00000000-0000-4000-8000-000000000000",
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 404);
 });
@@ -589,7 +613,7 @@ test("SECURITY: rejects a client-supplied id field on production job creation", 
   const response = await handleCreateProductionJobRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", { id: "forged-id" }),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 400);
 });
@@ -609,7 +633,7 @@ test("SECURITY: rejects client-supplied createdAt/updatedAt on production job cr
       updatedAt: "2000-01-01T00:00:00.000Z",
     }),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 400);
 });
@@ -630,7 +654,7 @@ test("SECURITY: rejects a client-supplied history array on production job creati
   const response = await handleCreateProductionJobRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", { history: [] }),
     order.id,
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 400);
 });
@@ -651,7 +675,7 @@ test("SECURITY: rejects an unauthenticated request to create a production job", 
   const response = await handleCreateProductionJobRequest(
     jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", {}),
     order.id,
-    { authenticate: authAs(null), repository },
+    prodDeps(null),
   );
   assert.equal(response.status, 401);
 });
@@ -662,7 +686,7 @@ test("SECURITY: rejects an unauthenticated request to get a production job", asy
   const response = await handleGetProductionJobRequest(
     jsonRequest(`http://localhost/api/production/${job.id}`, "GET"),
     job.id,
-    { authenticate: authAs(null), repository },
+    prodDeps(null),
   );
   assert.equal(response.status, 401);
 });
@@ -681,7 +705,7 @@ test("SECURITY: rejects a cross-origin request to create a production job", asyn
       "sec-fetch-site": "cross-site",
     }),
     "x",
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 403);
 });
@@ -693,7 +717,7 @@ test("SECURITY: rejects a cross-origin request to update a production job's stag
       "sec-fetch-site": "cross-site",
     }),
     "x",
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 403);
 });
@@ -710,7 +734,216 @@ test("SECURITY: rejects an unknown/garbage toStage value", async () => {
 test("SECURITY: rejects an unknown ?stage= filter value on the production job list", async () => {
   const response = await handleListProductionJobsRequest(
     jsonRequest("http://localhost/api/production?stage=BOGUS_STAGE", "GET"),
-    { authenticate: authAs(MANAGER_USER), repository },
+    prodDeps(MANAGER_USER),
   );
   assert.equal(response.status, 400);
+});
+
+// ============================================================
+// PHASE 4D — ASSIGNMENT
+// ============================================================
+
+test("OWNER can assign a valid tailor on create", async () => {
+  const order = await createTestOrder();
+  const response = await handleCreateProductionJobRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", {
+      assignedStaffId: MASTER_TAILOR_USER.username,
+    }),
+    order.id,
+    prodDeps(OWNER_USER),
+  );
+  assert.equal(response.status, 201);
+  const payload = await response.json();
+  assert.equal(payload.job.assignedStaffId, MASTER_TAILOR_USER.username);
+});
+
+test("MANAGER can reassign a production job and the new assignee persists", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id, { assignedStaffId: MASTER_TAILOR_USER.username });
+  const response = await patchStage(
+    job.id,
+    { toStage: "CONFIRMED", assignedStaffId: "othertailor" },
+    MANAGER_USER,
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.job.assignedStaffId, "othertailor");
+  assert.equal(payload.job.currentStage, "CONFIRMED");
+
+  const stored = await handleGetProductionJobRequest(
+    jsonRequest(`http://localhost/api/production/${job.id}`, "GET"),
+    job.id,
+    prodDeps(MANAGER_USER),
+  );
+  assert.equal(stored.status, 200);
+  const storedPayload = await stored.json();
+  assert.equal(storedPayload.job.assignedStaffId, "othertailor");
+});
+
+test("OWNER may clear an assignment by sending assignedStaffId: null", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id, { assignedStaffId: MASTER_TAILOR_USER.username });
+  const response = await patchStage(job.id, { toStage: "CONFIRMED", assignedStaffId: null }, OWNER_USER);
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.job.assignedStaffId, null);
+});
+
+test("lists assignable tailors for OWNER/MANAGER without leaking password hashes", async () => {
+  const response = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    prodDeps(OWNER_USER),
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.ok(Array.isArray(payload.assignees));
+  assert.ok(payload.assignees.some((staff: { username: string }) => staff.username === MASTER_TAILOR_USER.username));
+  for (const staff of payload.assignees) {
+    assert.equal(staff.role, "MASTER_TAILOR");
+    assert.equal(typeof staff.displayName, "string");
+    assert.equal("passwordHash" in staff, false);
+  }
+});
+
+test("STAFF cannot assign or list assignable tailors", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id);
+  const assign = await patchStage(
+    job.id,
+    { toStage: "CONFIRMED", assignedStaffId: MASTER_TAILOR_USER.username },
+    STAFF_USER,
+  );
+  assert.equal(assign.status, 403);
+
+  const list = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    prodDeps(STAFF_USER),
+  );
+  assert.equal(list.status, 403);
+});
+
+test("STYLE_CONSULTANT cannot assign or list assignable tailors", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id);
+  const assign = await patchStage(
+    job.id,
+    { toStage: "CONFIRMED", assignedStaffId: MASTER_TAILOR_USER.username },
+    STYLE_CONSULTANT_USER,
+  );
+  assert.equal(assign.status, 403);
+
+  const list = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    prodDeps(STYLE_CONSULTANT_USER),
+  );
+  assert.equal(list.status, 403);
+});
+
+test("MASTER_TAILOR cannot self-assign or list assignable tailors", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id, { assignedStaffId: MASTER_TAILOR_USER.username });
+  const assign = await patchStage(
+    job.id,
+    { toStage: "FABRIC_READY", assignedStaffId: MASTER_TAILOR_USER.username },
+    MASTER_TAILOR_USER,
+  );
+  assert.equal(assign.status, 403);
+
+  const list = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    prodDeps(MASTER_TAILOR_USER),
+  );
+  assert.equal(list.status, 403);
+});
+
+test("QC_STAFF cannot assign even at FINAL_QC", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id, { assignedStaffId: MASTER_TAILOR_USER.username });
+  await patchStage(job.id, { toStage: "FABRIC_READY" }, MANAGER_USER);
+  await patchStage(job.id, { toStage: "CUTTING" }, MANAGER_USER);
+  await patchStage(job.id, { toStage: "STITCHING" }, MANAGER_USER);
+  await patchStage(job.id, { toStage: "FIRST_TRIAL" }, MANAGER_USER);
+  await patchStage(job.id, { toStage: "FINAL_QC" }, MANAGER_USER);
+  const assign = await patchStage(
+    job.id,
+    { toStage: "FINAL_QC", assignedStaffId: "othertailor" },
+    QC_STAFF_USER,
+  );
+  assert.equal(assign.status, 403);
+
+  const list = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    prodDeps(QC_STAFF_USER),
+  );
+  assert.equal(list.status, 403);
+});
+
+test("rejects assigning a STAFF username (not an eligible tailor)", async () => {
+  const order = await createTestOrder();
+  const response = await handleCreateProductionJobRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", {
+      assignedStaffId: STAFF_USER.username,
+    }),
+    order.id,
+    prodDeps(MANAGER_USER),
+  );
+  assert.equal(response.status, 400);
+});
+
+test("rejects assigning an unknown username that only matches the username pattern", async () => {
+  const order = await createTestOrder();
+  const response = await handleCreateProductionJobRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/production`, "POST", {
+      assignedStaffId: "notatailor",
+    }),
+    order.id,
+    prodDeps(MANAGER_USER),
+  );
+  assert.equal(response.status, 400);
+});
+
+test("rejects assigning to a fake/unknown production job", async () => {
+  const response = await patchStage(
+    "00000000-0000-4000-8000-000000000000",
+    { toStage: "CONFIRMED", assignedStaffId: MASTER_TAILOR_USER.username },
+    MANAGER_USER,
+  );
+  assert.equal(response.status, 404);
+});
+
+test("rejects a client-supplied changedBy on reassignment", async () => {
+  const order = await createTestOrder();
+  const job = await createProductionJob(order.id);
+  const response = await patchStage(
+    job.id,
+    { toStage: "CONFIRMED", assignedStaffId: MASTER_TAILOR_USER.username, changedBy: "forged-actor" },
+    MANAGER_USER,
+  );
+  assert.equal(response.status, 400);
+});
+
+test("SECURITY: rejects unauthenticated access to the assignable-staff list", async () => {
+  const response = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    prodDeps(null),
+  );
+  assert.equal(response.status, 401);
+});
+
+test("GET /api/production/assignees returns 503 when the staff allowlist is not configured", async () => {
+  const response = await handleListAssignableStaffRequest(
+    jsonRequest("http://localhost/api/production/assignees", "GET"),
+    {
+      authenticate: authAs(OWNER_USER),
+      staffDirectory: {
+        listAssignable() {
+          throw new AuthConfigurationError();
+        },
+        assertAssignable() {
+          throw new AuthConfigurationError();
+        },
+      },
+    },
+  );
+  assert.equal(response.status, 503);
 });

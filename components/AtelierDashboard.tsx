@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { LogoutButton } from "@/components/LogoutButton";
 import { UsageHistory } from "@/components/UsageHistory";
-import type { ProductionJob, ProductionStage } from "@/lib/customer/types";
+import { ProductionAssignment, assigneeLabel } from "@/components/customer/ProductionAssignment";
+import type { AssignableStaff, ProductionJob, ProductionStage } from "@/lib/customer/types";
 
 type AtelierDashboardProps = {
   displayName: string;
@@ -23,6 +24,7 @@ function shortId(id: string): string {
 type Column = { title: string; stages: ProductionStage[] };
 
 const COLUMNS: Column[] = [
+  { title: "Incoming", stages: ["CONFIRMED", "FABRIC_READY"] },
   { title: "Cutting", stages: ["CUTTING"] },
   { title: "Stitching", stages: ["STITCHING"] },
   { title: "Trial", stages: ["FIRST_TRIAL", "ALTERATION"] },
@@ -38,6 +40,7 @@ const ACTIVE_STAGES: ProductionStage[] = COLUMNS.flatMap((column) => column.stag
  */
 export function AtelierDashboard({ displayName }: AtelierDashboardProps) {
   const [jobs, setJobs] = useState<ProductionJob[] | null>(null);
+  const [assignees, setAssignees] = useState<AssignableStaff[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,11 +49,24 @@ export function AtelierDashboard({ displayName }: AtelierDashboardProps) {
     async function load() {
       setError(null);
       try {
-        const response = await fetch("/api/production", { credentials: "same-origin" });
+        const [jobsResponse, assigneesResponse] = await Promise.all([
+          fetch("/api/production", { credentials: "same-origin" }),
+          fetch("/api/production/assignees", { credentials: "same-origin" }),
+        ]);
         if (!active) return;
-        const payload: unknown = await response.json();
-        if (!response.ok) throw new Error(readResponseError(payload, "We couldn't load production jobs."));
+        const payload: unknown = await jobsResponse.json();
+        if (!jobsResponse.ok) throw new Error(readResponseError(payload, "We couldn't load production jobs."));
         setJobs(isRecord(payload) && Array.isArray(payload.jobs) ? (payload.jobs as ProductionJob[]) : []);
+        if (assigneesResponse.ok) {
+          const assigneesPayload: unknown = await assigneesResponse.json();
+          setAssignees(
+            isRecord(assigneesPayload) && Array.isArray(assigneesPayload.assignees)
+              ? (assigneesPayload.assignees as AssignableStaff[])
+              : [],
+          );
+        } else {
+          setAssignees(null);
+        }
       } catch (loadError: unknown) {
         if (!active) return;
         setError(loadError instanceof Error ? loadError.message : "We couldn't load production jobs.");
@@ -125,7 +141,21 @@ export function AtelierDashboard({ displayName }: AtelierDashboardProps) {
                       <div key={job.id} className="atelier-dashboard-job">
                         <span className="atelier-dashboard-job-id">{shortId(job.orderId)}</span>
                         <span className={`order-status-pill production-stage-${job.currentStage.toLowerCase()}`}>{job.currentStage}</span>
-                        <span className="customer-profile-value">{job.assignedStaffId ?? "Unassigned"}</span>
+                        {assignees ? (
+                          <ProductionAssignment
+                            key={`${job.id}:${job.assignedStaffId ?? "none"}`}
+                            job={job}
+                            assignees={assignees}
+                            onAssigned={(updated) => {
+                              setJobs((current) =>
+                                current ? current.map((entry) => (entry.id === updated.id ? updated : entry)) : current,
+                              );
+                            }}
+                            onError={setError}
+                          />
+                        ) : (
+                          <span className="customer-profile-value">{assigneeLabel(null, job.assignedStaffId)}</span>
+                        )}
                       </div>
                     ))
                   )}

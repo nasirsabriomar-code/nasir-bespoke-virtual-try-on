@@ -30,7 +30,7 @@ Grouped by domain, in the order they were introduced:
 | Order | `order:create`, `order:read`, `order:update` |
 | Fabric | `fabric:create`, `fabric:read` |
 | Order Material | `order:material:update` (reading materials reuses `order:read` — there is no separate `order:material:read`) |
-| Production | `production:create`, `production:read`, `production:update` |
+| Production | `production:create`, `production:read`, `production:update`, `production:assign` |
 
 ## Grant table
 
@@ -55,6 +55,7 @@ Grouped by domain, in the order they were introduced:
 | `production:create` | ✓ | ✓ | | | | |
 | `production:read` | ✓ | ✓ | ✓ | ✓ | ✓ (scoped) | ✓ |
 | `production:update` | ✓ | ✓ | | | ✓ (scoped) | ✓ (scoped) |
+| `production:assign` | ✓ | ✓ | | | | |
 
 `canPerform(role, action)` in `lib/customer/permissions.ts` is the single function every route handler calls (via `authorizeStaffRequest()` in `lib/customer/http.ts`) to check this table. A `false` result is a 403.
 
@@ -64,6 +65,7 @@ Grouped by domain, in the order they were introduced:
 - **`order:material:update` is STAFF-permitted**, for the same reason as `order:create` — it's a selection made as part of the same showroom finalization, not a production-lifecycle change. It is deliberately *not* bundled with `order:update`.
 - **`fabric:create` is MANAGER/OWNER-only** — fabric catalogue entries are curated business data with the same "wrong entry has real consequences" rationale as `customer:create`. `fabric:read` is open to STAFF because they need to browse the catalogue while placing an order.
 - **`production:create` is MANAGER/OWNER-only**, same rationale as `order:update` — starting a production job is a managerial decision, not part of the showroom flow.
+- **`production:assign` is MANAGER/OWNER-only** — listing assignable tailors (a safe projection of the auth allowlist) and writing `assignedStaffId`. It is deliberately *not* bundled with `production:update`, so Master Tailor / QC Staff can move in-scope stages without gaining assignment authority.
 - **The three atelier roles are each granted only what their one job requires**, not "STAFF plus a bit more." This was a deliberate structural choice to satisfy "do not allow production staff to edit customer truth": Master Tailor and QC Staff have *zero* access to Customer/Measurement/Outfit/Order/Fabric data through the permission table — they cannot even read a customer record.
 
 ## Resource-level scoping (Production only)

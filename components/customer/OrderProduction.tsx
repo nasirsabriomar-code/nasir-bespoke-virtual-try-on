@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { PRODUCTION_STAGE_TRANSITIONS } from "@/lib/customer/validation";
-import type { ProductionJob, ProductionStage, ProductionStageHistoryEntry } from "@/lib/customer/types";
+import type { AssignableStaff, ProductionJob, ProductionStage, ProductionStageHistoryEntry } from "@/lib/customer/types";
+import { ProductionAssignment } from "./ProductionAssignment";
 
 type OrderProductionProps = {
   orderId: string;
@@ -32,6 +33,8 @@ function formatDateTime(iso: string): string {
 export function OrderProduction({ orderId }: OrderProductionProps) {
   const [job, setJob] = useState<ProductionJob | null | undefined>(undefined);
   const [history, setHistory] = useState<ProductionStageHistoryEntry[]>([]);
+  const [assignees, setAssignees] = useState<AssignableStaff[] | null>(null);
+  const [pendingAssignee, setPendingAssignee] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -42,15 +45,28 @@ export function OrderProduction({ orderId }: OrderProductionProps) {
     async function load() {
       setError(null);
       try {
-        const response = await fetch(`/api/orders/${orderId}/production`, { credentials: "same-origin" });
+        const [jobResponse, assigneesResponse] = await Promise.all([
+          fetch(`/api/orders/${orderId}/production`, { credentials: "same-origin" }),
+          fetch("/api/production/assignees", { credentials: "same-origin" }),
+        ]);
         if (!active) return;
-        if (response.status === 404) {
+        if (assigneesResponse.ok) {
+          const assigneesPayload: unknown = await assigneesResponse.json();
+          setAssignees(
+            isRecord(assigneesPayload) && Array.isArray(assigneesPayload.assignees)
+              ? (assigneesPayload.assignees as AssignableStaff[])
+              : [],
+          );
+        } else {
+          setAssignees(null);
+        }
+        if (jobResponse.status === 404) {
           setJob(null);
           setHistory([]);
           return;
         }
-        const payload: unknown = await response.json();
-        if (!response.ok) throw new Error(readResponseError(payload, "We couldn't load this order's production job."));
+        const payload: unknown = await jobResponse.json();
+        if (!jobResponse.ok) throw new Error(readResponseError(payload, "We couldn't load this order's production job."));
         setJob(isRecord(payload) && isRecord(payload.job) ? (payload.job as ProductionJob) : null);
         setHistory(isRecord(payload) && Array.isArray(payload.history) ? (payload.history as ProductionStageHistoryEntry[]) : []);
       } catch (loadError: unknown) {
@@ -73,7 +89,7 @@ export function OrderProduction({ orderId }: OrderProductionProps) {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(pendingAssignee ? { assignedStaffId: pendingAssignee } : {}),
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readResponseError(payload, "We couldn't start production for this order."));
@@ -123,6 +139,21 @@ export function OrderProduction({ orderId }: OrderProductionProps) {
         <span className="customer-profile-card-label">Production</span>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <p className="customer-profile-empty">No production job started yet.</p>
+        {assignees && assignees.length > 0 ? (
+          <div className="order-materials-picker production-assignment-picker">
+            <select
+              aria-label="Assigned tailor"
+              value={pendingAssignee}
+              disabled={isStarting}
+              onChange={(event) => setPendingAssignee(event.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {assignees.map((staff) => (
+                <option key={staff.username} value={staff.username}>{staff.displayName}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <button type="button" className="showroom-cta-button" onClick={() => void startProduction()} disabled={isStarting}>
           {isStarting ? "Starting…" : "Start Production"}
         </button>
@@ -146,7 +177,21 @@ export function OrderProduction({ orderId }: OrderProductionProps) {
         </div>
         <div className="order-detail-field">
           <span className="customer-profile-card-label">Assigned Staff</span>
-          <p className="customer-profile-value">{job.assignedStaffId ?? "Unassigned"}</p>
+          {assignees ? (
+            <ProductionAssignment
+              key={`${job.id}:${job.assignedStaffId ?? "none"}`}
+              job={job}
+              assignees={assignees}
+              disabled={isUpdating}
+              onAssigned={(updated, nextHistory) => {
+                setJob(updated);
+                setHistory(nextHistory);
+              }}
+              onError={setError}
+            />
+          ) : (
+            <p className="customer-profile-value">{job.assignedStaffId ?? "Unassigned"}</p>
+          )}
         </div>
         <div className="order-detail-field">
           <span className="customer-profile-card-label">Last Updated</span>

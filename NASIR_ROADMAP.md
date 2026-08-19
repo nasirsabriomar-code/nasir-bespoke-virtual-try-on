@@ -14,6 +14,7 @@ This supersedes the root `ROADMAP.md`, which reflects a Phase 1/2-era plan and i
 | 4A — Orders | ✅ | `Order` domain with server-built snapshots and a validated status state machine. |
 | 4B — Fabric Intelligence | ✅ | `Fabric`/`FabricVariant` curated catalogue + `OrderMaterialSnapshot`. |
 | 4C — Atelier Production Foundation | ✅ | `ProductionJob`/`ProductionStageHistory`, 10-stage workflow, 3 new atelier roles with resource-level scoping, Atelier Dashboard. |
+| 4D — Atelier Assignment | ✅ | Owner/Manager assign/reassign UI; allowlist-projected assignees (`GET /api/production/assignees`); `assignedStaffId` must be a `MASTER_TAILOR` identity. No Staff table, no migration. |
 
 See `NASIR_ARCHITECTURE.md` for what each phase actually built, and each phase's `AI_TASK_REPORT.md`-era snapshot (in git history) for verification detail — reports are overwritten each phase, so only the latest is present in the working tree at any time; prior ones are recoverable from commit history if needed.
 
@@ -24,16 +25,14 @@ These are not phase-specific bugs — they are standing gaps that should be clos
 - **Only one Postgres database exists**, serving both local development and the Preview deployment. It currently holds no Production data (fine for now), but a **separate, dedicated database must be provisioned before Production is ever activated** — never point Production at this same Preview/dev database.
 - **The Preview-only STAFF test account's credentials are not recoverable by an agent** (stored as a write-only Vercel "Sensitive" env var). This has meant Preview-UI interactive QA has been substituted with local-UI QA against the identical live database for every phase since 3C. A future session should either rotate that account (recording the new password somewhere retrievable, outside the repo) or provision dedicated Preview identities for the newer roles (`MANAGER`/`OWNER`, and now `MASTER_TAILOR`/`QC_STAFF`) so a future Preview pass can exercise the full role matrix through the deployed UI directly.
 - **No fabric edit/retire UI** — only create + list exist through the API; `Fabric.status` is settable at creation time only for now.
-- **No "assign/reassign tailor" UI control** — the backend fully supports `assignedStaffId` on `PATCH /api/production/{jobId}`, but no dashboard/detail-view control calls it yet; a Manager/Owner must currently do this via a direct API call.
 
 ## Next milestones (🔜 — natural next steps, not yet started)
 
-These follow directly from Phase 4C's own "next recommended task" and the standing gaps above — pick based on what the atelier actually needs next, not necessarily in this order:
+These follow from the standing gaps above — pick based on what the atelier actually needs next, not necessarily in this order:
 
-1. **Assign/reassign tailor UI.** A minimal Owner/Manager-only control (on the Atelier Dashboard or Order Detail's Production section) calling the already-supported `assignedStaffId` field. Small, self-contained, no schema change.
-2. **Preview role credentials.** Rotate or provision proper `MANAGER`/`OWNER`/`MASTER_TAILOR`/`QC_STAFF` Preview identities (see limitations above) so future Preview QA doesn't have to fall back to local verification every time.
-3. **Dedicated Production database provisioning**, whenever Production activation is actually planned — this is infrastructure work, not a code change, but should happen before any Production deploy of the business domains.
-4. **Fabric catalogue management UI** (edit/retire an existing fabric or variant) — currently API-only.
+1. **Preview role credentials.** Rotate or provision proper `MANAGER`/`OWNER`/`MASTER_TAILOR`/`QC_STAFF` Preview identities (see limitations above) so future Preview QA doesn't have to fall back to local verification every time.
+2. **Dedicated Production database provisioning**, whenever Production activation is actually planned — this is infrastructure work, not a code change, but should happen before any Production deploy of the business domains.
+3. **Fabric catalogue management UI** (edit/retire an existing fabric or variant) — currently API-only.
 
 ## Future architecture (🗺️ — plausible, not designed, not committed)
 

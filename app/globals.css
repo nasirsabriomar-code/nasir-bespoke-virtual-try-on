@@ -3460,7 +3460,10 @@ a:focus-visible {
 .atelier-dashboard-columns {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.production-assignment-picker {
+  margin-top: 6px;
 }
 .atelier-dashboard-column {
   background: var(--atelier-surface);
@@ -3490,6 +3493,7 @@ a:focus-visible {
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .split-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .atelier-dashboard-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .atelier-shell .atelier-sidebar { display: none; }

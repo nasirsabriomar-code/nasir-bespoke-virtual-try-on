@@ -4,6 +4,7 @@ import {
   authorizeStaffRequest,
   DEFAULT_CUSTOMER_DEPENDENCIES,
   getRepository,
+  getStaffDirectory,
   hasUnexpectedFields,
   jsonError,
   mapDomainErrorToResponse,
@@ -16,8 +17,9 @@ import {
   isProductionStage,
   validateAssignedStaffId,
 } from "@/lib/customer/validation";
-import { canReadProductionJob, canUpdateProductionJob } from "@/lib/customer/permissions";
+import { canPerform, canReadProductionJob, canUpdateProductionJob } from "@/lib/customer/permissions";
 import type { ProductionJob, ProductionStage } from "@/lib/customer/types";
+import type { StaffDirectory } from "@/lib/customer/staff-directory";
 
 /**
  * Production Job routes (Phase 4C): create + get-by-order
@@ -42,6 +44,12 @@ import type { ProductionJob, ProductionStage } from "@/lib/customer/types";
 
 const CREATE_ALLOWED_FIELDS = new Set(["assignedStaffId"]);
 const UPDATE_ALLOWED_FIELDS = new Set(["toStage", "assignedStaffId"]);
+
+function resolveAssignableStaffId(value: unknown, directory: StaffDirectory): string | null {
+  const assignedStaffId = validateAssignedStaffId(value);
+  if (assignedStaffId !== null) directory.assertAssignable(assignedStaffId);
+  return assignedStaffId;
+}
 
 async function loadJobWithHistory(
   repository: ReturnType<typeof getRepository>,
@@ -72,7 +80,7 @@ export async function handleCreateProductionJobRequest(
     const order = await repository.getOrderById(orderId);
     if (!order) throw new OrderNotFoundError();
 
-    const assignedStaffId = validateAssignedStaffId(body.assignedStaffId);
+    const assignedStaffId = resolveAssignableStaffId(body.assignedStaffId, getStaffDirectory(dependencies));
 
     const job = await repository.createProductionJob({
       orderId,
@@ -179,15 +187,15 @@ export async function handleUpdateProductionJobStageRequest(
 
     assertValidProductionTransition(existing.currentStage, toStage);
 
-    // assignedStaffId reassignment is a MANAGER/OWNER call, same rationale
-    // as production:create — MASTER_TAILOR/QC_STAFF may only move the
-    // stage of a job already assigned to them, never reassign it.
+    // assignedStaffId reassignment is production:assign (OWNER/MANAGER) —
+    // MASTER_TAILOR/QC_STAFF may only move the stage of a job already
+    // assigned to them, never reassign it.
     let assignedStaffId: string | null | undefined;
     if (body.assignedStaffId !== undefined) {
-      if (authOrResponse.role !== "OWNER" && authOrResponse.role !== "MANAGER") {
+      if (!canPerform(authOrResponse.role, "production:assign")) {
         return jsonError("You do not have permission to reassign this production job.", 403);
       }
-      assignedStaffId = validateAssignedStaffId(body.assignedStaffId);
+      assignedStaffId = resolveAssignableStaffId(body.assignedStaffId, getStaffDirectory(dependencies));
     }
 
     const updated = await repository.updateProductionJobStage(jobId, {
@@ -232,6 +240,23 @@ export async function handleListProductionJobsRequest(
       ...(assignedStaffId ? { assignedStaffId } : {}),
     });
     return Response.json({ jobs }, { headers: { "Cache-Control": "no-store, private" } });
+  } catch (error) {
+    const mapped = mapDomainErrorToResponse(error);
+    if (mapped) return mapped;
+    throw error;
+  }
+}
+
+export async function handleListAssignableStaffRequest(
+  request: Request,
+  dependencies: CustomerDependencies = DEFAULT_CUSTOMER_DEPENDENCIES,
+) {
+  const authOrResponse = await authorizeStaffRequest(request, dependencies, "production:assign");
+  if (authOrResponse instanceof Response) return authOrResponse;
+
+  try {
+    const assignees = getStaffDirectory(dependencies).listAssignable();
+    return Response.json({ assignees }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) {
     const mapped = mapDomainErrorToResponse(error);
     if (mapped) return mapped;

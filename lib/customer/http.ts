@@ -22,6 +22,7 @@ import {
 } from "./repository";
 import { prismaCustomerRepository } from "./prisma-repository";
 import { canPerform, type CustomerAction } from "./permissions";
+import { allowlistStaffDirectory, type StaffDirectory } from "./staff-directory";
 import type { StaffRole } from "./types";
 
 /**
@@ -48,6 +49,8 @@ export type CustomerDependencies = {
   authenticate: typeof requireRequestUser;
   /** Injectable for tests only — defaults to the real Postgres-backed repository. */
   repository?: CustomerRepository;
+  /** Injectable for tests only — defaults to the AUTH allowlist projection. */
+  staffDirectory?: StaffDirectory;
 };
 
 export const DEFAULT_CUSTOMER_DEPENDENCIES: CustomerDependencies = {
@@ -56,6 +59,10 @@ export const DEFAULT_CUSTOMER_DEPENDENCIES: CustomerDependencies = {
 
 export function getRepository(dependencies: CustomerDependencies): CustomerRepository {
   return dependencies.repository ?? prismaCustomerRepository;
+}
+
+export function getStaffDirectory(dependencies: CustomerDependencies): StaffDirectory {
+  return dependencies.staffDirectory ?? allowlistStaffDirectory;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -129,6 +136,10 @@ export function mapDomainErrorToResponse(error: unknown): Response | null {
   if (error instanceof DatabaseConfigurationError) {
     console.error("customer_database_not_configured", {});
     return jsonError("Customer records are not yet configured for this deployment.", 503);
+  }
+  if (error instanceof AuthConfigurationError) {
+    console.error("authentication_configuration_error", { route: "customer-domain" });
+    return jsonError("Authentication is not configured.", 503);
   }
   if (error instanceof CustomerValidationError) return jsonError(error.message, 400);
   if (error instanceof DuplicatePhoneError) return jsonError(error.message, 409);
