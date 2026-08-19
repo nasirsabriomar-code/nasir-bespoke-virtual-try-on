@@ -126,3 +126,22 @@ export type CanonicalMaterialGroup = {
   slotIds: MaterialSlotId[];
   label: string;
 };
+
+/**
+ * The construction-reference policy for a given component. This is the
+ * explicit semantics layer the Phase 2a foundation deliberately lacked —
+ * "an asset exists or doesn't" is never enough to decide behavior on its
+ * own. See lib/split-outfit/reference-policy.ts for the Suit v1 table.
+ *
+ * REQUIRED:  an active, checksum-verified image authority MUST resolve for
+ *            this component before a generation is provider-ready. Missing/
+ *            unresolved/corrupt → fail closed, never silently downgrade to
+ *            text-only.
+ * OPTIONAL:  an image authority is used when available; text-only
+ *            construction instruction is an acceptable fallback. (Reserved
+ *            for future families/components — Suit v1 uses only REQUIRED
+ *            and TEXT_ONLY.)
+ * TEXT_ONLY: no image authority is ever attempted for this component,
+ *            regardless of whether a reference asset might exist.
+ */
+export type SplitReferencePolicy = "REQUIRED" | "OPTIONAL" | "TEXT_ONLY";

@@ -86,27 +86,40 @@ export function deriveActiveMaterialSlots(state: SplitOutfitState): MaterialSlot
     });
   }
 
-  // 3. Shirt Slot (active if shirt selected)
+  // 3. Shirt Slot (active if shirt selected) — an INDEPENDENT customer
+  // upload, deliberately never linked into materialLinkGroups with the
+  // jacket/trouser/waistcoat suit fabric (see SUIT_COMPATIBILITY_RULES).
   const shirt = findSplitOption(family, state.shirtId);
   if (shirt) {
     slots.push({
       slotId: "shirt-material",
-      label: "Shirt Weave",
+      label: "Shirt Fabric",
       componentName: shirt.name,
-      fabricSource: "atelier-standard",
-      description: "Crisp white Egyptian cotton poplin or pleated Marcella weave.",
+      fabricSource: "uploaded-fabric",
+      description: "Dress shirt fabric from your independently uploaded shirt swatch.",
     });
   }
 
-  // 4. Waistcoat Slot (active ONLY if a waistcoat is selected and not 'None')
+  // 4. Waistcoat Slot (active ONLY if a waistcoat is selected and not 'None').
+  // fabricSource is "uploaded-fabric" only when this upper's materialLinkGroups
+  // actually links waistcoat-material into the suit-fabric group (Three-Piece
+  // today) — otherwise (e.g. Tuxedo, where the waistcoat is evening satin
+  // matched by its own construction reference, not a customer swatch) it
+  // stays atelier-standard so it never becomes a third, unlinked upload
+  // group. This keeps Suit v1's canonical upload groups fixed at exactly
+  // two (suit fabric, shirt fabric) for every upper.
   const waistcoat = findSplitOption(family, state.waistcoatId);
   if (waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE") {
+    const rule = getSuitCompatibilityRule(state.upperId);
+    const isLinkedToSuitFabric = Boolean(rule?.materialLinkGroups.some((group) => group.includes("waistcoat-material")));
     slots.push({
       slotId: "waistcoat-material",
       label: "Waistcoat Fabric",
       componentName: waistcoat.name,
-      fabricSource: "uploaded-fabric",
-      description: "Matching or bespoke contrasting waistcoat fabric.",
+      fabricSource: isLinkedToSuitFabric ? "uploaded-fabric" : "atelier-standard",
+      description: isLinkedToSuitFabric
+        ? "Matching or bespoke contrasting waistcoat fabric."
+        : "Evening satin or self-fabric facing, matched from the waistcoat's own construction reference.",
     });
   }
 

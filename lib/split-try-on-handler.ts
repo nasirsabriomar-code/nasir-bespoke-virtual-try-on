@@ -16,8 +16,9 @@ import { storeGenerationAssets, type GenerationAssetRefs } from "@/lib/generatio
 import { checkGenerationRateLimit, RateLimitConfigurationError } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
 import {
-  compileSplitGenerationPlan,
   MaterialGroupValidationError,
+  prepareProviderReadySplitGeneration,
+  SplitGenerationNotReadyError,
   SplitRecipeValidationError,
   validateMaterialUploads,
   validateSplitRecipe,
@@ -26,9 +27,10 @@ import {
   type SplitTryOnClientRequest,
 } from "@/lib/split-outfit/generation-compiler";
 import { isSplitGenerationEnabled } from "@/lib/split-outfit/generation-config";
+import type { SplitReferenceAssetReader } from "@/lib/split-outfit/reference-assets";
 import type { TryOnImage } from "@/lib/tryon/types";
 import { getRequestDevice, recordUsageEvent, type UsageEvent, type UsageStatus } from "@/lib/usage-history";
-import { MAX_IMAGE_BYTES, UploadValidationError, validateImageFile } from "@/lib/validation";
+import { MAX_REQUEST_BYTES, UploadValidationError, validateImageFile } from "@/lib/validation";
 
 /**
  * This is a dedicated, isolated handler for Split Outfit generation — a NEW
@@ -39,17 +41,21 @@ import { MAX_IMAGE_BYTES, UploadValidationError, validateImageFile } from "@/lib
  * shape, allow-list, and recipe/material validation are entirely new and
  * specific to Split.
  *
- * Vercel Functions cap request/response payloads at 4.5MB. A Split request
- * carries a customer photo plus up to SPLIT_MAX_MATERIAL_GROUPS material
- * swatches, each capped at the SAME MAX_IMAGE_BYTES ceiling as every other
- * upload in this app (unchanged, per-file). For every Suit v1 rule today,
- * getCanonicalMaterialGroups() always yields exactly ONE upload-required
- * group (see lib/split-outfit/compatibility.ts) — the ceiling below reserves
- * headroom for one additional group so a future rule change does not
- * silently need a fresh size-limit review.
+ * Vercel Functions cap request/response payloads at 4.5MB. Suit v1's fixed
+ * material architecture (independent suit-fabric and shirt-fabric uploads,
+ * per the architect's decision — see lib/split-outfit/compatibility.ts)
+ * caps a Split request at exactly 3 binary images: person + suit swatch +
+ * shirt swatch. This is precisely the same shape as Full Outfit's
+ * person+outfit+fabric request (also 3 images, also capped at
+ * MAX_IMAGE_BYTES per file) — so this ceiling deliberately reuses that
+ * proven-safe total (lib/validation.ts: 3 × 1.25MB + ~450KB multipart/field
+ * overhead margin = 4.2MB, safely under the 4.5MB platform hard cap)
+ * instead of deriving a new number. SPLIT_MAX_MATERIAL_GROUPS stays 2 (suit
+ * + shirt) — the architecturally fixed maximum for Suit v1, not headroom
+ * for a hypothetical future group.
  */
 export const SPLIT_MAX_MATERIAL_GROUPS = 2;
-export const SPLIT_MAX_REQUEST_BYTES = MAX_IMAGE_BYTES * (1 + SPLIT_MAX_MATERIAL_GROUPS) + 200_000;
+export const SPLIT_MAX_REQUEST_BYTES = MAX_REQUEST_BYTES;
 
 const JSON_HEADERS = {
   "Cache-Control": "no-store, private",
@@ -84,6 +90,13 @@ type RouteDependencies = {
   authenticate: typeof requireRequestUser;
   rateLimit: typeof checkGenerationRateLimit;
   generate: (plan: SplitGenerationPlan) => Promise<SplitGenerationResult>;
+  /**
+   * Injectable for tests only — defaults to the real, checksum-verifying,
+   * private-Blob-backed reader (lib/split-outfit/reference-assets.ts). Lets
+   * tests exercise the READY path without any real Blob access, while
+   * production always uses the real reader.
+   */
+  referenceReader?: SplitReferenceAssetReader;
   recordUsage?: typeof recordUsageEvent;
 };
 
@@ -414,7 +427,27 @@ export async function handleSplitTryOnRequest(
       );
     }
 
-    const plan = await compileSplitGenerationPlan(recipe, { person, materialUploads: materialImages });
+    // Cost-safety: readiness (including any private Blob read needed to
+    // verify a REQUIRED construction reference's checksum/content-type — see
+    // lib/split-outfit/reference-assets.ts) is fully resolved HERE, still
+    // before any provider call and before the idempotency record is marked
+    // "pending". A recipe whose required references are missing or fail
+    // integrity verification is rejected now, at zero provider cost — it
+    // never silently falls back to a text-only generation.
+    let plan: SplitGenerationPlan;
+    try {
+      plan = await prepareProviderReadySplitGeneration(recipe, {
+        person,
+        materialUploads: materialImages,
+        ...(dependencies.referenceReader ? { referenceReader: dependencies.referenceReader } : {}),
+      });
+    } catch (error) {
+      if (error instanceof SplitGenerationNotReadyError) {
+        console.warn("split_try_on_not_ready", { requestId, username: user.username, readinessStatus: error.readiness.status });
+        return jsonError("This look isn't ready to generate yet. Please contact the atelier.", 503, rateHeaders);
+      }
+      throw error;
+    }
 
     if (idempotencyKey && lease) {
       await writeIdempotencyRecord(user.username, idempotencyKey, { status: "pending", leaseId: lease.leaseId });

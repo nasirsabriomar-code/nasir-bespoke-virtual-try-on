@@ -10,8 +10,11 @@ import {
   getMissingRequiredComponents,
   getSplitOutfitRecipeStatus,
 } from "./compatibility";
+import { getSplitReferencePolicy } from "./reference-policy";
 import {
   resolveSplitReferenceAsset,
+  SplitReferenceAssetError,
+  type SplitReferenceAssetErrorCode,
   type SplitReferenceAssetReader,
 } from "./reference-assets";
 import type {
@@ -293,6 +296,16 @@ export type CompiledSplitAuthority = {
 export type ResolvedSplitAuthority = CompiledSplitAuthority & {
   /** Present iff imageSource was declared AND resolution actually found bytes. */
   resolvedImage?: TryOnImage;
+  /**
+   * Present iff this authority declared a "construction-reference" image
+   * intent and resolution failed with a typed error (asset not registered/
+   * pending/unavailable, or a failed integrity check). Never set for
+   * "customer"/"material" kinds — those resolve directly from validated
+   * client input, not the reference-asset registry. Draft compilation uses
+   * this only to fall back to text-only; provider-readiness uses it to
+   * classify MISSING_REQUIRED_REFERENCE vs REFERENCE_INTEGRITY_FAILURE.
+   */
+  imageResolutionError?: { code: SplitReferenceAssetErrorCode };
 };
 
 const CUSTOMER_AUTHORITY_TEXT = [
@@ -325,11 +338,17 @@ function accessoryInstructionText(option: SplitComponentOption) {
 /**
  * Builds the complete, deterministic, ordered authority list for a
  * NormalizedSplitRecipe. Pure and synchronous — no I/O, no Blob access, no
- * provider call. Order is fixed: customer, upper construction, waistcoat
- * construction (if any), material groups (already canonically sorted),
- * then text-only construction instructions (lower, shirt, footwear), then
- * accessories. Customer is always first, so customer is always "Image 1"
- * once imaged authorities are numbered.
+ * provider call.
+ *
+ * Fixed order: customer, then material authorities (suit fabric before
+ * shirt fabric — see getCanonicalMaterialGroups, whose canonical IDs
+ * already sort "jacket-primary..." before "shirt-material" with no extra
+ * ordering logic needed here), then REQUIRED construction references
+ * (upper, then waistcoat when a real one is selected), then TEXT_ONLY
+ * construction instructions (lower, shirt, footwear), then accessories.
+ * Customer is always first, so customer is always "Image 1" once imaged
+ * authorities are numbered; the two material swatches are always Image 2
+ * and Image 3 when both resolve.
  */
 export function buildSplitAuthorityPlan(recipe: NormalizedSplitRecipe): CompiledSplitAuthority[] {
   const authorities: CompiledSplitAuthority[] = [];
@@ -341,32 +360,44 @@ export function buildSplitAuthorityPlan(recipe: NormalizedSplitRecipe): Compiled
     instructions: CUSTOMER_AUTHORITY_TEXT,
   });
 
-  authorities.push({
-    role: `construction:${recipe.components.upper.id}`,
-    governs: [recipe.components.upper.id],
-    imageSource: { kind: "construction-reference", componentId: recipe.components.upper.id, assetRole: "split-upper-construction" },
-    instructions: constructionAuthorityText(recipe.components.upper, true),
-  });
-
-  // "SUIT_WAISTCOAT_NONE" is a real catalogue option (an explicit "no
-  // waistcoat" choice), not a null/absent value — same convention as
-  // deriveActiveMaterialSlots in compatibility.ts. It gets no construction
-  // authority: there is no physical garment to describe or photograph.
-  if (recipe.components.waistcoat && recipe.components.waistcoat.id !== "SUIT_WAISTCOAT_NONE") {
-    authorities.push({
-      role: `construction:${recipe.components.waistcoat.id}`,
-      governs: [recipe.components.waistcoat.id],
-      imageSource: { kind: "construction-reference", componentId: recipe.components.waistcoat.id, assetRole: "split-waistcoat-construction" },
-      instructions: constructionAuthorityText(recipe.components.waistcoat, true),
-    });
-  }
-
   for (const group of recipe.materialGroups) {
     authorities.push({
       role: `material:${group.groupId}`,
       governs: group.slotIds,
       imageSource: { kind: "material", groupId: group.groupId },
       instructions: materialAuthorityText(group),
+    });
+  }
+
+  // Required image-construction authorities. Policy is looked up from the
+  // single reference-policy table (lib/split-outfit/reference-policy.ts) —
+  // never hardcoded here — so a component's image-vs-text treatment always
+  // comes from one place.
+  const upperPolicy = getSplitReferencePolicy(recipe.components.upper.id);
+  authorities.push({
+    role: `construction:${recipe.components.upper.id}`,
+    governs: [recipe.components.upper.id],
+    ...(upperPolicy !== "TEXT_ONLY"
+      ? { imageSource: { kind: "construction-reference" as const, componentId: recipe.components.upper.id, assetRole: "split-upper-construction" as const } }
+      : {}),
+    instructions: constructionAuthorityText(recipe.components.upper, upperPolicy !== "TEXT_ONLY"),
+  });
+
+  // "SUIT_WAISTCOAT_NONE" is a real catalogue option (an explicit "no
+  // waistcoat" choice), not a null/absent value — same convention as
+  // deriveActiveMaterialSlots in compatibility.ts. getSplitReferencePolicy
+  // structurally returns TEXT_ONLY for it, so it can never require or
+  // resolve a reference — but it also gets no authority entry at all here,
+  // since there is no physical garment to describe.
+  if (recipe.components.waistcoat && recipe.components.waistcoat.id !== "SUIT_WAISTCOAT_NONE") {
+    const waistcoatPolicy = getSplitReferencePolicy(recipe.components.waistcoat.id);
+    authorities.push({
+      role: `construction:${recipe.components.waistcoat.id}`,
+      governs: [recipe.components.waistcoat.id],
+      ...(waistcoatPolicy !== "TEXT_ONLY"
+        ? { imageSource: { kind: "construction-reference" as const, componentId: recipe.components.waistcoat.id, assetRole: "split-waistcoat-construction" as const } }
+        : {}),
+      instructions: constructionAuthorityText(recipe.components.waistcoat, waistcoatPolicy !== "TEXT_ONLY"),
     });
   }
 
@@ -413,8 +444,13 @@ export type SplitAuthorityResolutionInputs = {
  * Resolves declared image intents into actual bytes. A construction
  * reference with no registered asset yet (the common case today — see
  * lib/split-outfit/reference-assets.ts, empty registry) resolves to no
- * image and the authority silently stays text-only; its `instructions`
- * prose is unchanged, so no information is lost, only the image authority.
+ * image and the authority stays text-only for DRAFT purposes; its
+ * `instructions` prose is unchanged, so no information is lost, only the
+ * image authority. A registered-but-not-ready or integrity-failed asset is
+ * caught (never left to crash the whole compile) and recorded on
+ * `imageResolutionError` so provider-readiness can classify it precisely —
+ * draft compilation must stay resilient even when a REQUIRED reference is
+ * broken; only prepareProviderReadySplitGeneration() enforces the policy.
  */
 export async function resolveSplitAuthorityImages(
   authorities: CompiledSplitAuthority[],
@@ -435,22 +471,30 @@ export async function resolveSplitAuthorityImages(
       resolved.push(image ? { ...authority, resolvedImage: image } : { ...authority });
       continue;
     }
-    const found = await resolveSplitReferenceAsset(
-      authority.imageSource.componentId,
-      authority.imageSource.assetRole,
-      inputs.referenceReader,
-    );
-    if (!found) {
-      resolved.push({ ...authority });
-      continue;
+    try {
+      const found = await resolveSplitReferenceAsset(
+        authority.imageSource.componentId,
+        authority.imageSource.assetRole,
+        inputs.referenceReader,
+      );
+      if (!found) {
+        resolved.push({ ...authority });
+        continue;
+      }
+      resolved.push({
+        ...authority,
+        resolvedImage: {
+          file: new File([new Uint8Array(found.bytes)], `${authority.imageSource.componentId}-construction`, { type: found.contentType }),
+          mime: found.contentType,
+        },
+      });
+    } catch (error) {
+      if (error instanceof SplitReferenceAssetError) {
+        resolved.push({ ...authority, imageResolutionError: { code: error.code } });
+        continue;
+      }
+      throw error;
     }
-    resolved.push({
-      ...authority,
-      resolvedImage: {
-        file: new File([new Uint8Array(found.bytes)], `${authority.imageSource.componentId}-construction`, { type: found.contentType }),
-        mime: found.contentType,
-      },
-    });
   }
   return resolved;
 }
@@ -506,7 +550,65 @@ export function buildSplitReferences(authorities: ResolvedSplitAuthority[]): Try
 }
 
 // ============================================================
-// F. FULL GENERATION PLAN (no provider invocation)
+// F. GENERATION READINESS
+// ------------------------------------------------------------
+// Draft compilation (compileSplitGenerationDraft) may describe an
+// unresolved REQUIRED image authority — this is what keeps compilation
+// usable in tests/development without any real reference photography.
+// Provider-ready compilation (prepareProviderReadySplitGeneration) is the
+// ONLY path that may ever be handed to the actual provider, and it fails
+// closed — never silently downgrading a REQUIRED authority to text-only —
+// whenever readiness is not READY.
+// ============================================================
+
+export type SplitGenerationReadiness =
+  | { status: "READY" }
+  | { status: "MISSING_REQUIRED_REFERENCE"; componentIds: string[] }
+  | { status: "REFERENCE_INTEGRITY_FAILURE"; componentIds: string[] };
+
+const INTEGRITY_ERROR_CODES = new Set<SplitReferenceAssetErrorCode>(["checksum_mismatch", "content_mismatch"]);
+
+/**
+ * Computes provider readiness from a resolved authority list. Only
+ * `governs`-scoped catalogue component IDs (e.g. "SUIT_UPPER_CLASSIC") ever
+ * appear in the result — never a private path, checksum, token, or any
+ * other Blob/storage internal, so this is always safe to surface (even
+ * indirectly) to the browser as a generic "not ready" state.
+ */
+export function computeSplitGenerationReadiness(authorities: ResolvedSplitAuthority[]): SplitGenerationReadiness {
+  const missing: string[] = [];
+  const integrityFailed: string[] = [];
+
+  for (const authority of authorities) {
+    if (authority.imageSource?.kind !== "construction-reference") continue;
+    const componentId = authority.imageSource.componentId;
+    if (getSplitReferencePolicy(componentId) !== "REQUIRED") continue;
+    if (authority.resolvedImage) continue;
+
+    if (authority.imageResolutionError && INTEGRITY_ERROR_CODES.has(authority.imageResolutionError.code)) {
+      integrityFailed.push(componentId);
+    } else {
+      // Covers: no registry entry at all, pending/inactive, or a transient
+      // Blob-unavailable error — all "the required reference isn't usable
+      // right now," as distinct from "it exists but failed verification."
+      missing.push(componentId);
+    }
+  }
+
+  if (integrityFailed.length > 0) return { status: "REFERENCE_INTEGRITY_FAILURE", componentIds: integrityFailed };
+  if (missing.length > 0) return { status: "MISSING_REQUIRED_REFERENCE", componentIds: missing };
+  return { status: "READY" };
+}
+
+export class SplitGenerationNotReadyError extends Error {
+  constructor(public readonly readiness: Exclude<SplitGenerationReadiness, { status: "READY" }>) {
+    super("Split generation is not provider-ready.");
+    this.name = "SplitGenerationNotReadyError";
+  }
+}
+
+// ============================================================
+// G. GENERATION PLAN ASSEMBLY (no provider invocation, ever, in this module)
 // ============================================================
 
 export type SplitGenerationPlan = {
@@ -517,17 +619,25 @@ export type SplitGenerationPlan = {
   prompt: string;
 };
 
+export type SplitGenerationDraft = SplitGenerationPlan & {
+  readiness: SplitGenerationReadiness;
+};
+
 /**
- * Assembles a complete, provider-ready generation plan for a validated
- * recipe. Does NOT call the OpenAI provider or any generation function —
- * a future route wires `{ person, fabric: <n/a>, references, prompt }`
- * (mapped as needed) into generateTryOn() itself, once SPLIT_GENERATION_ENABLED
- * is true and reference photography exists. This function only compiles.
+ * Compiles a DRAFT generation plan. May describe an unresolved REQUIRED
+ * image authority (falls back to text-only prose, per
+ * resolveSplitAuthorityImages) — this is what keeps the compiler usable in
+ * tests/development without any real reference photography. The attached
+ * `readiness` field reports whether this draft would actually be
+ * provider-ready; the draft itself is still fully returned either way, so
+ * callers/tests can inspect exactly what was (or wasn't) resolved. Never
+ * calls the OpenAI provider or any generation function — always compiles
+ * only.
  */
-export async function compileSplitGenerationPlan(
+export async function compileSplitGenerationDraft(
   recipe: NormalizedSplitRecipe,
   inputs: SplitAuthorityResolutionInputs,
-): Promise<SplitGenerationPlan> {
+): Promise<SplitGenerationDraft> {
   const plan = buildSplitAuthorityPlan(recipe);
   const authorities = await resolveSplitAuthorityImages(plan, inputs);
   return {
@@ -536,5 +646,34 @@ export async function compileSplitGenerationPlan(
     person: inputs.person,
     references: buildSplitReferences(authorities),
     prompt: compileSplitPrompt(authorities),
+    readiness: computeSplitGenerationReadiness(authorities),
+  };
+}
+
+/**
+ * Compiles a PROVIDER-READY generation plan, or throws
+ * `SplitGenerationNotReadyError`. This is the only function whose output
+ * may ever be handed to `generateTryOn()` — it never silently downgrades a
+ * REQUIRED image authority to text-only; if even one REQUIRED authority
+ * failed to resolve (missing, pending, unavailable, or a failed integrity
+ * check), generation is refused before any provider call. Still does not
+ * call the provider itself — that remains the route handler's job, gated
+ * additionally by SPLIT_GENERATION_ENABLED and every existing security
+ * check (auth, lock, rate limit) that runs before this is ever reached.
+ */
+export async function prepareProviderReadySplitGeneration(
+  recipe: NormalizedSplitRecipe,
+  inputs: SplitAuthorityResolutionInputs,
+): Promise<SplitGenerationPlan> {
+  const draft = await compileSplitGenerationDraft(recipe, inputs);
+  if (draft.readiness.status !== "READY") {
+    throw new SplitGenerationNotReadyError(draft.readiness);
+  }
+  return {
+    recipe: draft.recipe,
+    authorities: draft.authorities,
+    person: draft.person,
+    references: draft.references,
+    prompt: draft.prompt,
   };
 }

@@ -15,6 +15,7 @@ import {
   deriveActiveMaterialSlots,
   evaluateOptionCompatibility,
   findSplitOption,
+  getCanonicalMaterialGroups,
   getMaterialLinkGroups,
   getMissingRequiredComponents,
   getSplitOutfitRecipeStatus,
@@ -402,4 +403,137 @@ test("Material link groups are deterministic per upper design", () => {
 
   const threePieceGroups = getMaterialLinkGroups({ ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_THREE_PIECE" });
   assert.deepEqual(threePieceGroups, [["jacket-primary", "trouser-primary", "waistcoat-material"]]);
+});
+
+// ============================================================
+// CANONICAL MATERIAL GROUPS — shirt fabric independence (product correction)
+// ============================================================
+
+test("Shirt fabric is an independent uploaded-fabric canonical group, never linked to the suit fabric group", () => {
+  const classicState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_CLASSIC",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+  };
+  const groups = getCanonicalMaterialGroups(classicState);
+  assert.equal(groups.length, 2);
+  const groupIds = groups.map((g) => g.groupId).sort();
+  assert.deepEqual(groupIds, ["jacket-primary+trouser-primary", "shirt-material"].sort());
+});
+
+test("Three-Piece links the waistcoat into the suit fabric group but keeps shirt fabric independent", () => {
+  const threePieceState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+  };
+  const groups = getCanonicalMaterialGroups(threePieceState);
+  const groupIds = groups.map((g) => g.groupId).sort();
+  assert.deepEqual(groupIds, ["jacket-primary+trouser-primary+waistcoat-material", "shirt-material"].sort());
+});
+
+test("sanitizeSplitOutfitState: shirt fabric upload persists across an upper transition that keeps the shirt selection itself valid", () => {
+  const shirtFile = new File([Uint8Array.from([1, 2, 3])], "shirt.png", { type: "image/png" });
+  const classicState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_CLASSIC",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+    materialUploads: { "jacket-primary+trouser-primary": new File([Uint8Array.from([9])], "suit.png", { type: "image/png" }), "shirt-material": shirtFile },
+  };
+
+  // Double-Breasted, Three-Piece, and Statement all still allow
+  // SUIT_SHIRT_CLASSIC_FORMAL (STANDARD_SHIRT_IDS) — the shirt selection
+  // itself survives sanitizeSplitOutfitState's lower/shirt/waistcoat
+  // pruning, so the shirt-material slot stays active and the upload
+  // persists, exactly as required.
+  for (const upperId of ["SUIT_UPPER_DOUBLE_BREASTED", "SUIT_UPPER_THREE_PIECE", "SUIT_UPPER_STATEMENT"]) {
+    const sanitized = sanitizeSplitOutfitState({ ...classicState, upperId });
+    assert.equal(sanitized.shirtId, "SUIT_SHIRT_CLASSIC_FORMAL", `${upperId}: shirt selection itself must remain valid for this assertion to be meaningful`);
+    assert.equal(sanitized.materialUploads?.["shirt-material"], shirtFile, `shirt upload must persist when switching to ${upperId}`);
+  }
+});
+
+test("sanitizeSplitOutfitState: shirt fabric upload is dropped (deliberately) when the transition also invalidates the shirt selection itself", () => {
+  // Tuxedo only allows SUIT_SHIRT_TUXEDO_PLEATED — Classic Formal is
+  // invalid, so sanitizeSplitOutfitState nulls shirtId. With no shirt
+  // selected at all, there is no shirt-material slot to upload into, so
+  // the previously uploaded file is correctly pruned along with it — this
+  // is a consequence of "no component selected -> no material slot", not a
+  // material-specific special case.
+  const shirtFile = new File([Uint8Array.from([1, 2, 3])], "shirt.png", { type: "image/png" });
+  const classicState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_CLASSIC",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+    materialUploads: { "shirt-material": shirtFile },
+  };
+  const sanitized = sanitizeSplitOutfitState({ ...classicState, upperId: "SUIT_UPPER_TUXEDO" });
+  assert.equal(sanitized.shirtId, null);
+  assert.equal(sanitized.materialUploads?.["shirt-material"], undefined);
+});
+
+test("sanitizeSplitOutfitState: suit fabric upload persists only while the canonical suit group id stays the same", () => {
+  const suitFile = new File([Uint8Array.from([9])], "suit.png", { type: "image/png" });
+  const classicState: SplitOutfitState = {
+    family: "suit",
+    upperId: "SUIT_UPPER_CLASSIC",
+    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+    footwearId: "SUIT_SHOE_OXFORD",
+    accessoryIds: [],
+    materials: {},
+    materialUploads: { "jacket-primary+trouser-primary": suitFile },
+  };
+
+  // Double-Breasted and Statement both share the exact same suit group id
+  // ("jacket-primary+trouser-primary") as Classic, and both keep the
+  // trouser selection valid — the upload must survive these transitions.
+  for (const upperId of ["SUIT_UPPER_DOUBLE_BREASTED", "SUIT_UPPER_STATEMENT"]) {
+    const sanitized = sanitizeSplitOutfitState({ ...classicState, upperId });
+    assert.equal(sanitized.materialUploads?.["jacket-primary+trouser-primary"], suitFile, `suit upload must persist for ${upperId}`);
+  }
+
+  // Three-Piece's suit group id is different ("...+waistcoat-material") once
+  // a waistcoat is actually selected — the stale Classic-shaped upload must
+  // be dropped then, not silently reused under a group id the server would
+  // no longer expect. (Until a waistcoat is chosen, Three-Piece's REQUIRED-
+  // but-unselected waistcoat leaves the suit group temporarily identical to
+  // Classic's — see the dedicated INCOMPLETE-state case below.)
+  const switchedToThreePieceWithWaistcoat = sanitizeSplitOutfitState({
+    ...classicState,
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
+  });
+  assert.equal(switchedToThreePieceWithWaistcoat.materialUploads?.["jacket-primary+trouser-primary"], undefined);
+  assert.equal(Object.keys(switchedToThreePieceWithWaistcoat.materialUploads ?? {}).length, 0);
+
+  // Immediately after switching to Three-Piece, before a waistcoat is
+  // chosen, the required-but-unselected waistcoat leaves only jacket+trouser
+  // active — coincidentally the same group id as Classic — so the upload is
+  // (correctly) retained rather than needlessly discarded while the recipe
+  // is still INCOMPLETE.
+  const switchedToThreePieceNoWaistcoatYet = sanitizeSplitOutfitState({ ...classicState, upperId: "SUIT_UPPER_THREE_PIECE" });
+  assert.equal(switchedToThreePieceNoWaistcoatYet.waistcoatId, null);
+  assert.equal(switchedToThreePieceNoWaistcoatYet.materialUploads?.["jacket-primary+trouser-primary"], suitFile);
 });
