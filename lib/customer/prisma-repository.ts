@@ -4,8 +4,11 @@ import type { FinalOutfitSnapshot } from "@/lib/showroom/final-outfit";
 import { Prisma } from "@/lib/generated/prisma/client";
 import type {
   Customer as PrismaCustomer,
+  Fabric as PrismaFabric,
+  FabricVariant as PrismaFabricVariant,
   MeasurementProfile as PrismaMeasurementProfile,
   Order as PrismaOrder,
+  OrderMaterialSnapshot as PrismaOrderMaterialSnapshot,
   SavedOutfit as PrismaSavedOutfit,
   ShowroomSession as PrismaShowroomSession,
 } from "@/lib/generated/prisma/client";
@@ -14,20 +17,28 @@ import {
   DuplicatePhoneError,
   type CustomerRepository,
   type NewCustomerInput,
+  type NewFabricInput,
+  type NewFabricVariantInput,
   type NewMeasurementInput,
   type NewOrderInput,
   type NewSavedOutfitInput,
   type NewSessionInput,
+  type SetOrderMaterialInput,
   type CustomerUpdateInput,
   type SessionUpdateInput,
 } from "./repository";
 import type {
   Customer,
+  Fabric,
+  FabricStatus,
+  FabricVariant,
   MeasurementBlock,
   MeasurementProfile,
   Order,
+  OrderMaterialSnapshot,
   OrderMeasurementSnapshot,
   OrderStatus,
+  MaterialRole,
   SavedOutfit,
   SavedOutfitSourceType,
   ShowroomSession,
@@ -124,6 +135,49 @@ function mapOrder(row: PrismaOrder): Order {
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapFabric(row: PrismaFabric): Fabric {
+  return {
+    id: row.id,
+    name: row.name,
+    composition: row.composition,
+    weight: row.weight,
+    season: row.season,
+    colour: row.colour,
+    supplier: row.supplier,
+    status: row.status as FabricStatus,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapFabricVariant(row: PrismaFabricVariant): FabricVariant {
+  return {
+    id: row.id,
+    fabricId: row.fabricId,
+    colour: row.colour,
+    isAvailable: row.isAvailable,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapOrderMaterialSnapshot(row: PrismaOrderMaterialSnapshot): OrderMaterialSnapshot {
+  return {
+    id: row.id,
+    orderId: row.orderId,
+    role: row.role as MaterialRole,
+    fabricId: row.fabricId,
+    fabricVariantId: row.fabricVariantId,
+    fabricName: row.fabricName,
+    composition: row.composition,
+    weight: row.weight,
+    season: row.season,
+    colour: row.colour,
+    supplier: row.supplier,
+    variantColour: row.variantColour,
+    selectedBy: row.selectedBy,
+    selectedAt: row.selectedAt.toISOString(),
   };
 }
 
@@ -352,5 +406,104 @@ export const prismaCustomerRepository: CustomerRepository = {
       orderBy: { createdAt: "desc" },
     });
     return rows.map(mapOrder);
+  },
+
+  async createFabric(input: NewFabricInput): Promise<Fabric> {
+    const client = getPrismaClient();
+    const row = await client.fabric.create({
+      data: {
+        name: input.name,
+        composition: input.composition,
+        weight: input.weight,
+        season: input.season,
+        colour: input.colour,
+        supplier: input.supplier,
+        status: input.status,
+      },
+    });
+    return mapFabric(row);
+  },
+
+  async getFabricById(id: string): Promise<Fabric | null> {
+    const client = getPrismaClient();
+    const row = await client.fabric.findUnique({ where: { id } });
+    return row ? mapFabric(row) : null;
+  },
+
+  async listFabrics(): Promise<Fabric[]> {
+    const client = getPrismaClient();
+    const rows = await client.fabric.findMany({ orderBy: { name: "asc" } });
+    return rows.map(mapFabric);
+  },
+
+  async createFabricVariant(input: NewFabricVariantInput): Promise<FabricVariant> {
+    const client = getPrismaClient();
+    const row = await client.fabricVariant.create({
+      data: {
+        fabricId: input.fabricId,
+        colour: input.colour,
+        isAvailable: input.isAvailable,
+      },
+    });
+    return mapFabricVariant(row);
+  },
+
+  async getFabricVariantById(id: string): Promise<FabricVariant | null> {
+    const client = getPrismaClient();
+    const row = await client.fabricVariant.findUnique({ where: { id } });
+    return row ? mapFabricVariant(row) : null;
+  },
+
+  async listFabricVariants(fabricId: string): Promise<FabricVariant[]> {
+    const client = getPrismaClient();
+    const rows = await client.fabricVariant.findMany({
+      where: { fabricId },
+      orderBy: { colour: "asc" },
+    });
+    return rows.map(mapFabricVariant);
+  },
+
+  async setOrderMaterial(input: SetOrderMaterialInput): Promise<OrderMaterialSnapshot> {
+    const client = getPrismaClient();
+    const row = await client.orderMaterialSnapshot.upsert({
+      where: { orderId_role: { orderId: input.orderId, role: input.role } },
+      create: {
+        orderId: input.orderId,
+        role: input.role,
+        fabricId: input.fabricId,
+        fabricVariantId: input.fabricVariantId,
+        fabricName: input.fabricName,
+        composition: input.composition,
+        weight: input.weight,
+        season: input.season,
+        colour: input.colour,
+        supplier: input.supplier,
+        variantColour: input.variantColour,
+        selectedBy: input.selectedBy,
+      },
+      update: {
+        fabricId: input.fabricId,
+        fabricVariantId: input.fabricVariantId,
+        fabricName: input.fabricName,
+        composition: input.composition,
+        weight: input.weight,
+        season: input.season,
+        colour: input.colour,
+        supplier: input.supplier,
+        variantColour: input.variantColour,
+        selectedBy: input.selectedBy,
+        selectedAt: new Date(),
+      },
+    });
+    return mapOrderMaterialSnapshot(row);
+  },
+
+  async listOrderMaterials(orderId: string): Promise<OrderMaterialSnapshot[]> {
+    const client = getPrismaClient();
+    const rows = await client.orderMaterialSnapshot.findMany({
+      where: { orderId },
+      orderBy: { role: "asc" },
+    });
+    return rows.map(mapOrderMaterialSnapshot);
   },
 };

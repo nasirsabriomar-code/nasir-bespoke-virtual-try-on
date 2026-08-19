@@ -208,7 +208,111 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  materialSnapshots OrderMaterialSnapshot[]
+
   @@index([customerId])
   @@index([savedOutfitId])
   @@map("orders")
+}
+
+// ============================================================
+// PHASE 4B — FABRIC INTELLIGENCE FOUNDATION
+// ------------------------------------------------------------
+// A curated fabric catalogue plus the ability for an Order to remember
+// exactly which fabric (and optional variant) was chosen for it. This is
+// deliberately NOT inventory or supplier management: no stock counts, no
+// per-location quantities, no reorder thresholds, no pricing — only the
+// descriptive material facts a bespoke order needs to preserve. Fabric rows
+// are curated business data entered by staff, never AI-generated.
+// ============================================================
+
+enum FabricStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// The fabric catalogue. `colour` here is the fabric's own reference colour
+/// (e.g. the swatch as photographed/labelled); FabricVariant exists
+/// separately for genuine colourway/availability variation on top of that.
+model Fabric {
+  id          String   @id @default(uuid())
+  name        String
+  composition String
+  weight      String
+  season      String
+  colour      String
+  supplier    String?
+  status      FabricStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+
+  variants               FabricVariant[]
+  orderMaterialSnapshots OrderMaterialSnapshot[]
+
+  @@map("fabrics")
+}
+
+/// A fabric may have variants — e.g. the same cloth in a different
+/// colourway, or currently unavailable. Deliberately minimal: colour +
+/// availability only. This is NOT inventory (no stock counts, no
+/// per-location quantities) — `isAvailable` is a simple staff-set flag.
+model FabricVariant {
+  id       String @id @default(uuid())
+  fabricId String
+  fabric   Fabric @relation(fields: [fabricId], references: [id], onDelete: Cascade)
+
+  colour      String
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  orderMaterialSnapshots OrderMaterialSnapshot[]
+
+  @@index([fabricId])
+  @@map("fabric_variants")
+}
+
+enum MaterialRole {
+  SUIT_FABRIC
+  SHIRT_FABRIC
+}
+
+/// The order's material truth. Like Order.outfitSnapshot/measurementSnapshot,
+/// this preserves what was actually selected — fabricName/composition/
+/// weight/season/colour/supplier/variantColour are all COPIED at selection
+/// time, never re-derived from the live Fabric/FabricVariant rows, so a
+/// snapshot stays fully readable exactly as chosen even if the fabric is
+/// later edited or retired. fabricId/fabricVariantId are still kept as real
+/// foreign keys (ON DELETE RESTRICT) purely so a fabric/variant that has
+/// been used on an order can never be deleted out from under it — the
+/// snapshot columns, not these FKs, are what the app actually reads back.
+/// One row per (orderId, role) — re-selecting a role's fabric replaces the
+/// existing row rather than appending a new one (this is a live selection,
+/// not an append-only history like MeasurementProfile).
+model OrderMaterialSnapshot {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  role MaterialRole
+
+  fabricId String
+  fabric   Fabric @relation(fields: [fabricId], references: [id], onDelete: Restrict)
+
+  fabricVariantId String?
+  fabricVariant   FabricVariant? @relation(fields: [fabricVariantId], references: [id], onDelete: Restrict)
+
+  fabricName    String
+  composition   String
+  weight        String
+  season        String
+  colour        String
+  supplier      String?
+  variantColour String?
+
+  /// Staff username who made this selection — server-derived, never client-supplied.
+  selectedBy String
+  selectedAt DateTime @default(now())
+
+  @@unique([orderId, role])
+  @@index([orderId])
+  @@map("order_material_snapshots")
 }

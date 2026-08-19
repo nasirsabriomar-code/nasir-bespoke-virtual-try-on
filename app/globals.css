@@ -3386,6 +3386,42 @@ a:focus-visible {
   gap: 10px;
 }
 
+/* ORDER MATERIALS (Phase 4B) */
+.order-materials-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.order-materials-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.order-materials-role-label {
+  color: var(--atelier-gold);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.order-materials-current {
+  margin: 0;
+}
+.order-materials-picker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.order-materials-picker select {
+  background: var(--atelier-interactive);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-text);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .split-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -3420,6 +3456,8 @@ a:focus-visible {
   .measurement-history-entry-header { flex-direction: column; align-items: flex-start; gap: 2px; }
   .order-detail-actions { flex-direction: column; align-items: stretch; }
   .order-detail-transitions { flex-direction: column; }
+  .order-materials-picker { flex-direction: column; align-items: stretch; }
+  .order-materials-picker select { width: 100%; }
   .customer-outfit-list-item { flex-wrap: wrap; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { handleCreateCustomerRequest, handleGetCustomerRequest } from "@/lib/customer-handler";
+import { handleListFabricsRequest } from "@/lib/fabric-handler";
+import { handleListOrderMaterialsRequest } from "@/lib/order-material-handler";
 import { authAs, jsonRequest, OWNER_USER } from "./customer-test-http";
 
 /**
@@ -34,6 +36,23 @@ test("POST /api/customers returns 503 (not a crash) when the database is not con
 test("GET /api/customers/[id] returns 503 (not a crash) when the database is not configured", async () => {
   const response = await handleGetCustomerRequest(
     jsonRequest("http://localhost/api/customers/00000000-0000-4000-8000-000000000000", "GET"),
+    "00000000-0000-4000-8000-000000000000",
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("GET /api/fabrics returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleListFabricsRequest(
+    jsonRequest("http://localhost/api/fabrics", "GET"),
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("GET /api/orders/[id]/materials returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleListOrderMaterialsRequest(
+    jsonRequest("http://localhost/api/orders/00000000-0000-4000-8000-000000000000/materials", "GET"),
     "00000000-0000-4000-8000-000000000000",
     { authenticate: authAs(OWNER_USER) },
   );

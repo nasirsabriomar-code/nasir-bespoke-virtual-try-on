@@ -4,8 +4,8 @@ import {
   SHIRT_MEASUREMENT_FIELDS,
   TROUSER_MEASUREMENT_FIELDS,
 } from "./measurement-fields";
-import { CUSTOMER_PREFERRED_COLOUR_VALUES, CUSTOMER_PREFERRED_FIT_VALUES } from "./types";
-import type { CustomerPreferences, MeasurementBlock, OrderStatus, ShowroomSessionStatus } from "./types";
+import { CUSTOMER_PREFERRED_COLOUR_VALUES, CUSTOMER_PREFERRED_FIT_VALUES, MATERIAL_ROLE_VALUES } from "./types";
+import type { CustomerPreferences, MaterialRole, MeasurementBlock, OrderStatus, ShowroomSessionStatus } from "./types";
 
 export type CustomerValidationErrorCode =
   | "malformed_request"
@@ -17,7 +17,9 @@ export type CustomerValidationErrorCode =
   | "invalid_occasion"
   | "invalid_session_transition"
   | "invalid_source_type"
-  | "invalid_order_transition";
+  | "invalid_order_transition"
+  | "invalid_fabric_field"
+  | "invalid_material_role";
 
 export class CustomerValidationError extends Error {
   constructor(
@@ -230,4 +232,34 @@ export function assertValidOrderTransition(current: OrderStatus, next: OrderStat
       `Cannot move an order from ${current} to ${next}.`,
     );
   }
+}
+
+// ============================================================
+// FABRIC (Phase 4B)
+// ------------------------------------------------------------
+// Fabric fields are plain descriptive strings (never free-form beyond a
+// length cap) — curated business data entered by staff, never inferred.
+// ============================================================
+
+const FABRIC_TEXT_FIELD_MAX_LENGTH = 120;
+const FABRIC_SUPPLIER_MAX_LENGTH = 120;
+
+export function validateFabricTextField(value: unknown, fieldLabel: string): string {
+  if (!isNonEmptyString(value) || value.trim().length > FABRIC_TEXT_FIELD_MAX_LENGTH) {
+    throw new CustomerValidationError("invalid_fabric_field", `Please provide a valid ${fieldLabel}.`);
+  }
+  return value.trim();
+}
+
+export function validateFabricSupplier(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  if (value.trim().length > FABRIC_SUPPLIER_MAX_LENGTH) {
+    throw new CustomerValidationError("invalid_fabric_field", "Please provide a valid supplier name.");
+  }
+  return value.trim();
+}
+
+export function isMaterialRole(value: unknown): value is MaterialRole {
+  return typeof value === "string" && MATERIAL_ROLE_VALUES.includes(value as MaterialRole);
 }

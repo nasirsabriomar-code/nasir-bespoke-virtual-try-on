@@ -2,14 +2,27 @@ import type {
   CustomerRepository,
   CustomerUpdateInput,
   NewCustomerInput,
+  NewFabricInput,
+  NewFabricVariantInput,
   NewMeasurementInput,
   NewOrderInput,
   NewSavedOutfitInput,
   NewSessionInput,
   SessionUpdateInput,
+  SetOrderMaterialInput,
 } from "@/lib/customer/repository";
 import { DuplicatePhoneError } from "@/lib/customer/repository";
-import type { Customer, MeasurementProfile, Order, OrderStatus, SavedOutfit, ShowroomSession } from "@/lib/customer/types";
+import type {
+  Customer,
+  Fabric,
+  FabricVariant,
+  MeasurementProfile,
+  Order,
+  OrderMaterialSnapshot,
+  OrderStatus,
+  SavedOutfit,
+  ShowroomSession,
+} from "@/lib/customer/types";
 
 /**
  * A fully in-memory implementation of CustomerRepository — used by every
@@ -25,6 +38,10 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
   let outfits = new Map<string, SavedOutfit[]>();
   let outfitsById = new Map<string, SavedOutfit>();
   let orders = new Map<string, Order>();
+  let fabrics = new Map<string, Fabric>();
+  let fabricVariants = new Map<string, FabricVariant>();
+  /** Keyed by `${orderId}:${role}` to mirror the real @@unique([orderId, role]) constraint. */
+  let orderMaterials = new Map<string, OrderMaterialSnapshot>();
 
   function now() {
     return new Date().toISOString();
@@ -38,6 +55,9 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       outfits = new Map();
       outfitsById = new Map();
       orders = new Map();
+      fabrics = new Map();
+      fabricVariants = new Map();
+      orderMaterials = new Map();
     },
 
     async createCustomer(input: NewCustomerInput): Promise<Customer> {
@@ -208,6 +228,81 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       return [...orders.values()]
         .filter((order) => order.customerId === customerId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
+    async createFabric(input: NewFabricInput): Promise<Fabric> {
+      const fabric: Fabric = {
+        id: crypto.randomUUID(),
+        name: input.name,
+        composition: input.composition,
+        weight: input.weight,
+        season: input.season,
+        colour: input.colour,
+        supplier: input.supplier,
+        status: input.status,
+        createdAt: now(),
+      };
+      fabrics.set(fabric.id, fabric);
+      return fabric;
+    },
+
+    async getFabricById(id: string): Promise<Fabric | null> {
+      return fabrics.get(id) ?? null;
+    },
+
+    async listFabrics(): Promise<Fabric[]> {
+      return [...fabrics.values()].sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    async createFabricVariant(input: NewFabricVariantInput): Promise<FabricVariant> {
+      const variant: FabricVariant = {
+        id: crypto.randomUUID(),
+        fabricId: input.fabricId,
+        colour: input.colour,
+        isAvailable: input.isAvailable,
+        createdAt: now(),
+      };
+      fabricVariants.set(variant.id, variant);
+      return variant;
+    },
+
+    async getFabricVariantById(id: string): Promise<FabricVariant | null> {
+      return fabricVariants.get(id) ?? null;
+    },
+
+    async listFabricVariants(fabricId: string): Promise<FabricVariant[]> {
+      return [...fabricVariants.values()]
+        .filter((variant) => variant.fabricId === fabricId)
+        .sort((a, b) => a.colour.localeCompare(b.colour));
+    },
+
+    async setOrderMaterial(input: SetOrderMaterialInput): Promise<OrderMaterialSnapshot> {
+      const key = `${input.orderId}:${input.role}`;
+      const existing = orderMaterials.get(key);
+      const snapshot: OrderMaterialSnapshot = {
+        id: existing?.id ?? crypto.randomUUID(),
+        orderId: input.orderId,
+        role: input.role,
+        fabricId: input.fabricId,
+        fabricVariantId: input.fabricVariantId,
+        fabricName: input.fabricName,
+        composition: input.composition,
+        weight: input.weight,
+        season: input.season,
+        colour: input.colour,
+        supplier: input.supplier,
+        variantColour: input.variantColour,
+        selectedBy: input.selectedBy,
+        selectedAt: now(),
+      };
+      orderMaterials.set(key, snapshot);
+      return snapshot;
+    },
+
+    async listOrderMaterials(orderId: string): Promise<OrderMaterialSnapshot[]> {
+      return [...orderMaterials.values()]
+        .filter((snapshot) => snapshot.orderId === orderId)
+        .sort((a, b) => a.role.localeCompare(b.role));
     },
   };
 

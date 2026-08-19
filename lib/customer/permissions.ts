@@ -20,6 +20,16 @@ import type { StaffRole } from "./types";
  * Creating the order itself (DRAFT) is still a STAFF action — it is the
  * natural conclusion of the showroom flow STAFF already owns end-to-end;
  * everything that happens to the order AFTER that is a MANAGER/OWNER call.
+ *
+ * Fabric catalogue entries are curated business data — creating/editing a
+ * fabric (fabric:create) is reserved for MANAGER/OWNER, same rationale as
+ * customer:create. fabric:read is open to STAFF (they need to browse the
+ * catalogue while placing an order). Attaching a fabric selection to an
+ * order (order:material:update) is STAFF-permitted: like order:create, it
+ * is part of the same showroom finalization STAFF already owns end-to-end,
+ * and is a selection, not a production-lifecycle change — it is deliberately
+ * NOT bundled with order:update (status transitions), which stays
+ * MANAGER/OWNER only.
  */
 export type CustomerAction =
   | "customer:create"
@@ -34,7 +44,10 @@ export type CustomerAction =
   | "outfit:read"
   | "order:create"
   | "order:read"
-  | "order:update";
+  | "order:update"
+  | "fabric:create"
+  | "fabric:read"
+  | "order:material:update";
 
 const ALL_ACTIONS: CustomerAction[] = [
   "customer:create",
@@ -50,6 +63,9 @@ const ALL_ACTIONS: CustomerAction[] = [
   "order:create",
   "order:read",
   "order:update",
+  "fabric:create",
+  "fabric:read",
+  "order:material:update",
 ];
 
 const STAFF_ACTIONS: CustomerAction[] = [
@@ -62,6 +78,8 @@ const STAFF_ACTIONS: CustomerAction[] = [
   "outfit:read",
   "order:create",
   "order:read",
+  "fabric:read",
+  "order:material:update",
 ];
 
 const ROLE_PERMISSIONS: Record<StaffRole, ReadonlySet<CustomerAction>> = {

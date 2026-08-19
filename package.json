@@ -13,7 +13,7 @@
     "build:next": "next build --webpack",
     "start:next": "next start",
     "test": "npm run test:security && npm run test:catalog && npm run test:bespoke && npm run test:render",
-    "test:security": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/security.test.ts tests/generation-guard.test.ts tests/split-try-on.test.ts tests/showroom-finalize.test.ts tests/customer.test.ts tests/measurement.test.ts tests/session.test.ts tests/saved-outfit.test.ts tests/customer-database-gate.test.ts tests/customer-acceptance.test.ts tests/order.test.ts",
+    "test:security": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/security.test.ts tests/generation-guard.test.ts tests/split-try-on.test.ts tests/showroom-finalize.test.ts tests/customer.test.ts tests/measurement.test.ts tests/session.test.ts tests/saved-outfit.test.ts tests/customer-database-gate.test.ts tests/customer-acceptance.test.ts tests/order.test.ts tests/fabric.test.ts tests/order-material.test.ts",
     "test:catalog": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/catalog.test.ts tests/level1-catalog.test.ts tests/level1-try-on.test.ts tests/level1-migration.test.ts tests/split-outfit.test.ts tests/split-outfit-compiler.test.ts tests/split-reference-ingestion.test.ts tests/showroom-look-library.test.ts tests/showroom-recommendation.test.ts tests/showroom-look-application.test.ts",
     "test:bespoke": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/bespoke.test.ts",
     "test:render": "node --test tests/rendered-html.test.mjs",

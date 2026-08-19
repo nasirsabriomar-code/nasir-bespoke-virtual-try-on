@@ -4,6 +4,7 @@ import { useState } from "react";
 import { findSplitOption } from "@/lib/split-outfit/compatibility";
 import { ORDER_STATUS_TRANSITIONS } from "@/lib/customer/validation";
 import type { Customer, Order, OrderStatus } from "@/lib/customer/types";
+import { OrderMaterials } from "./OrderMaterials";
 
 type OrderDetailProps = {
   order: Order;
@@ -129,6 +130,8 @@ export function OrderDetail({ order, customer, onStatusChanged, onClose }: Order
         </div>
         <p className="order-detail-meta">Recorded by {measurements.recordedBy} on {formatDateTime(measurements.recordedAt)}</p>
       </div>
+
+      <OrderMaterials orderId={order.id} />
 
       <div className="order-detail-actions">
         <button type="button" className="showroom-link-button" onClick={onClose}>

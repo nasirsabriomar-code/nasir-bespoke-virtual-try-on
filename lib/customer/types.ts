@@ -197,3 +197,67 @@ export type Order = {
   createdAt: string;
   updatedAt: string;
 };
+
+// ============================================================
+// FABRIC (Phase 4B)
+// ============================================================
+
+/**
+ * Curated fabric catalogue — business data entered directly by staff, never
+ * AI-generated or inferred. This is NOT inventory: no stock counts,
+ * warehouse locations, or reorder thresholds live here.
+ */
+export type FabricStatus = "ACTIVE" | "INACTIVE";
+
+export type Fabric = {
+  id: string;
+  name: string;
+  composition: string;
+  weight: string;
+  season: string;
+  colour: string;
+  supplier: string | null;
+  status: FabricStatus;
+  createdAt: string;
+};
+
+/**
+ * A fabric may have variants — the same cloth in a different colourway, or
+ * currently unavailable. Deliberately minimal: colour + availability only.
+ */
+export type FabricVariant = {
+  id: string;
+  fabricId: string;
+  colour: string;
+  isAvailable: boolean;
+  createdAt: string;
+};
+
+/** Closed set — the only material roles an order can carry a selection for (see the Order Detail "Materials" UI). */
+export type MaterialRole = "SUIT_FABRIC" | "SHIRT_FABRIC";
+export const MATERIAL_ROLE_VALUES: readonly MaterialRole[] = ["SUIT_FABRIC", "SHIRT_FABRIC"];
+
+/**
+ * The order's material truth for one role — a full copy of the fabric (and
+ * optional variant) facts at the moment of selection, not a live reference.
+ * Mirrors OrderMeasurementSnapshot: an order must remain readable exactly
+ * as it was selected even if the fabric catalogue later changes or the
+ * fabric/variant is retired.
+ */
+export type OrderMaterialSnapshot = {
+  id: string;
+  orderId: string;
+  role: MaterialRole;
+  fabricId: string;
+  fabricVariantId: string | null;
+  fabricName: string;
+  composition: string;
+  weight: string;
+  season: string;
+  colour: string;
+  supplier: string | null;
+  variantColour: string | null;
+  /** Staff username who made this selection — server-derived. */
+  selectedBy: string;
+  selectedAt: string;
+};

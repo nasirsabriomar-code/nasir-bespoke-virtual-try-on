@@ -2,9 +2,14 @@ import type { FinalOutfitSnapshot } from "@/lib/showroom/final-outfit";
 import type {
   Customer,
   CustomerPreferences,
+  Fabric,
+  FabricStatus,
+  FabricVariant,
+  MaterialRole,
   MeasurementBlock,
   MeasurementProfile,
   Order,
+  OrderMaterialSnapshot,
   OrderMeasurementSnapshot,
   OrderStatus,
   SavedOutfit,
@@ -73,6 +78,28 @@ export class MeasurementRequiredError extends Error {
   }
 }
 
+export class FabricNotFoundError extends Error {
+  constructor() {
+    super("Fabric not found.");
+    this.name = "FabricNotFoundError";
+  }
+}
+
+export class FabricVariantNotFoundError extends Error {
+  constructor() {
+    super("Fabric variant not found.");
+    this.name = "FabricVariantNotFoundError";
+  }
+}
+
+/** Thrown when a selection targets a retired fabric, an unavailable variant, or a variant that doesn't belong to the given fabric. */
+export class InvalidMaterialSelectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidMaterialSelectionError";
+  }
+}
+
 /**
  * Thrown when a write references another record that does not exist, or
  * exists but belongs to a different customer — e.g. a SavedOutfit citing a
@@ -136,6 +163,37 @@ export type NewOrderInput = {
   createdBy: string;
 };
 
+export type NewFabricInput = {
+  name: string;
+  composition: string;
+  weight: string;
+  season: string;
+  colour: string;
+  supplier: string | null;
+  status: FabricStatus;
+};
+
+export type NewFabricVariantInput = {
+  fabricId: string;
+  colour: string;
+  isAvailable: boolean;
+};
+
+export type SetOrderMaterialInput = {
+  orderId: string;
+  role: MaterialRole;
+  fabricId: string;
+  fabricVariantId: string | null;
+  fabricName: string;
+  composition: string;
+  weight: string;
+  season: string;
+  colour: string;
+  supplier: string | null;
+  variantColour: string | null;
+  selectedBy: string;
+};
+
 /**
  * The customer-domain persistence contract. lib/customer/prisma-repository.ts
  * is the only production implementation (Postgres via Prisma). Route
@@ -166,4 +224,15 @@ export interface CustomerRepository {
   getOrderById(id: string): Promise<Order | null>;
   updateOrderStatus(id: string, status: OrderStatus): Promise<Order | null>;
   listCustomerOrders(customerId: string): Promise<Order[]>;
+
+  createFabric(input: NewFabricInput): Promise<Fabric>;
+  getFabricById(id: string): Promise<Fabric | null>;
+  listFabrics(): Promise<Fabric[]>;
+
+  createFabricVariant(input: NewFabricVariantInput): Promise<FabricVariant>;
+  getFabricVariantById(id: string): Promise<FabricVariant | null>;
+  listFabricVariants(fabricId: string): Promise<FabricVariant[]>;
+
+  setOrderMaterial(input: SetOrderMaterialInput): Promise<OrderMaterialSnapshot>;
+  listOrderMaterials(orderId: string): Promise<OrderMaterialSnapshot[]>;
 }
