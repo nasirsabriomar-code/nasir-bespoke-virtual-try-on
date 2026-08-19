@@ -197,6 +197,21 @@ export type NewFabricVariantInput = {
   isAvailable: boolean;
 };
 
+export type FabricUpdateInput = {
+  name?: string;
+  composition?: string;
+  weight?: string;
+  season?: string;
+  colour?: string;
+  supplier?: string | null;
+  status?: FabricStatus;
+};
+
+export type FabricVariantUpdateInput = {
+  colour?: string;
+  isAvailable?: boolean;
+};
+
 export type SetOrderMaterialInput = {
   orderId: string;
   role: MaterialRole;
@@ -263,10 +278,12 @@ export interface CustomerRepository {
 
   createFabric(input: NewFabricInput): Promise<Fabric>;
   getFabricById(id: string): Promise<Fabric | null>;
+  updateFabric(id: string, patch: FabricUpdateInput): Promise<Fabric | null>;
   listFabrics(): Promise<Fabric[]>;
 
   createFabricVariant(input: NewFabricVariantInput): Promise<FabricVariant>;
   getFabricVariantById(id: string): Promise<FabricVariant | null>;
+  updateFabricVariant(id: string, patch: FabricVariantUpdateInput): Promise<FabricVariant | null>;
   listFabricVariants(fabricId: string): Promise<FabricVariant[]>;
 
   setOrderMaterial(input: SetOrderMaterialInput): Promise<OrderMaterialSnapshot>;

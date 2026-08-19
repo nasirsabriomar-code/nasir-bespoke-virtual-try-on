@@ -21,10 +21,10 @@ import type { StaffRole } from "./types";
  * natural conclusion of the showroom flow STAFF already owns end-to-end;
  * everything that happens to the order AFTER that is a MANAGER/OWNER call.
  *
- * Fabric catalogue entries are curated business data — creating/editing a
- * fabric (fabric:create) is reserved for MANAGER/OWNER, same rationale as
- * customer:create. fabric:read is open to STAFF (they need to browse the
- * catalogue while placing an order). Attaching a fabric selection to an
+ * Fabric catalogue entries are curated business data — creating a fabric
+ * (fabric:create) and editing/retiring one (fabric:update) are reserved
+ * for MANAGER/OWNER, same rationale as customer:create. fabric:read is
+ * open to STAFF (they need to browse the catalogue while placing an order). Attaching a fabric selection to an
  * order (order:material:update) is STAFF-permitted: like order:create, it
  * is part of the same showroom finalization STAFF already owns end-to-end,
  * and is a selection, not a production-lifecycle change — it is deliberately
@@ -73,6 +73,7 @@ export type CustomerAction =
   | "order:update"
   | "fabric:create"
   | "fabric:read"
+  | "fabric:update"
   | "order:material:update"
   | "production:create"
   | "production:read"
@@ -95,6 +96,7 @@ const ALL_ACTIONS: CustomerAction[] = [
   "order:update",
   "fabric:create",
   "fabric:read",
+  "fabric:update",
   "order:material:update",
   "production:create",
   "production:read",

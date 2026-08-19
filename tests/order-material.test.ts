@@ -4,7 +4,12 @@ import { handleCreateCustomerRequest } from "@/lib/customer-handler";
 import { handleCreateMeasurementRequest } from "@/lib/measurement-handler";
 import { handleCreateSavedOutfitRequest } from "@/lib/saved-outfit-handler";
 import { handleCreateOrderRequest } from "@/lib/order-handler";
-import { handleCreateFabricRequest, handleCreateFabricVariantRequest } from "@/lib/fabric-handler";
+import {
+  handleCreateFabricRequest,
+  handleCreateFabricVariantRequest,
+  handleUpdateFabricRequest,
+  handleUpdateFabricVariantRequest,
+} from "@/lib/fabric-handler";
 import { handleListOrderMaterialsRequest, handleSetOrderMaterialRequest } from "@/lib/order-material-handler";
 import { createFakeCustomerRepository } from "./customer-fake-repository";
 import { authAs, jsonRequest, MANAGER_USER, OWNER_USER, STAFF_USER } from "./customer-test-http";
@@ -398,4 +403,137 @@ test("MANAGER may also attach materials (not STAFF-exclusive)", async () => {
     { authenticate: authAs(MANAGER_USER), repository },
   );
   assert.equal(response.status, 201);
+});
+
+test("editing live fabric metadata never changes an existing order material snapshot", async () => {
+  const order = await createTestOrder();
+  const fabric = await createTestFabric({ name: "Italian Super 120 Wool", colour: "Navy", composition: "100% Wool", supplier: "Loro Piana" });
+  await handleSetOrderMaterialRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "POST", { role: "SUIT_FABRIC", fabricId: fabric.id }),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+
+  await handleUpdateFabricRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}`, "PATCH", {
+      name: "Renamed Cloth",
+      colour: "Black",
+      composition: "Cashmere",
+      supplier: "Someone Else",
+    }),
+    fabric.id,
+    { authenticate: authAs(OWNER_USER), repository },
+  );
+
+  const listed = await handleListOrderMaterialsRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "GET"),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+  const { materials } = await listed.json();
+  assert.equal(materials[0].fabricName, "Italian Super 120 Wool");
+  assert.equal(materials[0].colour, "Navy");
+  assert.equal(materials[0].composition, "100% Wool");
+  assert.equal(materials[0].supplier, "Loro Piana");
+});
+
+test("retiring a fabric never changes an existing order material snapshot", async () => {
+  const order = await createTestOrder();
+  const fabric = await createTestFabric({ name: "Italian Super 120 Wool" });
+  await handleSetOrderMaterialRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "POST", { role: "SUIT_FABRIC", fabricId: fabric.id }),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+  await handleUpdateFabricRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}`, "PATCH", { status: "INACTIVE" }),
+    fabric.id,
+    { authenticate: authAs(OWNER_USER), repository },
+  );
+  const listed = await handleListOrderMaterialsRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "GET"),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+  const { materials } = await listed.json();
+  assert.equal(materials[0].fabricName, "Italian Super 120 Wool");
+});
+
+test("changing variant colour or availability never changes an existing order material snapshot", async () => {
+  const order = await createTestOrder();
+  const fabric = await createTestFabric();
+  const variant = await (await handleCreateFabricVariantRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}/variants`, "POST", { colour: "Charcoal" }),
+    fabric.id,
+    { authenticate: authAs(MANAGER_USER), repository },
+  )).json();
+  await handleSetOrderMaterialRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "POST", {
+      role: "SUIT_FABRIC",
+      fabricId: fabric.id,
+      fabricVariantId: variant.id,
+    }),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+
+  await handleUpdateFabricVariantRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}/variants/${variant.id}`, "PATCH", {
+      colour: "Ivory",
+      isAvailable: false,
+    }),
+    fabric.id,
+    variant.id,
+    { authenticate: authAs(OWNER_USER), repository },
+  );
+
+  const listed = await handleListOrderMaterialsRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "GET"),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+  const { materials } = await listed.json();
+  assert.equal(materials[0].variantColour, "Charcoal");
+});
+
+test("a retired fabric cannot be newly selected on an order", async () => {
+  const order = await createTestOrder();
+  const fabric = await createTestFabric();
+  await handleUpdateFabricRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}`, "PATCH", { status: "INACTIVE" }),
+    fabric.id,
+    { authenticate: authAs(OWNER_USER), repository },
+  );
+  const response = await handleSetOrderMaterialRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "POST", { role: "SUIT_FABRIC", fabricId: fabric.id }),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+  assert.equal(response.status, 400);
+});
+
+test("an unavailable variant cannot be newly selected on an order", async () => {
+  const order = await createTestOrder();
+  const fabric = await createTestFabric();
+  const variant = await (await handleCreateFabricVariantRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}/variants`, "POST", { colour: "Charcoal", isAvailable: true }),
+    fabric.id,
+    { authenticate: authAs(MANAGER_USER), repository },
+  )).json();
+  await handleUpdateFabricVariantRequest(
+    jsonRequest(`http://localhost/api/fabrics/${fabric.id}/variants/${variant.id}`, "PATCH", { isAvailable: false }),
+    fabric.id,
+    variant.id,
+    { authenticate: authAs(OWNER_USER), repository },
+  );
+  const response = await handleSetOrderMaterialRequest(
+    jsonRequest(`http://localhost/api/orders/${order.id}/materials`, "POST", {
+      role: "SUIT_FABRIC",
+      fabricId: fabric.id,
+      fabricVariantId: variant.id,
+    }),
+    order.id,
+    { authenticate: authAs(STAFF_USER), repository },
+  );
+  assert.equal(response.status, 400);
 });

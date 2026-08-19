@@ -28,7 +28,7 @@ Grouped by domain, in the order they were introduced:
 | Session | `session:create`, `session:read`, `session:update` |
 | Saved Outfit | `outfit:create`, `outfit:read` |
 | Order | `order:create`, `order:read`, `order:update` |
-| Fabric | `fabric:create`, `fabric:read` |
+| Fabric | `fabric:create`, `fabric:read`, `fabric:update` |
 | Order Material | `order:material:update` (reading materials reuses `order:read` — there is no separate `order:material:read`) |
 | Production | `production:create`, `production:read`, `production:update`, `production:assign` |
 
@@ -51,6 +51,7 @@ Grouped by domain, in the order they were introduced:
 | `order:update` | ✓ | ✓ | | | | |
 | `fabric:create` | ✓ | ✓ | | | | |
 | `fabric:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `fabric:update` | ✓ | ✓ | | | | |
 | `order:material:update` | ✓ | ✓ | ✓ | | | |
 | `production:create` | ✓ | ✓ | | | | |
 | `production:read` | ✓ | ✓ | ✓ | ✓ | ✓ (scoped) | ✓ |
@@ -64,6 +65,7 @@ Grouped by domain, in the order they were introduced:
 - **`order:create` is STAFF-permitted; `order:update` is not.** Creating an order is the natural conclusion of the showroom flow STAFF already owns end-to-end. Everything that happens to an order *after* creation (status changes toward delivery) is treated as a hard-to-undo, managerial-consequence action.
 - **`order:material:update` is STAFF-permitted**, for the same reason as `order:create` — it's a selection made as part of the same showroom finalization, not a production-lifecycle change. It is deliberately *not* bundled with `order:update`.
 - **`fabric:create` is MANAGER/OWNER-only** — fabric catalogue entries are curated business data with the same "wrong entry has real consequences" rationale as `customer:create`. `fabric:read` is open to STAFF because they need to browse the catalogue while placing an order.
+- **`fabric:update` is MANAGER/OWNER-only** — edit, retire, and reactivate catalogue rows and variants. It does not rewrite historical `OrderMaterialSnapshot` copies.
 - **`production:create` is MANAGER/OWNER-only**, same rationale as `order:update` — starting a production job is a managerial decision, not part of the showroom flow.
 - **`production:assign` is MANAGER/OWNER-only** — listing assignable tailors (a safe projection of the auth allowlist) and writing `assignedStaffId`. It is deliberately *not* bundled with `production:update`, so Master Tailor / QC Staff can move in-scope stages without gaining assignment authority.
 - **The three atelier roles are each granted only what their one job requires**, not "STAFF plus a bit more." This was a deliberate structural choice to satisfy "do not allow production staff to edit customer truth": Master Tailor and QC Staff have *zero* access to Customer/Measurement/Outfit/Order/Fabric data through the permission table — they cannot even read a customer record.

@@ -1,4 +1,4 @@
-# AI Task Report — Phase 4D Atelier Assignment Workflow
+# AI Task Report — Phase 4E Fabric Catalogue Management
 
 ## TASK_STATUS
 
@@ -6,140 +6,116 @@ COMPLETE (source + automated tests + local API QA). Preview browser QA deferred:
 
 ## STARTING_SHA
 
-`ad2ed7392829dc18c78adbf459ff06eda6ece2d9`
+`db91564e29c0c43bfe3c802b812b0f4f8870e216`
 
 ## ENDING_SHA
 
-See commit after this report is included.
+See git HEAD after this commit.
 
 ## REMOTE_SHA
 
-Set after push. If push is blocked, local SHA is recorded and REMOTE is unchanged.
+Set after push. If publish is blocked, local SHA is reported honestly.
 
 ## SUBAGENT_EXECUTION_SUMMARY
 
-Lead implemented centrally after a short contract pass. Graphify was queried for the assignment graph; the existing graph is stale (`3c0a5dd3`) and the query drifted to try-on handlers. Source files were treated as authoritative. No additional implementation subagents were launched — the blast radius was already known from the takeover audit.
+Lead implemented centrally after a short contract pass against current source. Graphify remains stale; schema, handlers, and `OrderMaterialSnapshot` were read directly.
 
 ## GRAPHIFY_FINDINGS
 
-- Graph built from `3c0a5dd3` (stale vs `ad2ed73`).
-- Query for `assignedStaffId` / production-handler did not surface the Phase 4C production community first; it returned try-on/security nodes.
-
-## GRAPHIFY_SOURCE_DISCREPANCIES
-
-Trust source. Authoritative assignment path:
-
-`ProductionJob.assignedStaffId` → `validateAssignedStaffId` → `lib/production-handler.ts` (create + PATCH) → `canUpdateProductionJob` / OWNER-MANAGER reassignment → `AtelierDashboard` / `OrderProduction` → `tests/production.test.ts`.
+Graph still built from `3c0a5dd3`. Not used as authority.
 
 ## ARCHITECTURE_DECISIONS
 
-- Reused existing `assignedStaffId` on `ProductionJob`. No Staff table. No migration.
-- Assignee source is a safe projection of `AUTH_USERS_JSON` / `AUTH_USERS_JSON_BASE64` (`MASTER_TAILOR` only).
-- Added flat action `production:assign` (OWNER/MANAGER). Not bundled with `production:update`.
-- Assignment history table not added. Current assignee is persisted; stage history remains the production timeline.
-
-## ASSIGNMENT_CONTRACT
-
-- View current assignee: already on job payload.
-- Assign / reassign: `PATCH /api/production/{jobId}` `{ toStage, assignedStaffId }` with `toStage` equal to current stage for assignment-only updates.
-- Create-time assign: `POST /api/orders/{orderId}/production` `{ assignedStaffId? }`.
-- List candidates: `GET /api/production/assignees` → `{ assignees: [{ username, displayName, role }] }`.
-- Clear assignment: `assignedStaffId: null`.
-- Actor, timestamps, and eligibility are server-owned.
-
-## ASSIGNEE_SOURCE
-
-`lib/customer/staff-directory.ts` reads `getAuthorizedUsers()`, keeps `MASTER_TAILOR` only, strips `passwordHash`. Injectable in tests.
-
-## ASSIGNMENT_HISTORY_DECISION
-
-Not implemented. Disproportionate for Phase 4D. Current assignment is enough. Stage changes still append `ProductionStageHistory`.
+- No migration. `Fabric.status` and `FabricVariant.isAvailable` already exist.
+- Additive `fabric:update` (OWNER/MANAGER only). Read grants unchanged.
+- Live catalogue edits never write `OrderMaterialSnapshot` descriptive fields.
+- No delete API. Retirement is `ACTIVE` → `INACTIVE`.
+- Not inventory: no stock, SKU, supplier workflow, or price.
 
 ## DATABASE_CHANGES
 
 None.
 
-## BACKEND_CHANGES
+## FABRIC_EDIT_CONTRACT
 
-- `production:assign` grant
-- Allowlist assignee validation on create/reassign
-- `GET /api/production/assignees`
-- `AuthConfigurationError` mapped to 503 in `mapDomainErrorToResponse`
+`PATCH /api/fabrics/{id}` allow-list: `name`, `composition`, `weight`, `season`, `colour`, `supplier`, `status`. Partial updates. Server rejects `id`/`createdAt` and unknown fields.
 
-## FRONTEND_CHANGES
+## FABRIC_RETIREMENT_BEHAVIOR
 
-- `ProductionAssignment` control
-- Order Production: assign on start + assign/reassign on existing jobs
-- Atelier Dashboard: Incoming column (`CONFIRMED` / `FABRIC_READY`) + assign/reassign for authorized callers
-- Unauthorized callers (assignees GET 403/503) see read-only username text
+`status: INACTIVE` retires; `ACTIVE` reactivates. Retired fabrics remain listable/readable. New order selection rejects INACTIVE (`InvalidMaterialSelectionError`). Order material picker only offers ACTIVE fabrics.
 
-## PERMISSION_CHANGES
+## VARIANT_MANAGEMENT
 
-| Action | OWNER | MANAGER | STAFF | STYLE_CONSULTANT | MASTER_TAILOR | QC_STAFF |
-|---|---|---|---|---|---|---|
-| `production:assign` | ✓ | ✓ | | | | |
+`PATCH /api/fabrics/{fabricId}/variants/{variantId}` allow-list: `colour`, `isAvailable`. Cross-fabric variant IDs return 404. Unavailable variants rejected for new selections and hidden in the order picker.
 
-Existing production read/update scoping unchanged.
+## API_CHANGES
+
+- `GET /api/fabrics/{fabricId}`
+- `PATCH /api/fabrics/{fabricId}`
+- `PATCH /api/fabrics/{fabricId}/variants/{variantId}`
+
+## UI_CHANGES
+
+- `/atelier/fabrics` catalogue page
+- Nav link from Atelier Dashboard
+- Owner/Manager: edit, retire/reactivate, add variant, toggle availability
+- Read-only roles: list/detail without mutation controls (probe: PATCH unknown id → 403 vs 404)
+
+## PERMISSIONS
+
+`fabric:update`: OWNER, MANAGER. STAFF / STYLE_CONSULTANT / MASTER_TAILOR / QC_STAFF cannot mutate.
+
+## SNAPSHOT_INVARIANT_RESULTS
+
+Tests confirm existing order snapshots keep original `fabricName`/`composition`/`colour`/`supplier`/`variantColour` after live edit, retirement, and variant colour/availability changes.
 
 ## SECURITY_RESULTS
 
-Covered in `tests/production.test.ts`:
-
-- Owner/Manager assign + reassign + persist
-- Staff / Style Consultant / Master Tailor / QC cannot assign or list assignees
-- Master Tailor cannot self-assign
-- STAFF username and unknown pattern-valid usernames rejected (400)
-- Unknown job 404
-- Forged `changedBy` 400
-- Unauthenticated list 401
-- Missing allowlist 503
-- Assignee payload has no `passwordHash`
+Covered: unauthorized roles, unknown fabric/variant, cross-fabric variant, forged id/createdAt, unexpected fields, unauthenticated, cross-origin, empty patch, unknown status, 503 without database.
 
 ## TEST_RESULTS
 
-`npm test` PASS — 444 tests (317 + 117 + 4 + 6), 0 fail.
+`npm test` PASS — 466 tests (339 + 117 + 4 + 6), 0 fail. Inherited 444 plus 22 new.
 
 ## LINT
 
-`npm run lint` PASS
+PASS (0 errors)
 
 ## TYPECHECK
 
-`npm run typecheck` PASS (after removing stale Finder-duplicate files under `.next/types`, which is gitignored)
+PASS
 
 ## BUILD
 
-`npm run build` PASS. New route: `/api/production/assignees`.
+PASS. New routes: `/api/fabrics/[fabricId]`, `/api/fabrics/[fabricId]/variants/[variantId]`, `/atelier/fabrics`.
 
-## LOCAL_BROWSER_QA
+## LOCAL_QA
 
-No browser MCP in this session. Local `next dev` used as substitute:
+No headed browser. Local `next dev`:
 
-- `GET /atelier` 200; dashboard SSR includes “Atelier Dashboard”
-- `GET /api/production` 200 (0 jobs in this local DB)
-- `PATCH` unknown job 404
-- `PATCH` with `changedBy` 400
-- `GET /api/production/assignees` 503 — local allowlist is not a valid generated `AUTH_USERS_JSON_BASE64` (fail-closed). Interactive assign dropdown therefore stays hidden until a real allowlist with at least one `MASTER_TAILOR` is configured.
+- `GET /atelier/fabrics` 200
+- `GET /api/fabrics` 200 (4 ACTIVE rows in this dev DB)
+- `PATCH` unknown fabric 404 (Owner/Manager probe)
+- forged `id` 400
+- cross-origin PATCH 403
 
-Role-matrix UI clicks (Manager vs Tailor vs QC) were verified by automated handler tests, not by a headed browser.
+Did not mutate live catalogue rows in the shared Preview/dev database.
 
 ## PREVIEW_STATUS
 
-Not deployed by this agent. Feature branch work only.
+Not deployed by this agent.
 
 ## PREVIEW_QA_BLOCKER
 
 `credential rotation required`
 
-Do not treat this as an application defect. Use `npm run auth:create-user -- showroom "Showroom Staff" STAFF` (interactive TTY) and set Preview-only `AUTH_USERS_JSON_BASE64`. Include at least one `MASTER_TAILOR` entry if Preview assignment dropdown should be non-empty.
-
 ## COMMITTED
 
-Yes — `feat(atelier): add production assignment workflow`
+Yes — `feat(fabric): add catalogue management workflow`
 
 ## PUSHED
 
-See final response. If the environment blocks publish, local SHA is reported honestly.
+See final response.
 
 ## OPENAI_CALLED
 
@@ -151,12 +127,12 @@ No.
 
 ## KNOWN_LIMITATIONS
 
-- Preview STAFF credentials still write-only / unknown
-- Local `.env.local` may not contain a parseable allowlist with `MASTER_TAILOR` identities
-- Assignment history is not recorded beyond current `assignedStaffId`
-- No fabric edit/retire UI (unchanged)
-- Single Preview/dev database (unchanged)
+- Preview STAFF credentials still write-only
+- Shared Preview/dev database
+- No fabric hard-delete (intentional)
+- No inventory/stock
+- Assignment history still not recorded (Phase 4D decision)
 
 ## NEXT_RECOMMENDED_TASK
 
-Rotate Preview credentials (include `showroom` plus at least one `MASTER_TAILOR`) and run Preview browser QA of assign/reassign. Then, if the atelier needs it: fabric catalogue edit/retire UI, or dedicated Production database provisioning.
+Rotate Preview credentials (include `showroom` plus a `MASTER_TAILOR` if assignment QA is needed) and run Preview browser QA for 4D + 4E. Then: dedicated Production database, if Production activation is planned.

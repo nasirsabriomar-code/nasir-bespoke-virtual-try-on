@@ -159,7 +159,7 @@ export function OrderMaterials({ orderId }: OrderMaterialsProps) {
                     }}
                   >
                     <option value="">Select a fabric…</option>
-                    {fabrics.map((fabric) => (
+                    {fabrics.filter((fabric) => fabric.status === "ACTIVE").map((fabric) => (
                       <option key={fabric.id} value={fabric.id}>
                         {fabric.name} — {fabric.colour}
                       </option>
@@ -172,9 +172,9 @@ export function OrderMaterials({ orderId }: OrderMaterialsProps) {
                       onChange={(event) => updateDraft(role, { fabricVariantId: event.target.value })}
                     >
                       <option value="">Default colour</option>
-                      {variants.map((variant) => (
-                        <option key={variant.id} value={variant.id} disabled={!variant.isAvailable}>
-                          {variant.colour}{variant.isAvailable ? "" : " (unavailable)"}
+                      {variants.filter((variant) => variant.isAvailable).map((variant) => (
+                        <option key={variant.id} value={variant.id}>
+                          {variant.colour}
                         </option>
                       ))}
                     </select>

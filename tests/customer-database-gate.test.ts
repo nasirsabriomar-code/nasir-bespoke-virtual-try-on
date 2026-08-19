@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { handleCreateCustomerRequest, handleGetCustomerRequest } from "@/lib/customer-handler";
-import { handleListFabricsRequest } from "@/lib/fabric-handler";
+import {
+  handleGetFabricRequest,
+  handleListFabricsRequest,
+  handleUpdateFabricRequest,
+  handleUpdateFabricVariantRequest,
+} from "@/lib/fabric-handler";
 import { handleListOrderMaterialsRequest } from "@/lib/order-material-handler";
 import { handleGetProductionJobByOrderRequest, handleListProductionJobsRequest } from "@/lib/production-handler";
 import { authAs, jsonRequest, OWNER_USER } from "./customer-test-http";
@@ -46,6 +51,38 @@ test("GET /api/customers/[id] returns 503 (not a crash) when the database is not
 test("GET /api/fabrics returns 503 (not a crash) when the database is not configured", async () => {
   const response = await handleListFabricsRequest(
     jsonRequest("http://localhost/api/fabrics", "GET"),
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("GET /api/fabrics/[id] returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleGetFabricRequest(
+    jsonRequest("http://localhost/api/fabrics/00000000-0000-4000-8000-000000000000", "GET"),
+    "00000000-0000-4000-8000-000000000000",
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("PATCH /api/fabrics/[id] returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleUpdateFabricRequest(
+    jsonRequest("http://localhost/api/fabrics/00000000-0000-4000-8000-000000000000", "PATCH", { name: "Navy Wool" }),
+    "00000000-0000-4000-8000-000000000000",
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("PATCH /api/fabrics/[id]/variants/[variantId] returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleUpdateFabricVariantRequest(
+    jsonRequest(
+      "http://localhost/api/fabrics/00000000-0000-4000-8000-000000000000/variants/00000000-0000-4000-8000-000000000001",
+      "PATCH",
+      { isAvailable: false },
+    ),
+    "00000000-0000-4000-8000-000000000000",
+    "00000000-0000-4000-8000-000000000001",
     { authenticate: authAs(OWNER_USER) },
   );
   assert.equal(response.status, 503);

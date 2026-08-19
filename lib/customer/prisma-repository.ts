@@ -31,6 +31,8 @@ import {
   type SetOrderMaterialInput,
   type UpdateProductionJobStageInput,
   type CustomerUpdateInput,
+  type FabricUpdateInput,
+  type FabricVariantUpdateInput,
   type SessionUpdateInput,
 } from "./repository";
 import type {
@@ -461,6 +463,17 @@ export const prismaCustomerRepository: CustomerRepository = {
     return row ? mapFabric(row) : null;
   },
 
+  async updateFabric(id: string, patch: FabricUpdateInput): Promise<Fabric | null> {
+    const client = getPrismaClient();
+    try {
+      const row = await client.fabric.update({ where: { id }, data: patch });
+      return mapFabric(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return null;
+      throw error;
+    }
+  },
+
   async listFabrics(): Promise<Fabric[]> {
     const client = getPrismaClient();
     const rows = await client.fabric.findMany({ orderBy: { name: "asc" } });
@@ -483,6 +496,17 @@ export const prismaCustomerRepository: CustomerRepository = {
     const client = getPrismaClient();
     const row = await client.fabricVariant.findUnique({ where: { id } });
     return row ? mapFabricVariant(row) : null;
+  },
+
+  async updateFabricVariant(id: string, patch: FabricVariantUpdateInput): Promise<FabricVariant | null> {
+    const client = getPrismaClient();
+    try {
+      const row = await client.fabricVariant.update({ where: { id }, data: patch });
+      return mapFabricVariant(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return null;
+      throw error;
+    }
   },
 
   async listFabricVariants(fabricId: string): Promise<FabricVariant[]> {

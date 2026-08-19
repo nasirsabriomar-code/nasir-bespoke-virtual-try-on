@@ -104,8 +104,11 @@ Handler: `lib/fabric-handler.ts`. Base paths: `/api/fabrics` and `/api/fabrics/{
 |---|---|---|---|
 | `/api/fabrics` | GET | `fabric:read` | Lists the fabric catalogue. |
 | `/api/fabrics` | POST | `fabric:create` | Creates a fabric. Body: `{ name, composition, weight, season, colour, supplier?, status? }` (`status` defaults `ACTIVE`). Curated data entry — never AI-generated. |
+| `/api/fabrics/{fabricId}` | GET | `fabric:read` | Fetch one fabric by ID. 404 if unknown. |
+| `/api/fabrics/{fabricId}` | PATCH | `fabric:update` | Partial update of catalogue metadata and/or `status` (`ACTIVE`/`INACTIVE`). Body may include any of `{ name, composition, weight, season, colour, supplier, status }`. Never accepts `id`/`createdAt`. Does not rewrite existing order material snapshots. |
 | `/api/fabrics/{fabricId}/variants` | GET | `fabric:read` | Lists a fabric's colourway/availability variants. |
 | `/api/fabrics/{fabricId}/variants` | POST | `fabric:create` | Creates a variant. Body: `{ colour, isAvailable? }` (defaults `true`). 404 if the fabric doesn't exist. |
+| `/api/fabrics/{fabricId}/variants/{variantId}` | PATCH | `fabric:update` | Partial update of `{ colour, isAvailable }`. 404 if the variant is missing or belongs to a different fabric. |
 
 ## Order Material domain (Phase 4B)
 

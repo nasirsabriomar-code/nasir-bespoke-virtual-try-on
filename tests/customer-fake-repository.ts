@@ -1,6 +1,8 @@
 import type {
   CustomerRepository,
   CustomerUpdateInput,
+  FabricUpdateInput,
+  FabricVariantUpdateInput,
   NewCustomerInput,
   NewFabricInput,
   NewFabricVariantInput,
@@ -262,6 +264,14 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       return fabrics.get(id) ?? null;
     },
 
+    async updateFabric(id: string, patch: FabricUpdateInput): Promise<Fabric | null> {
+      const existing = fabrics.get(id);
+      if (!existing) return null;
+      const updated: Fabric = { ...existing, ...patch };
+      fabrics.set(id, updated);
+      return updated;
+    },
+
     async listFabrics(): Promise<Fabric[]> {
       return [...fabrics.values()].sort((a, b) => a.name.localeCompare(b.name));
     },
@@ -280,6 +290,14 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
 
     async getFabricVariantById(id: string): Promise<FabricVariant | null> {
       return fabricVariants.get(id) ?? null;
+    },
+
+    async updateFabricVariant(id: string, patch: FabricVariantUpdateInput): Promise<FabricVariant | null> {
+      const existing = fabricVariants.get(id);
+      if (!existing) return null;
+      const updated: FabricVariant = { ...existing, ...patch };
+      fabricVariants.set(id, updated);
+      return updated;
     },
 
     async listFabricVariants(fabricId: string): Promise<FabricVariant[]> {

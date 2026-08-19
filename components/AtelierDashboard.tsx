@@ -100,6 +100,7 @@ export function AtelierDashboard({ displayName }: AtelierDashboardProps) {
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- plain full-page nav back to the try-on flow, consistent with /atelier's own nav link. */}
           <a href="/" className="atelier-nav-link">New Creation</a>
           <span className="atelier-nav-link is-active"><span aria-hidden="true">✦</span>Atelier</span>
+          <a href="/atelier/fabrics" className="atelier-nav-link">Fabrics</a>
           <UsageHistory />
         </nav>
         <div className="atelier-sidebar-footer">
