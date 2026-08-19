@@ -47,6 +47,7 @@ export type CustomerPreferredColour =
   | "BURGUNDY"
   | "OLIVE"
   | "IVORY"
+  | "WHITE"
   | "OTHER";
 export const CUSTOMER_PREFERRED_COLOUR_VALUES: readonly CustomerPreferredColour[] = [
   "NAVY",
@@ -57,6 +58,7 @@ export const CUSTOMER_PREFERRED_COLOUR_VALUES: readonly CustomerPreferredColour[
   "BURGUNDY",
   "OLIVE",
   "IVORY",
+  "WHITE",
   "OTHER",
 ];
 

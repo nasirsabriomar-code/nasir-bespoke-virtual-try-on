@@ -3110,6 +3110,153 @@ a:focus-visible {
   cursor: not-allowed;
   opacity: 0.5;
 }
+.customer-session-banner-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.customer-session-banner-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* CUSTOMER PROFILE CARD HEADER (edit/manage toggles) */
+.customer-profile-card-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.customer-profile-card-header .customer-profile-card-label {
+  margin-bottom: 0;
+}
+
+/* PREFERENCES EDITOR */
+.preferences-editor {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 20px;
+  padding: 18px;
+}
+.preferences-editor-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.preference-toggle-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 5px 10px;
+  text-transform: capitalize;
+  transition: all 150ms ease;
+}
+.preference-toggle-chip:hover {
+  border-color: var(--atelier-gold);
+  color: var(--atelier-text);
+}
+.preference-toggle-chip.is-selected {
+  background: rgba(200, 155, 60, 0.18);
+  border-color: var(--atelier-gold);
+  color: var(--atelier-gold);
+}
+
+/* MEASUREMENT WORKFLOW */
+.measurement-workflow {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 18px;
+}
+.measurement-field-group {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.measurement-field-group legend {
+  color: var(--atelier-gold);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+  padding: 0;
+  text-transform: uppercase;
+}
+.measurement-field-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+.measurement-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--atelier-muted);
+  text-transform: capitalize;
+}
+.measurement-field-label input {
+  background: var(--atelier-interactive);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-text);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.measurement-history {
+  border-top: 1px solid var(--atelier-line);
+  padding-top: 14px;
+}
+.measurement-history-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.measurement-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.measurement-history-entry {
+  background: var(--atelier-raised);
+  border: 1px solid var(--atelier-line);
+  border-radius: 3px;
+  padding: 12px 14px;
+}
+.measurement-history-entry-header {
+  align-items: baseline;
+  color: var(--atelier-text);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.measurement-history-entry-header span {
+  color: var(--atelier-muted);
+  font-size: 11px;
+}
+.measurement-history-entry-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
@@ -3140,6 +3287,9 @@ a:focus-visible {
   .customer-search-row { flex-direction: column; }
   .customer-session-banner { flex-direction: column; align-items: flex-start; }
   .customer-save-button { width: 100%; }
+  .customer-session-banner-actions { flex-direction: column; align-items: stretch; width: 100%; }
+  .measurement-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .measurement-history-entry-header { flex-direction: column; align-items: flex-start; gap: 2px; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }
   .atelier-shell .level1-review { align-items: stretch; flex-direction: column; }

@@ -1,6 +1,3 @@
-◇ injected env (2) from .env.local // tip: ⌘ enable debugging { debug: true }
-Loaded Prisma config from prisma.config.ts.
-
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 

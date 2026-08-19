@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { SIGNATURE_LOOK_LIBRARY } from "@/lib/showroom/look-library";
 import type { Customer, MeasurementProfile, SavedOutfit, ShowroomSession } from "@/lib/customer/types";
+import { MeasurementWorkflow } from "./MeasurementWorkflow";
+import { PreferencesEditor } from "./PreferencesEditor";
 
 type CustomerProfileProps = {
   customer: Customer;
@@ -30,12 +32,16 @@ function formatDate(iso: string): string {
   }
 }
 
-export function CustomerProfile({ customer, onStartSession, onBack }: CustomerProfileProps) {
+type PanelState = "none" | "preferences" | "measurements";
+
+export function CustomerProfile({ customer: initialCustomer, onStartSession, onBack }: CustomerProfileProps) {
+  const [customer, setCustomer] = useState<Customer>(initialCustomer);
   const [measurements, setMeasurements] = useState<MeasurementProfile[] | null>(null);
   const [outfits, setOutfits] = useState<SavedOutfit[] | null>(null);
   const [sessions, setSessions] = useState<ShowroomSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [openPanel, setOpenPanel] = useState<PanelState>("none");
 
   useEffect(() => {
     let active = true;
@@ -114,7 +120,12 @@ export function CustomerProfile({ customer, onStartSession, onBack }: CustomerPr
 
       <div className="customer-profile-grid">
         <div className="customer-profile-card">
-          <span className="customer-profile-card-label">Preferences</span>
+          <div className="customer-profile-card-header">
+            <span className="customer-profile-card-label">Preferences</span>
+            <button type="button" className="showroom-link-button" onClick={() => setOpenPanel(openPanel === "preferences" ? "none" : "preferences")}>
+              {openPanel === "preferences" ? "Close" : "Edit"}
+            </button>
+          </div>
           {preferenceChips.length > 0 ? (
             <div className="customer-chip-row">
               {preferenceChips.map((chip) => (
@@ -127,11 +138,16 @@ export function CustomerProfile({ customer, onStartSession, onBack }: CustomerPr
         </div>
 
         <div className="customer-profile-card">
-          <span className="customer-profile-card-label">Latest Measurements</span>
+          <div className="customer-profile-card-header">
+            <span className="customer-profile-card-label">Measurements</span>
+            <button type="button" className="showroom-link-button" onClick={() => setOpenPanel(openPanel === "measurements" ? "none" : "measurements")}>
+              {openPanel === "measurements" ? "Close" : "Manage"}
+            </button>
+          </div>
           {measurements === null ? (
             <p className="customer-profile-empty">Loading…</p>
           ) : measurements.length > 0 ? (
-            <p className="customer-profile-value">{formatDate(measurements[0].createdAt)} — v{measurements[0].version}</p>
+            <p className="customer-profile-value">Latest: {formatDate(measurements[0].createdAt)} — v{measurements[0].version}</p>
           ) : (
             <p className="customer-profile-empty">No measurements recorded yet.</p>
           )}
@@ -153,20 +169,45 @@ export function CustomerProfile({ customer, onStartSession, onBack }: CustomerPr
         </div>
 
         <div className="customer-profile-card">
-          <span className="customer-profile-card-label">Previous Showroom Sessions</span>
+          <span className="customer-profile-card-label">Showroom History</span>
           {sessions === null ? (
             <p className="customer-profile-empty">Loading…</p>
           ) : sessions.length > 0 ? (
-            <ul className="customer-list">
-              {sessions.slice(0, 5).map((session) => (
-                <li key={session.id}>{session.status} — {formatDate(session.createdAt)}</li>
-              ))}
-            </ul>
+            <>
+              <p className="customer-profile-value">{sessions.length} visit{sessions.length === 1 ? "" : "s"}</p>
+              <ul className="customer-list">
+                {sessions.slice(0, 5).map((session) => (
+                  <li key={session.id}>{session.status} — {formatDate(session.createdAt)}</li>
+                ))}
+              </ul>
+            </>
           ) : (
             <p className="customer-profile-empty">No previous sessions yet.</p>
           )}
         </div>
       </div>
+
+      {openPanel === "preferences" ? (
+        <PreferencesEditor
+          customer={customer}
+          onCancel={() => setOpenPanel("none")}
+          onSaved={(updated) => {
+            setCustomer(updated);
+            setOpenPanel("none");
+          }}
+        />
+      ) : null}
+
+      {openPanel === "measurements" ? (
+        <MeasurementWorkflow
+          customerId={customer.id}
+          history={measurements ?? []}
+          onCancel={() => setOpenPanel("none")}
+          onRecorded={(measurement) => {
+            setMeasurements((current) => [measurement, ...(current ?? [])]);
+          }}
+        />
+      ) : null}
 
       <div className="customer-profile-actions">
         <button type="button" className="showroom-link-button" onClick={onBack}>
