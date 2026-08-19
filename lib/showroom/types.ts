@@ -32,6 +32,16 @@ export type ShowroomOccasion =
   | "formal-evening"
   | "celebration";
 
+/** Runtime value list for ShowroomOccasion — the closed set lib/customer/validation.ts validates against. */
+export const SHOWROOM_OCCASION_VALUES: readonly ShowroomOccasion[] = [
+  "business",
+  "wedding",
+  "reception",
+  "black-tie",
+  "formal-evening",
+  "celebration",
+];
+
 /** Recommended v1 style-personality values. */
 export type StylePersonality =
   | "classic"
@@ -39,6 +49,15 @@ export type StylePersonality =
   | "minimal"
   | "black-tie"
   | "modern-statement";
+
+/** Runtime value list for StylePersonality — the closed set lib/customer/validation.ts validates against. */
+export const STYLE_PERSONALITY_VALUES: readonly StylePersonality[] = [
+  "classic",
+  "executive",
+  "minimal",
+  "black-tie",
+  "modern-statement",
+];
 
 /** 1 (most relaxed) through 5 (most formal). */
 export type FormalityLevel = 1 | 2 | 3 | 4 | 5;

@@ -1,9 +1,21 @@
 import "server-only";
+import { DEFAULT_STAFF_ROLE, isStaffRole } from "@/lib/customer/permissions";
+import type { StaffRole } from "@/lib/customer/types";
 
 export type AuthorizedUser = {
   username: string;
   displayName: string;
   passwordHash: string;
+  /**
+   * Customer-domain authorization role (see lib/customer/permissions.ts).
+   * Optional here so every pre-existing test/dev fixture that constructs an
+   * authenticated-user object without a role keeps compiling — callers that
+   * need a role (lib/customer/http.ts's authorizeStaffRequest) default a
+   * missing one to the least-privilege STAFF, never an elevated role.
+   * getAuthorizedUsers() below always populates this from the real
+   * allowlist (defaulting to STAFF itself when an entry omits it).
+   */
+  role?: StaffRole;
 };
 
 export class AuthConfigurationError extends Error {
@@ -42,6 +54,10 @@ export function getAuthorizedUsers(): AuthorizedUser[] {
       const username = normalizeUsername(String(record.username ?? ""));
       const displayName = String(record.displayName ?? "").trim();
       const passwordHash = String(record.passwordHash ?? "");
+      // Optional in the allowlist entry so existing deployments' encoded
+      // AUTH_USERS_JSON_BASE64 keeps working unchanged — an entry with no
+      // role field gets the least-privilege default, never elevated access.
+      const role = isStaffRole(record.role) ? record.role : DEFAULT_STAFF_ROLE;
 
       if (
         !/^[a-z0-9._-]{2,64}$/.test(username) ||
@@ -54,7 +70,7 @@ export function getAuthorizedUsers(): AuthorizedUser[] {
       }
 
       usernames.add(username);
-      return { username, displayName, passwordHash };
+      return { username, displayName, passwordHash, role };
     });
   } catch (error) {
     if (error instanceof AuthConfigurationError) throw error;

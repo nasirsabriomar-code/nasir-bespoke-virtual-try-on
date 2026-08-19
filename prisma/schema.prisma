@@ -1,0 +1,151 @@
+// Nasir Bespoke — Phase 3B: Customer Intelligence + Bespoke Memory Layer.
+//
+// This is the first PostgreSQL-backed schema in this repository. Everything
+// else in the app (auth sessions, rate limits, generation locks, Split
+// reference-asset registry, usage history) intentionally stays on Upstash
+// Redis or Vercel Blob — those are locks/ephemeral/temporary state, or
+// binary assets. Customer/Measurement/ShowroomSession/SavedOutfit are the
+// first genuinely PERMANENT business records in this app, which is why they
+// get a real relational database instead.
+//
+// See lib/customer/db.ts for the driver-adapter-based client (Prisma v7
+// requires an explicit adapter — see .claude/skills/prisma-upgrade-v7 for
+// the migration guide this schema was built against).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ShowroomSessionStatus {
+  OPEN
+  EXPLORING
+  OUTFIT_SELECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum SavedOutfitSourceType {
+  MANUAL
+  SIGNATURE_LOOK
+}
+
+/// A Nasir Bespoke client. Preferences are structured, explicit,
+/// customer-declared fields — never an uncontrolled JSON blob, and never an
+/// inferred appearance/ethnicity/personality field. See lib/customer/types.ts
+/// for the closed value sets each array is validated against at the
+/// application layer (Prisma stores them as plain Postgres text[] columns).
+model Customer {
+  id    String  @id @default(uuid())
+  name  String
+  phone String  @unique
+  email String?
+
+  preferredStyles    String[] @default([])
+  preferredColours   String[] @default([])
+  preferredFit       String?
+  preferredOccasions String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  measurementProfiles MeasurementProfile[]
+  showroomSessions    ShowroomSession[]
+  savedOutfits        SavedOutfit[]
+
+  @@map("customers")
+}
+
+/// Measurements are an APPEND-ONLY history — never updated in place. A new
+/// fitting always creates the next `version` for the customer; nothing here
+/// is ever mutated once written. jacket/trouser/shirtMeasurements are Json
+/// columns (a deliberate, documented exception to "no uncontrolled JSON" —
+/// see lib/customer/measurement-fields.ts) so new measurement fields can be
+/// added later without a migration, while every write is still validated
+/// server-side against a known, versioned allow-list of field names.
+model MeasurementProfile {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  version Int
+
+  jacketMeasurements  Json @default("{}")
+  trouserMeasurements Json @default("{}")
+  shirtMeasurements   Json @default("{}")
+
+  /// Staff username who recorded this version — server-derived from the
+  /// authenticated session, never client-supplied.
+  recordedBy String
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, version])
+  @@index([customerId])
+  @@map("measurement_profiles")
+}
+
+/// A single showroom visit. `finalOutfitSnapshotId` is a denormalized
+/// pointer to the SavedOutfit created when staff saves the customer's
+/// chosen outfit for this session — set by application logic, not a
+/// Prisma-enforced FK, to avoid a redundant dual relation with
+/// SavedOutfit.sessionId (the canonical, FK-enforced direction).
+model ShowroomSession {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  status                ShowroomSessionStatus @default(OPEN)
+  occasion              String?
+  selectedLookId        String?
+  finalOutfitSnapshotId String?
+
+  /// Staff username who opened this session — server-derived, never client-supplied.
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  savedOutfits SavedOutfit[]
+
+  @@index([customerId])
+  @@map("showroom_sessions")
+}
+
+/// Persistent history of a customer's outfit selections. `outfitSnapshot`
+/// stores the FULL validated Phase 3A FinalOutfitSnapshot object (component
+/// IDs, server-derived material groups, recipeStatus) at the moment it was
+/// saved — deliberately NOT just a set of catalogue IDs, because the
+/// catalogue can change later and this history must preserve "what did the
+/// customer actually select" at that point in time. Never contains private
+/// asset paths, prompts, model/provider names, or secrets — see
+/// lib/customer/saved-outfit.ts, the only code path allowed to write this
+/// column, which only ever accepts a snapshot built by
+/// buildFinalOutfitSnapshot() (lib/showroom/final-outfit.ts).
+model SavedOutfit {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  sessionId String?
+  session   ShowroomSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  sourceType   SavedOutfitSourceType
+  sourceLookId String?
+
+  outfitSnapshot Json
+
+  /// Reserved for a future generated-image reference (safe URL only, never a
+  /// private path) — always null in this milestone; no generation occurs.
+  tryOnResultUrl String?
+
+  /// Staff username who saved this outfit — server-derived, never client-supplied.
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([customerId])
+  @@index([sessionId])
+  @@map("saved_outfits")
+}

@@ -3,11 +3,13 @@ import "server-only";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { isSameOriginRequest } from "@/lib/request-security";
-import { SplitRecipeValidationError, validateSplitRecipe, type SplitTryOnClientRequest } from "@/lib/split-outfit/generation-compiler";
-import { buildFinalOutfitSnapshot, type FinalOutfitSnapshot, type FinalOutfitSource } from "@/lib/showroom/final-outfit";
-import { isRecipeIdenticalToLook } from "@/lib/showroom/look-application";
+import { SplitRecipeValidationError } from "@/lib/split-outfit/generation-compiler";
+import {
+  OutfitProvenanceError,
+  resolveFinalOutfitSnapshot,
+  type RawOutfitFields,
+} from "@/lib/showroom/final-outfit";
 import { SIGNATURE_LOOK_LIBRARY } from "@/lib/showroom/look-library";
-import { getActiveValidatedSignatureLooks } from "@/lib/showroom/look-validation";
 import type { SignatureLook } from "@/lib/showroom/types";
 
 /**
@@ -23,11 +25,13 @@ import type { SignatureLook } from "@/lib/showroom/types";
  * materialGroups, activeMaterialSlots, a prompt, a model/provider, a
  * reference URL/asset ID/private path/checksum, or a finalOutfitId — has no
  * field name in the allow-list below and is therefore structurally
- * impossible to submit. Recipe validity and canonical material grouping are
- * always independently recomputed server-side via validateSplitRecipe()
- * (lib/split-outfit/generation-compiler.ts) — the SAME authority
- * /api/split-try-on uses. There is no second, duplicated compatibility
- * table here.
+ * impossible to submit.
+ *
+ * Provenance/recipe resolution itself lives in ONE shared function
+ * (resolveFinalOutfitSnapshot, lib/showroom/final-outfit.ts) that this route
+ * and the Phase 3B /api/customers/[id]/outfits route both call — there is no
+ * second, duplicated implementation of "validate provenance, validate
+ * recipe, build snapshot."
  */
 
 const JSON_HEADERS = {
@@ -63,10 +67,6 @@ function jsonError(error: string, status: number) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
 }
 
 export async function handleFinalizeOutfitRequest(
@@ -113,88 +113,26 @@ export async function handleFinalizeOutfitRequest(
     return jsonError("Unexpected field in the submitted recipe.", 400);
   }
 
-  const { source, lookId, upperId, lowerId, shirtId, waistcoatId, footwearId, accessoryIds } = body;
-
-  if (source !== "manual" && source !== "signature-look") {
-    return jsonError("Unknown outfit source.", 400);
-  }
-
-  // Provenance shape must be internally consistent with the declared
-  // source: a manual build must not also carry a lookId, and a
-  // signature-look source must carry exactly one.
-  if (source === "manual" && lookId !== undefined) {
-    return jsonError("A manual build must not reference a Signature Look.", 400);
-  }
-  if (source === "signature-look" && !isNonEmptyString(lookId)) {
-    return jsonError("A Signature Look source must include a valid look ID.", 400);
-  }
-
-  let sourceLook: SignatureLook | null = null;
-  if (source === "signature-look" && typeof lookId === "string") {
-    // Only an ACTIVE, independently re-validated look may ever be claimed as
-    // provenance — an inactive, draft, or (defensively) invalid look is
-    // rejected identically to an unknown one, never distinguished in a way
-    // that would leak its existence.
-    sourceLook = getActiveValidatedSignatureLooks(lookLibrary).find((look) => look.id === lookId) ?? null;
-    if (!sourceLook) {
-      return jsonError("This Signature Look could not be found.", 400);
-    }
-    if (sourceLook.family !== "suit") {
-      return jsonError("This Signature Look does not match the current outfit family.", 400);
-    }
-  }
-
-  if (
-    !isNonEmptyString(upperId) ||
-    !isNonEmptyString(lowerId) ||
-    !isNonEmptyString(shirtId) ||
-    (waistcoatId !== null && !isNonEmptyString(waistcoatId)) ||
-    !isNonEmptyString(footwearId) ||
-    !Array.isArray(accessoryIds) ||
-    !accessoryIds.every((id) => typeof id === "string")
-  ) {
-    return jsonError("Please submit a complete outfit recipe.", 400);
-  }
-
-  const clientRequest: SplitTryOnClientRequest = {
-    family: "suit",
-    upperId,
-    lowerId,
-    shirtId,
-    waistcoatId: waistcoatId as string | null,
-    footwearId,
-    accessoryIds: accessoryIds as string[],
+  const fields: RawOutfitFields = {
+    source: body.source,
+    lookId: body.lookId,
+    upperId: body.upperId,
+    lowerId: body.lowerId,
+    shirtId: body.shirtId,
+    waistcoatId: body.waistcoatId,
+    footwearId: body.footwearId,
+    accessoryIds: body.accessoryIds,
   };
 
-  let recipe;
+  let snapshot;
   try {
-    recipe = validateSplitRecipe(clientRequest);
+    snapshot = resolveFinalOutfitSnapshot(fields, lookLibrary);
   } catch (error) {
-    if (error instanceof SplitRecipeValidationError) return jsonError(error.message, 400);
+    if (error instanceof OutfitProvenanceError || error instanceof SplitRecipeValidationError) {
+      return jsonError(error.message, 400);
+    }
     throw error;
   }
-
-  const source_: FinalOutfitSource = sourceLook
-    ? {
-      type: "signature-look",
-      lookId: sourceLook.id,
-      customized: !isRecipeIdenticalToLook(
-        {
-          family: recipe.family,
-          upperId: recipe.components.upper.id,
-          lowerId: recipe.components.lower.id,
-          shirtId: recipe.components.shirt.id,
-          waistcoatId: recipe.components.waistcoat ? recipe.components.waistcoat.id : "SUIT_WAISTCOAT_NONE",
-          footwearId: recipe.components.footwear.id,
-          accessoryIds: recipe.components.accessories.map((accessory) => accessory.id),
-          materials: {},
-        },
-        sourceLook,
-      ),
-    }
-    : { type: "manual" };
-
-  const snapshot: FinalOutfitSnapshot = buildFinalOutfitSnapshot(recipe, source_);
 
   console.info("showroom_finalize_outfit", { requestId, username: user.username, source: snapshot.source.type });
 

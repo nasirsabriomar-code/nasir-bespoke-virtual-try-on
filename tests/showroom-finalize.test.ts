@@ -6,7 +6,7 @@ import { handleFinalizeOutfitRequest } from "@/lib/showroom-finalize-handler";
 import { SIGNATURE_LOOK_LIBRARY } from "@/lib/showroom/look-library";
 import type { SignatureLook } from "@/lib/showroom/types";
 
-const TEST_USER = { username: "showroom", displayName: "Showroom Staff" };
+const TEST_USER = { username: "showroom", displayName: "Showroom Staff", passwordHash: "unused-in-mock" };
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 

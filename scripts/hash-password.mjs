@@ -2,9 +2,16 @@ import bcrypt from "bcryptjs";
 
 const username = String(process.argv[2] ?? "").trim().toLowerCase();
 const displayName = String(process.argv[3] ?? "").trim();
+const STAFF_ROLES = ["OWNER", "MANAGER", "STAFF"];
+const role = String(process.argv[4] ?? "STAFF").trim().toUpperCase();
 
-if (!/^[a-z0-9._-]{2,64}$/.test(username) || !displayName || displayName.length > 80) {
-  console.error('Usage: npm run auth:create-user -- username "Display Name"');
+if (
+  !/^[a-z0-9._-]{2,64}$/.test(username) ||
+  !displayName ||
+  displayName.length > 80 ||
+  !STAFF_ROLES.includes(role)
+) {
+  console.error('Usage: npm run auth:create-user -- username "Display Name" [OWNER|MANAGER|STAFF]');
   process.exit(1);
 }
 
@@ -50,7 +57,7 @@ try {
   if (password.length < 12) throw new Error("Use a password with at least 12 characters.");
   if (password !== confirmation) throw new Error("Passwords did not match.");
   const passwordHash = await bcrypt.hash(password, 12);
-  const config = JSON.stringify([{ username, displayName, passwordHash }]);
+  const config = JSON.stringify([{ username, displayName, passwordHash, role }]);
   console.log(`AUTH_USERS_JSON_BASE64=${Buffer.from(config).toString("base64")}`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Could not create password hash.");

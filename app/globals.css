@@ -2944,6 +2944,173 @@ a:focus-visible {
   border-color: var(--atelier-line);
 }
 
+/* CUSTOMER MEMORY LAYER (Phase 3B) */
+.customer-search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.customer-search-input {
+  background: var(--atelier-interactive);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-text);
+  flex: 1;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+.customer-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.customer-result-card {
+  align-items: center;
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 3px;
+  color: var(--atelier-text);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  text-align: left;
+  transition: all 160ms ease;
+}
+.customer-result-card:hover {
+  border-color: var(--atelier-gold);
+  background: #191c19;
+}
+.customer-result-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.customer-result-phone {
+  color: var(--atelier-muted);
+  font-size: 12px;
+}
+.customer-search-actions {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  margin-bottom: 4px;
+}
+.customer-create-form {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 18px;
+}
+.customer-create-form input {
+  background: var(--atelier-interactive);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-text);
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+/* CUSTOMER PROFILE */
+.customer-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.customer-profile-card {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 3px;
+  padding: 16px 18px;
+}
+.customer-profile-card-label {
+  color: var(--atelier-gold);
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+.customer-profile-value {
+  color: var(--atelier-text);
+  font-size: 13px;
+  margin: 0;
+}
+.customer-profile-empty {
+  color: var(--atelier-subdued);
+  font-size: 12px;
+  margin: 0;
+}
+.customer-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.customer-chip {
+  background: rgba(200, 155, 60, 0.14);
+  border: 1px solid rgba(200, 155, 60, 0.35);
+  border-radius: 2px;
+  color: var(--atelier-text);
+  font-size: 11px;
+  padding: 4px 9px;
+}
+.customer-list {
+  color: var(--atelier-text);
+  font-size: 12.5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.customer-list li {
+  border-top: 1px solid var(--atelier-line);
+  padding: 6px 0;
+}
+.customer-list li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.customer-profile-actions {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+/* IN-SESSION SAVE TOOLBAR */
+.customer-in-session-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.customer-session-banner {
+  align-items: center;
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+.customer-session-banner span {
+  color: var(--atelier-muted);
+  font-size: 12.5px;
+}
+.customer-session-banner strong {
+  color: var(--atelier-gold);
+}
+.customer-save-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .split-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2969,6 +3136,10 @@ a:focus-visible {
   .showroom-look-cards { grid-template-columns: 1fr; }
   .showroom-profile-actions { flex-wrap: wrap; justify-content: flex-start; }
   .showroom-provenance-toolbar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .customer-profile-grid { grid-template-columns: 1fr; }
+  .customer-search-row { flex-direction: column; }
+  .customer-session-banner { flex-direction: column; align-items: flex-start; }
+  .customer-save-button { width: 100%; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }
   .atelier-shell .level1-review { align-items: stretch; flex-direction: column; }

@@ -7,7 +7,7 @@ import { resetSplitReferenceAssetRegistryForTests, upsertSplitReferenceAsset, ty
 import { handleSplitTryOnRequest } from "@/lib/split-try-on-handler";
 import type { SplitOutfitState } from "@/lib/split-outfit/types";
 
-const TEST_USER = { username: "showroom", displayName: "Showroom Staff" };
+const TEST_USER = { username: "showroom", displayName: "Showroom Staff", passwordHash: "unused-in-mock" };
 
 function setEnv(name: string, value: string | undefined) {
   const environment = process.env as Record<string, string | undefined>;

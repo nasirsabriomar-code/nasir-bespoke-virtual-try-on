@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import { applySignatureLook, deriveCustomizedFromLook } from "@/lib/showroom/look-application";
 import { SIGNATURE_LOOK_LIBRARY } from "@/lib/showroom/look-library";
@@ -19,6 +19,8 @@ import { StartingPointSelector } from "./StartingPointSelector";
 type ShowroomJourneyProps = {
   state: SplitOutfitState;
   onChange: (updater: (prev: SplitOutfitState) => SplitOutfitState) => void;
+  /** Optional — lets a parent (e.g. the Phase 3B customer memory layer) observe current Look provenance without owning it. */
+  onProvenanceChange?: (provenance: SignatureLookProvenance) => void;
 };
 
 /**
@@ -33,12 +35,16 @@ type ShowroomJourneyProps = {
  * sanitizeSplitOutfitState()/the compatibility engine exactly as before —
  * see SplitOutfitWorkspace, unchanged.
  */
-export function ShowroomJourney({ state, onChange }: ShowroomJourneyProps) {
+export function ShowroomJourney({ state, onChange, onProvenanceChange }: ShowroomJourneyProps) {
   const [journeyStep, setJourneyStep] = useState<ShowroomJourneyStep>("starting-point");
   const [profile, setProfile] = useState<RecommendationProfile | null>(null);
   const [recommendations, setRecommendations] = useState<SignatureLookRecommendation[]>([]);
   const [provenance, setProvenance] = useState<SignatureLookProvenance>({ type: "manual" });
   const [applicationError, setApplicationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onProvenanceChange?.(provenance);
+  }, [provenance, onProvenanceChange]);
 
   // customizedFromLook is NEVER a manually toggled flag — it is recomputed
   // from canonical component identity comparison on every render, so it
