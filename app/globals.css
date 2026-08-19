@@ -2562,6 +2562,77 @@ a:focus-visible {
   letter-spacing: 0.02em;
 }
 
+.split-material-uploads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.split-material-upload-card {
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  padding: 14px 16px;
+  background: var(--atelier-raised);
+}
+.split-material-upload-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.split-material-upload-label {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--atelier-text);
+}
+.split-material-upload-filename {
+  font-size: 11px;
+  color: var(--atelier-gold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.split-material-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.split-material-upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.split-material-upload-button {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  padding: 7px 12px;
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 3px;
+  color: var(--atelier-text);
+}
+.split-material-upload-button:hover {
+  border-color: var(--atelier-gold);
+}
+.split-material-upload-clear {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--atelier-muted);
+  cursor: pointer;
+  padding: 0;
+}
+.split-material-upload-clear:hover {
+  color: var(--atelier-text);
+}
+
 /* OUTFIT REVIEW SECTION */
 .split-outfit-review {
   margin-top: 20px;

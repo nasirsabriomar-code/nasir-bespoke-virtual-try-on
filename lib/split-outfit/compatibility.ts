@@ -1,9 +1,11 @@
 import { SPLIT_CATALOGUE_BY_FAMILY } from "./catalogue";
 import type {
+  CanonicalMaterialGroup,
   CompatibilityStatus,
   MaterialSlotId,
   MaterialSlotState,
   RecipeStatus,
+  SplitComponentCategory,
   SplitComponentOption,
   SplitOutfitFamily,
   SplitOutfitState,
@@ -37,66 +39,20 @@ export function findSplitOption(
 /**
  * Evaluates the compatibility status of an option given the current active split outfit state.
  * Returns: "REQUIRED" | "RECOMMENDED" | "ALLOWED" | "OPTIONAL" | "DISALLOWED" | "CONDITIONAL"
+ *
+ * This is a thin lookup over SUIT_COMPATIBILITY_RULES[upperId].statusOverrides — the
+ * SAME data table that drives hard visibility/validity (getVisible*Options,
+ * sanitizeSplitOutfitState, getSplitOutfitRecipeStatus). There is deliberately no
+ * second, independently-authored set of per-upper conditionals here: badge/
+ * recommendation display and hard compatibility now share one authority.
  */
 export function evaluateOptionCompatibility(
   option: SplitComponentOption,
   state: SplitOutfitState,
 ): CompatibilityStatus {
-  // If the option has a fixed status in definition, respect it as baseline
-  const isTuxedoJacket = state.upperId === "SUIT_UPPER_TUXEDO";
-  const isThreePieceJacket = state.upperId === "SUIT_UPPER_THREE_PIECE";
-  const isDoubleBreasted = state.upperId === "SUIT_UPPER_DOUBLE_BREASTED";
-
-  // 1. Lower Garment Rules
-  if (option.categoryId === "lower") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_LOWER_TUXEDO_TROUSER") return "RECOMMENDED";
-      if (option.id === "SUIT_LOWER_CLASSIC_STRAIGHT") return "ALLOWED";
-      return "ALLOWED";
-    }
-  }
-
-  // 2. Inner Shirt Rules
-  if (option.categoryId === "inner-shirt") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_SHIRT_TUXEDO_PLEATED") return "RECOMMENDED";
-      return "ALLOWED";
-    }
-  }
-
-  // 3. Inner Waistcoat Rules
-  if (option.categoryId === "inner-waistcoat") {
-    if (isThreePieceJacket) {
-      if (option.id === "SUIT_WAISTCOAT_NONE") return "DISALLOWED";
-      if (option.id === "SUIT_WAISTCOAT_CLASSIC" || option.id === "SUIT_WAISTCOAT_FORMAL") {
-        return "RECOMMENDED";
-      }
-    }
-    if (isDoubleBreasted) {
-      if (option.id !== "SUIT_WAISTCOAT_NONE") return "OPTIONAL";
-    }
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_WAISTCOAT_TUXEDO") return "RECOMMENDED";
-    }
-  }
-
-  // 4. Footwear Rules
-  if (option.categoryId === "footwear") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_SHOE_PATENT_OXFORD") return "RECOMMENDED";
-      if (option.id === "SUIT_SHOE_OXFORD") return "ALLOWED";
-    }
-  }
-
-  // 5. Accessory Rules
-  if (option.categoryId === "accessory") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_ACC_BOW_TIE") return "RECOMMENDED";
-      if (option.id === "SUIT_ACC_TIE") return "ALLOWED";
-    }
-  }
-
-  return option.defaultStatus ?? "ALLOWED";
+  const rule = getSuitCompatibilityRule(state.upperId);
+  const override = rule?.statusOverrides?.[option.categoryId]?.[option.id];
+  return override ?? option.defaultStatus ?? "ALLOWED";
 }
 
 /**
@@ -252,6 +208,12 @@ type SuitCompatibilityRule = {
   allowedFootwearIds: string[];
   allowedAccessoryIds: string[];
   materialLinkGroups: MaterialSlotId[][];
+  // Per-option status overrides (RECOMMENDED/DISALLOWED/OPTIONAL badges) for this
+  // upper, keyed by the option's own categoryId then its id. This is the single
+  // authority evaluateOptionCompatibility() reads from — no separate hardcoded
+  // conditionals may exist elsewhere. An id with no override falls back to the
+  // option's own defaultStatus (normally "ALLOWED").
+  statusOverrides?: Partial<Record<SplitComponentCategory, Record<string, CompatibilityStatus>>>;
 };
 
 const FORMAL_TROUSER_IDS = [
@@ -291,6 +253,16 @@ const SUIT_COMPATIBILITY_RULES: Record<string, SuitCompatibilityRule> = {
     allowedFootwearIds: ["SUIT_SHOE_OXFORD", "SUIT_SHOE_DERBY"],
     allowedAccessoryIds: STANDARD_ACCESSORY_IDS,
     materialLinkGroups: [["jacket-primary", "trouser-primary"]],
+    // Non-None waistcoats are unreachable through the UI (the section is
+    // hidden entirely), but evaluateOptionCompatibility must still answer
+    // honestly if ever queried directly against a non-visible option.
+    statusOverrides: {
+      "inner-waistcoat": {
+        SUIT_WAISTCOAT_CLASSIC: "OPTIONAL",
+        SUIT_WAISTCOAT_FORMAL: "OPTIONAL",
+        SUIT_WAISTCOAT_TUXEDO: "OPTIONAL",
+      },
+    },
   },
   SUIT_UPPER_TUXEDO: {
     upperId: "SUIT_UPPER_TUXEDO",
@@ -305,6 +277,13 @@ const SUIT_COMPATIBILITY_RULES: Record<string, SuitCompatibilityRule> = {
     // tie only unless a future configuration explicitly opts back in.
     allowedAccessoryIds: ["SUIT_ACC_BOW_TIE", "SUIT_ACC_POCKET_SQUARE", "SUIT_ACC_CUFFLINKS", "SUIT_ACC_BUTTONS"],
     materialLinkGroups: [["jacket-primary", "trouser-primary"], ["neckwear-material"]],
+    statusOverrides: {
+      lower: { SUIT_LOWER_TUXEDO_TROUSER: "RECOMMENDED" },
+      "inner-shirt": { SUIT_SHIRT_TUXEDO_PLEATED: "RECOMMENDED" },
+      "inner-waistcoat": { SUIT_WAISTCOAT_TUXEDO: "RECOMMENDED" },
+      footwear: { SUIT_SHOE_PATENT_OXFORD: "RECOMMENDED" },
+      accessory: { SUIT_ACC_BOW_TIE: "RECOMMENDED" },
+    },
   },
   SUIT_UPPER_THREE_PIECE: {
     upperId: "SUIT_UPPER_THREE_PIECE",
@@ -315,6 +294,16 @@ const SUIT_COMPATIBILITY_RULES: Record<string, SuitCompatibilityRule> = {
     allowedFootwearIds: ["SUIT_SHOE_OXFORD", "SUIT_SHOE_DERBY"],
     allowedAccessoryIds: STANDARD_ACCESSORY_IDS,
     materialLinkGroups: [["jacket-primary", "trouser-primary", "waistcoat-material"]],
+    // "None" is already excluded from allowedWaistcoatIds (so it never
+    // appears in the visible list), but is explicitly marked DISALLOWED here
+    // so a direct query against the raw option still answers honestly.
+    statusOverrides: {
+      "inner-waistcoat": {
+        SUIT_WAISTCOAT_NONE: "DISALLOWED",
+        SUIT_WAISTCOAT_CLASSIC: "RECOMMENDED",
+        SUIT_WAISTCOAT_FORMAL: "RECOMMENDED",
+      },
+    },
   },
   SUIT_UPPER_STATEMENT: {
     upperId: "SUIT_UPPER_STATEMENT",
@@ -426,7 +415,22 @@ export function sanitizeSplitOutfitState(state: SplitOutfitState): SplitOutfitSt
     waistcoatId = "SUIT_WAISTCOAT_NONE";
   }
 
-  return { ...state, lowerId, shirtId, waistcoatId, footwearId, accessoryIds };
+  const sanitized: SplitOutfitState = { ...state, lowerId, shirtId, waistcoatId, footwearId, accessoryIds };
+
+  // Prune any previously-uploaded material swatch whose canonical group ID
+  // no longer applies under the (possibly new) upper design — e.g. a
+  // jacket+trouser swatch uploaded for Classic stays valid after switching
+  // to Double-Breasted (same group ID), but is dropped if the customer
+  // instead switches families or a future rule change reshapes the group.
+  if (sanitized.materialUploads && Object.keys(sanitized.materialUploads).length > 0) {
+    const validGroupIds = new Set(getCanonicalMaterialGroups(sanitized).map((group) => group.groupId));
+    const materialUploads = Object.fromEntries(
+      Object.entries(sanitized.materialUploads).filter(([groupId]) => validGroupIds.has(groupId)),
+    );
+    return { ...sanitized, materialUploads };
+  }
+
+  return sanitized;
 }
 
 /** Machine-readable keys for required categories still missing a valid selection. */
@@ -508,5 +512,80 @@ export function buildSplitOutfitSummary(state: SplitOutfitState): SplitOutfitSum
     missingComponents: getMissingRequiredComponents(state),
     waistcoatRequirement: getWaistcoatRequirement(state),
     materialLinkGroups: getMaterialLinkGroups(state),
+    materialGroups: getCanonicalMaterialGroups(state),
   };
+}
+
+// ============================================================
+// CANONICAL MATERIAL GROUPS (server-owned, deterministic)
+// ------------------------------------------------------------
+// A "canonical material group" is the unit of material UPLOAD: every active
+// slot whose fabricSource is "uploaded-fabric" (a genuine customer swatch
+// photo is required), grouped per materialLinkGroups when linked. Slots
+// sourced "atelier-standard" (shirt, neckwear, pocket square, cufflinks,
+// buttons, footwear leather today — see deriveActiveMaterialSlots) never
+// require an upload in Phase 2a and are deliberately excluded from this
+// set entirely; they use the atelier default and need no client file.
+// The group ID is derived, never client-authored — the server independently
+// recomputes it from a validated recipe and rejects any wire input that
+// references a group ID it did not itself derive.
+// ============================================================
+
+/**
+ * Canonicalizes a set of material slot IDs into a stable group ID string.
+ * Sorting makes the result independent of input order, so client UX code
+ * and server validation always agree on the same ID for the same slot set.
+ */
+export function canonicalMaterialGroupId(slotIds: MaterialSlotId[]): string {
+  return [...new Set(slotIds)].sort().join("+");
+}
+
+function labelForGroup(slotIds: MaterialSlotId[], activeSlots: MaterialSlotState[]): string {
+  const names = slotIds
+    .map((slotId) => activeSlots.find((slot) => slot.slotId === slotId)?.label)
+    .filter((label): label is string => Boolean(label));
+  return names.length ? names.join(" + ") : slotIds.join(" + ");
+}
+
+/**
+ * Derives the complete, ordered set of canonical UPLOAD-REQUIRED material
+ * groups for the given state: every currently active, "uploaded-fabric"
+ * sourced material slot (per deriveActiveMaterialSlots) is placed into its
+ * linked group (per getMaterialLinkGroups) if that group has at least one
+ * active "uploaded-fabric" member, or into its own singleton group
+ * otherwise. Atelier-standard slots never appear here — they need no
+ * upload. Deterministic regardless of object/array iteration order —
+ * callers (client UX and server validation) always get the same groups,
+ * in the same order, for the same state.
+ *
+ * For every Suit v1 rule today this always yields exactly ONE group
+ * (jacket-primary + trouser-primary, plus waistcoat-material for
+ * Three-Piece) — see the fixed Suit v1 material policy in
+ * SUIT_COMPATIBILITY_RULES. This is what keeps a Split request's worst-case
+ * upload count small and predictable under Vercel's 4.5MB request ceiling
+ * (see SPLIT_MAX_MATERIAL_GROUPS in lib/split-try-on-handler.ts).
+ */
+export function getCanonicalMaterialGroups(state: SplitOutfitState): CanonicalMaterialGroup[] {
+  const activeSlots = deriveActiveMaterialSlots(state).filter((slot) => slot.fabricSource === "uploaded-fabric");
+  const activeSlotIds = activeSlots.map((slot) => slot.slotId);
+  const activeSet = new Set(activeSlotIds);
+  const linkGroups = getMaterialLinkGroups(state);
+
+  const grouped = new Set<MaterialSlotId>();
+  const groups: CanonicalMaterialGroup[] = [];
+
+  for (const group of linkGroups) {
+    const activeMembers = group.filter((slotId) => activeSet.has(slotId));
+    if (activeMembers.length === 0) continue;
+    for (const slotId of activeMembers) grouped.add(slotId);
+    const sorted = [...activeMembers].sort();
+    groups.push({ groupId: canonicalMaterialGroupId(sorted), slotIds: sorted, label: labelForGroup(sorted, activeSlots) });
+  }
+
+  for (const slotId of activeSlotIds) {
+    if (grouped.has(slotId)) continue;
+    groups.push({ groupId: canonicalMaterialGroupId([slotId]), slotIds: [slotId], label: labelForGroup([slotId], activeSlots) });
+  }
+
+  return groups.sort((a, b) => a.groupId.localeCompare(b.groupId));
 }

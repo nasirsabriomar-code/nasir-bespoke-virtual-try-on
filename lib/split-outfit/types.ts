@@ -84,6 +84,15 @@ export type SplitOutfitState = {
   footwearId: string | null;
   accessoryIds: string[];
   materials: Record<string, string>;
+  /**
+   * Canonical material-group ID (see getCanonicalMaterialGroups in
+   * compatibility.ts) -> the File the customer uploaded for that group.
+   * Client-local only — never a server path or Blob reference. Optional so
+   * existing state literals that predate material uploads remain valid.
+   * Pruned by sanitizeSplitOutfitState whenever the upper design changes and
+   * a previously-uploaded group's ID no longer applies.
+   */
+  materialUploads?: Record<string, File>;
 };
 
 export type SplitOutfitSummary = {
@@ -101,4 +110,19 @@ export type SplitOutfitSummary = {
   missingComponents: string[];
   waistcoatRequirement: WaistcoatRequirement;
   materialLinkGroups: MaterialSlotId[][];
+  materialGroups: CanonicalMaterialGroup[];
+};
+
+/**
+ * A "canonical material group" is the unit of material UPLOAD: one or more
+ * active "uploaded-fabric"-sourced slots (see MaterialRequirement above)
+ * that share exactly one uploaded swatch. Derived deterministically by
+ * getCanonicalMaterialGroups() in compatibility.ts — the client and server
+ * always compute the identical set from the identical state.
+ */
+export type CanonicalMaterialGroup = {
+  /** Deterministic, sorted, '+'-joined slot IDs — e.g. "jacket-primary+trouser-primary". */
+  groupId: string;
+  slotIds: MaterialSlotId[];
+  label: string;
 };

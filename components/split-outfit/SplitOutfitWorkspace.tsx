@@ -228,7 +228,20 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
       </section>
 
       {/* 06 — FABRICS & MATERIALS */}
-      <SplitMaterialsSection slots={summary.activeMaterialSlots} linkGroups={summary.materialLinkGroups} />
+      <SplitMaterialsSection
+        slots={summary.activeMaterialSlots}
+        linkGroups={summary.materialLinkGroups}
+        materialGroups={summary.materialGroups}
+        materialUploads={state.materialUploads ?? {}}
+        onUploadMaterial={(groupId, file) => {
+          updateState((prev) => {
+            const nextUploads = { ...(prev.materialUploads ?? {}) };
+            if (file) nextUploads[groupId] = file;
+            else delete nextUploads[groupId];
+            return { ...prev, materialUploads: nextUploads };
+          });
+        }}
+      />
 
       {/* 07 — YOUR OUTFIT */}
       <SplitOutfitReview summary={summary} />

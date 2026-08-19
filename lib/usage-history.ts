@@ -30,7 +30,7 @@ export type UsageEvent = {
   quality: string;
   assets?: GenerationAssetRefs;
   generation?: {
-    mode: "catalog" | "outfit" | "level1";
+    mode: "catalog" | "outfit" | "level1" | "split";
     categoryId?: string;
     categoryName?: string;
     curatedDesignId?: string;
@@ -56,6 +56,24 @@ export type UsageEvent = {
     shoeId?: string;
     shoeName?: string;
     outfitSpecification?: OutfitSpecification;
+    // Split Outfit (Phase 2a foundation) audit metadata: validated component
+    // IDs/names and the server-derived canonical material-group assignment.
+    // Never binary content — swatch bytes live only in Blob, referenced via
+    // `assets` above, same as every other generation mode.
+    splitFamily?: string;
+    splitUpperId?: string;
+    splitUpperName?: string;
+    splitLowerId?: string;
+    splitLowerName?: string;
+    splitShirtId?: string;
+    splitShirtName?: string;
+    splitWaistcoatId?: string;
+    splitWaistcoatName?: string;
+    splitFootwearId?: string;
+    splitFootwearName?: string;
+    splitAccessoryIds?: string[];
+    splitAccessoryNames?: string[];
+    splitMaterialGroups?: Array<{ groupId: string; slotIds: string[] }>;
   };
 };
 
@@ -118,7 +136,7 @@ function parseAssetRefs(value: unknown): GenerationAssetRefs | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const result: GenerationAssetRefs = {};
-  for (const asset of ["person", "outfit", "fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail"] as const) {
+  for (const asset of ["person", "outfit", "fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail", "split-upper-construction", "split-waistcoat-construction", "split-material"] as const) {
     const item = record[asset];
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;
@@ -144,12 +162,25 @@ function parseOutfitSpecification(value: unknown): OutfitSpecification | undefin
   return value as OutfitSpecification;
 }
 
+function parseSplitMaterialGroups(value: unknown): Array<{ groupId: string; slotIds: string[] }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const groups: Array<{ groupId: string; slotIds: string[] }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return undefined;
+    const record = item as Record<string, unknown>;
+    if (typeof record.groupId !== "string" || !Array.isArray(record.slotIds) || !record.slotIds.every((s) => typeof s === "string")) return undefined;
+    groups.push({ groupId: record.groupId, slotIds: record.slotIds as string[] });
+  }
+  return groups;
+}
+
 function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const isOutfitMode = record.mode === "outfit";
   const isLevel1Mode = record.mode === "level1";
-  if (!isOutfitMode && !isLevel1Mode && (
+  const isSplitMode = record.mode === "split";
+  if (!isOutfitMode && !isLevel1Mode && !isSplitMode && (
     typeof record.upperGarmentId !== "string" ||
     typeof record.upperGarmentName !== "string" ||
     typeof record.turbanId !== "string" ||
@@ -166,8 +197,43 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     ? record.curatedAssetStatus
     : undefined;
   if (isLevel1Mode && (!optionalString("categoryId") || !optionalString("curatedDesignId") || !optionalString("curatedDesignName") || !curatedDesignVersion || !curatedAssetStatus)) return undefined;
+  const splitAccessoryIds = Array.isArray(record.splitAccessoryIds) && record.splitAccessoryIds.every((v) => typeof v === "string")
+    ? record.splitAccessoryIds as string[]
+    : undefined;
+  const splitAccessoryNames = Array.isArray(record.splitAccessoryNames) && record.splitAccessoryNames.every((v) => typeof v === "string")
+    ? record.splitAccessoryNames as string[]
+    : undefined;
+  const splitMaterialGroups = parseSplitMaterialGroups(record.splitMaterialGroups);
+  if (isSplitMode && (
+    !optionalString("splitFamily") ||
+    !optionalString("splitUpperId") ||
+    !optionalString("splitUpperName") ||
+    !optionalString("splitLowerId") ||
+    !optionalString("splitLowerName") ||
+    !optionalString("splitShirtId") ||
+    !optionalString("splitShirtName") ||
+    !optionalString("splitFootwearId") ||
+    !optionalString("splitFootwearName") ||
+    !splitAccessoryIds ||
+    !splitAccessoryNames ||
+    !splitMaterialGroups
+  )) return undefined;
   return {
-    mode: isOutfitMode ? "outfit" : isLevel1Mode ? "level1" : "catalog",
+    mode: isOutfitMode ? "outfit" : isLevel1Mode ? "level1" : isSplitMode ? "split" : "catalog",
+    ...(isSplitMode && optionalString("splitFamily") ? { splitFamily: optionalString("splitFamily") } : {}),
+    ...(isSplitMode && optionalString("splitUpperId") ? { splitUpperId: optionalString("splitUpperId") } : {}),
+    ...(isSplitMode && optionalString("splitUpperName") ? { splitUpperName: optionalString("splitUpperName") } : {}),
+    ...(isSplitMode && optionalString("splitLowerId") ? { splitLowerId: optionalString("splitLowerId") } : {}),
+    ...(isSplitMode && optionalString("splitLowerName") ? { splitLowerName: optionalString("splitLowerName") } : {}),
+    ...(isSplitMode && optionalString("splitShirtId") ? { splitShirtId: optionalString("splitShirtId") } : {}),
+    ...(isSplitMode && optionalString("splitShirtName") ? { splitShirtName: optionalString("splitShirtName") } : {}),
+    ...(isSplitMode && optionalString("splitWaistcoatId") ? { splitWaistcoatId: optionalString("splitWaistcoatId") } : {}),
+    ...(isSplitMode && optionalString("splitWaistcoatName") ? { splitWaistcoatName: optionalString("splitWaistcoatName") } : {}),
+    ...(isSplitMode && optionalString("splitFootwearId") ? { splitFootwearId: optionalString("splitFootwearId") } : {}),
+    ...(isSplitMode && optionalString("splitFootwearName") ? { splitFootwearName: optionalString("splitFootwearName") } : {}),
+    ...(isSplitMode && splitAccessoryIds ? { splitAccessoryIds } : {}),
+    ...(isSplitMode && splitAccessoryNames ? { splitAccessoryNames } : {}),
+    ...(isSplitMode && splitMaterialGroups ? { splitMaterialGroups } : {}),
     ...(isLevel1Mode && optionalString("categoryId") ? { categoryId: optionalString("categoryId") } : {}),
     ...(isLevel1Mode && optionalString("categoryName") ? { categoryName: optionalString("categoryName") } : {}),
     ...(isLevel1Mode && optionalString("curatedDesignId") ? { curatedDesignId: optionalString("curatedDesignId") } : {}),

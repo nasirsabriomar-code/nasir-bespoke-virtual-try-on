@@ -1,6 +1,7 @@
 "use client";
 
-import type { MaterialSlotId, MaterialSlotState } from "@/lib/split-outfit/types";
+import { useRef } from "react";
+import type { CanonicalMaterialGroup, MaterialSlotId, MaterialSlotState } from "@/lib/split-outfit/types";
 
 type SplitMaterialsSectionProps = {
   slots: MaterialSlotState[];
@@ -8,6 +9,12 @@ type SplitMaterialsSectionProps = {
   // Trouser, or Jacket + Trouser + Waistcoat for Three-Piece). Architecture
   // only for now — does not drive multi-fabric image generation yet.
   linkGroups?: MaterialSlotId[][];
+  // Canonical upload-required material groups for the current recipe — the
+  // SAME groups the server independently recomputes and validates against
+  // (see getCanonicalMaterialGroups in lib/split-outfit/compatibility.ts).
+  materialGroups?: CanonicalMaterialGroup[];
+  materialUploads?: Record<string, File>;
+  onUploadMaterial?: (groupId: string, file: File | null) => void;
 };
 
 // Static fallback labels for a linked slot whose component isn't selected
@@ -25,10 +32,18 @@ const MATERIAL_SLOT_FALLBACK_LABELS: Record<MaterialSlotId, string> = {
   "footwear-leather": "Footwear Leather",
 };
 
-export function SplitMaterialsSection({ slots, linkGroups = [] }: SplitMaterialsSectionProps) {
+export function SplitMaterialsSection({
+  slots,
+  linkGroups = [],
+  materialGroups = [],
+  materialUploads = {},
+  onUploadMaterial,
+}: SplitMaterialsSectionProps) {
   const labelFor = (slotId: MaterialSlotId) =>
     slots.find((slot) => slot.slotId === slotId)?.label ?? MATERIAL_SLOT_FALLBACK_LABELS[slotId] ?? slotId;
   const visibleLinkGroups = linkGroups.filter((group) => group.length > 1);
+  const groupForSlot = (slotId: MaterialSlotId) =>
+    materialGroups.find((group) => group.slotIds.includes(slotId));
   return (
     <section className="level1-flow" aria-label="Fabrics and Materials Configuration">
       <div className="level1-step-heading">
@@ -53,9 +68,24 @@ export function SplitMaterialsSection({ slots, linkGroups = [] }: SplitMaterials
         </ul>
       ) : null}
 
+      {materialGroups.length > 0 ? (
+        <div className="split-material-uploads" aria-label="Upload fabric swatches">
+          {materialGroups.map((group) => (
+            <MaterialSwatchUpload
+              key={group.groupId}
+              group={group}
+              file={materialUploads[group.groupId] ?? null}
+              onChange={onUploadMaterial}
+            />
+          ))}
+        </div>
+      ) : null}
+
       <div className="split-materials-grid">
         {slots.map((slot) => {
           const isUploadedFabric = slot.fabricSource === "uploaded-fabric";
+          const group = isUploadedFabric ? groupForSlot(slot.slotId) : undefined;
+          const hasUpload = Boolean(group && materialUploads[group.groupId]);
 
           return (
             <div key={slot.slotId} className="split-material-card">
@@ -82,7 +112,9 @@ export function SplitMaterialsSection({ slots, linkGroups = [] }: SplitMaterials
                     aria-hidden="true"
                   />
                   {isUploadedFabric
-                    ? "Assigned to uploaded fabric sample"
+                    ? hasUpload
+                      ? "Swatch photo uploaded"
+                      : "Assigned to uploaded fabric sample — awaiting upload"
                     : "Curated atelier complementary material"}
                 </span>
               </div>
@@ -91,5 +123,59 @@ export function SplitMaterialsSection({ slots, linkGroups = [] }: SplitMaterials
         })}
       </div>
     </section>
+  );
+}
+
+type MaterialSwatchUploadProps = {
+  group: CanonicalMaterialGroup;
+  file: File | null;
+  onChange?: (groupId: string, file: File | null) => void;
+};
+
+// One upload control per CANONICAL GROUP (not per slot) — a linked group
+// like "jacket-primary+trouser-primary" shares exactly one uploaded swatch,
+// never one file per slot within it. `inputId` and the field name this
+// eventually maps to on the wire both derive from `group.groupId`, so the
+// client and the server-recomputed expected group set can never disagree
+// about which upload governs which component set.
+function MaterialSwatchUpload({ group, file, onChange }: MaterialSwatchUploadProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputId = `split-material-upload-${group.groupId}`;
+
+  return (
+    <div className="split-material-upload-card">
+      <div className="split-material-upload-header">
+        <span className="split-material-upload-label">{group.label}</span>
+        {file ? <span className="split-material-upload-filename">{file.name}</span> : null}
+      </div>
+      <input
+        ref={inputRef}
+        id={inputId}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="split-material-upload-input"
+        onChange={(event) => {
+          const selected = event.target.files?.[0] ?? null;
+          onChange?.(group.groupId, selected);
+        }}
+      />
+      <div className="split-material-upload-actions">
+        <label htmlFor={inputId} className="split-material-upload-button">
+          {file ? "Replace swatch photo" : "Upload swatch photo"}
+        </label>
+        {file ? (
+          <button
+            type="button"
+            className="split-material-upload-clear"
+            onClick={() => {
+              if (inputRef.current) inputRef.current.value = "";
+              onChange?.(group.groupId, null);
+            }}
+          >
+            Remove
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
