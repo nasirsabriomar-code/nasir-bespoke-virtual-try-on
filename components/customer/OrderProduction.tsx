@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { PRODUCTION_STAGE_TRANSITIONS } from "@/lib/customer/validation";
 import type { AssignableStaff, ProductionJob, ProductionStage, ProductionStageHistoryEntry } from "@/lib/customer/types";
 import { ProductionAssignment } from "./ProductionAssignment";
+import { ProductionNotes } from "./ProductionNotes";
 
 type OrderProductionProps = {
   orderId: string;
@@ -224,6 +225,8 @@ export function OrderProduction({ orderId }: OrderProductionProps) {
       ) : (
         <p className="customer-profile-empty">This job is in a final state.</p>
       )}
+
+      <ProductionNotes jobId={job.id} />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import type {
   Order as PrismaOrder,
   OrderMaterialSnapshot as PrismaOrderMaterialSnapshot,
   ProductionJob as PrismaProductionJob,
+  ProductionNote as PrismaProductionNote,
   ProductionStageHistory as PrismaProductionStageHistory,
   SavedOutfit as PrismaSavedOutfit,
   ShowroomSession as PrismaShowroomSession,
@@ -25,6 +26,7 @@ import {
   type NewMeasurementInput,
   type NewOrderInput,
   type NewProductionJobInput,
+  type NewProductionNoteInput,
   type NewSavedOutfitInput,
   type NewSessionInput,
   type ProductionJobFilter,
@@ -48,6 +50,7 @@ import type {
   OrderStatus,
   MaterialRole,
   ProductionJob,
+  ProductionNote,
   ProductionStage,
   ProductionStageHistoryEntry,
   SavedOutfit,
@@ -210,6 +213,16 @@ function mapProductionStageHistory(row: PrismaProductionStageHistory): Productio
     fromStage: row.fromStage as ProductionStage | null,
     toStage: row.toStage as ProductionStage,
     changedBy: row.changedBy,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapProductionNote(row: PrismaProductionNote): ProductionNote {
+  return {
+    id: row.id,
+    productionJobId: row.productionJobId,
+    body: row.body,
+    createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -651,5 +664,26 @@ export const prismaCustomerRepository: CustomerRepository = {
       orderBy: { createdAt: "asc" },
     });
     return rows.map(mapProductionStageHistory);
+  },
+
+  async createProductionNote(input: NewProductionNoteInput): Promise<ProductionNote> {
+    const client = getPrismaClient();
+    const row = await client.productionNote.create({
+      data: {
+        productionJobId: input.productionJobId,
+        body: input.body,
+        createdBy: input.createdBy,
+      },
+    });
+    return mapProductionNote(row);
+  },
+
+  async listProductionNotes(productionJobId: string): Promise<ProductionNote[]> {
+    const client = getPrismaClient();
+    const rows = await client.productionNote.findMany({
+      where: { productionJobId },
+      orderBy: { createdAt: "asc" },
+    });
+    return rows.map(mapProductionNote);
   },
 };

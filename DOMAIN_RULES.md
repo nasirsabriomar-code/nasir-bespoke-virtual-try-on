@@ -51,6 +51,12 @@ This is the single most load-bearing rule set in the whole system. An **Order** 
 - Role-scoped read rules: a `MASTER_TAILOR` reading/listing jobs only ever sees jobs assigned to them — a job assigned to someone else returns 404 (not 403; the API never distinguishes "doesn't exist" from "not yours," same convention as `SavedOutfitNotFoundError`).
 - This is explicitly **not** an ERP, inventory, or scheduling system: no costing, no material-consumption tracking, no capacity planning anywhere in the schema or handlers.
 
+## Production notes
+
+- Production notes are **operational atelier context only**. They never mutate customer measurements, preferences, order snapshots, or fabric data — a note is a comment on a production job, not a write to any customer-truth record (`lib/production-notes-handler.ts`).
+- Notes are **append-only**: there is no PATCH or DELETE. `createdBy` is always the authenticated staff username, server-derived — never client-suppliable. The client may submit `{ body }` only (trimmed, 1..2000 characters; `validateProductionNoteBody` in `lib/customer/validation.ts`).
+- Notes remain readable after a job reaches `COMPLETED` or `CANCELLED`. Adding a note after those terminal stages is allowed for OWNER/MANAGER and for an assigned MASTER_TAILOR; QC_STAFF may only add a note while the job is at `FINAL_QC`.
+
 ## Security principles
 
 These apply uniformly across every domain in this codebase (generation and business alike) and are enforced in shared code, not re-implemented per domain.

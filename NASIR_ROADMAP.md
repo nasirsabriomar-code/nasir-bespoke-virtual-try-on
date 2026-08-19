@@ -16,6 +16,7 @@ This supersedes the root `ROADMAP.md`, which reflects a Phase 1/2-era plan and i
 | 4C — Atelier Production Foundation | ✅ | `ProductionJob`/`ProductionStageHistory`, 10-stage workflow, 3 new atelier roles with resource-level scoping, Atelier Dashboard. |
 | 4D — Atelier Assignment | ✅ | Owner/Manager assign/reassign UI; allowlist-projected assignees (`GET /api/production/assignees`); `assignedStaffId` must be a `MASTER_TAILOR` identity. No Staff table, no migration. |
 | 4E — Fabric Catalogue Management | ✅ | Edit/retire/reactivate fabrics; variant colour + availability; historical `OrderMaterialSnapshot` unchanged. No migration, not inventory. |
+| 4F — Production Notes | ✅ | Append-only `ProductionNote` on `ProductionJob`. Atelier operational context only; never mutates measurements, preferences, or snapshots. |
 
 See `NASIR_ARCHITECTURE.md` for what each phase actually built, and each phase's `AI_TASK_REPORT.md`-era snapshot (in git history) for verification detail — reports are overwritten each phase, so only the latest is present in the working tree at any time; prior ones are recoverable from commit history if needed.
 

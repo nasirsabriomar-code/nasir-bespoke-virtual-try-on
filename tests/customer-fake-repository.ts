@@ -9,6 +9,7 @@ import type {
   NewMeasurementInput,
   NewOrderInput,
   NewProductionJobInput,
+  NewProductionNoteInput,
   NewSavedOutfitInput,
   NewSessionInput,
   ProductionJobFilter,
@@ -26,6 +27,7 @@ import type {
   OrderMaterialSnapshot,
   OrderStatus,
   ProductionJob,
+  ProductionNote,
   ProductionStageHistoryEntry,
   SavedOutfit,
   ShowroomSession,
@@ -53,6 +55,7 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
   /** Keyed by orderId to mirror the real @@unique([orderId]) constraint (1:1 with Order). */
   let productionJobsByOrderId = new Map<string, string>();
   let productionStageHistory = new Map<string, ProductionStageHistoryEntry[]>();
+  let productionNotes = new Map<string, ProductionNote[]>();
 
   function now() {
     return new Date().toISOString();
@@ -72,6 +75,7 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       productionJobs = new Map();
       productionJobsByOrderId = new Map();
       productionStageHistory = new Map();
+      productionNotes = new Map();
     },
 
     async createCustomer(input: NewCustomerInput): Promise<Customer> {
@@ -405,6 +409,23 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
 
     async listProductionStageHistory(productionJobId: string): Promise<ProductionStageHistoryEntry[]> {
       return [...(productionStageHistory.get(productionJobId) ?? [])];
+    },
+
+    async createProductionNote(input: NewProductionNoteInput): Promise<ProductionNote> {
+      const note: ProductionNote = {
+        id: crypto.randomUUID(),
+        productionJobId: input.productionJobId,
+        body: input.body,
+        createdBy: input.createdBy,
+        createdAt: now(),
+      };
+      const existing = productionNotes.get(input.productionJobId) ?? [];
+      productionNotes.set(input.productionJobId, [...existing, note]);
+      return note;
+    },
+
+    async listProductionNotes(productionJobId: string): Promise<ProductionNote[]> {
+      return [...(productionNotes.get(productionJobId) ?? [])];
     },
   };
 

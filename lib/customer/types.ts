@@ -318,3 +318,12 @@ export type ProductionStageHistoryEntry = {
   changedBy: string;
   createdAt: string;
 };
+
+/** Append-only operational atelier context. Not customer/measurement/order/fabric truth. */
+export type ProductionNote = {
+  id: string;
+  productionJobId: string;
+  body: string;
+  createdBy: string;
+  createdAt: string;
+};

@@ -28,7 +28,8 @@ export type CustomerValidationErrorCode =
   | "invalid_fabric_field"
   | "invalid_material_role"
   | "invalid_production_transition"
-  | "invalid_staff_id";
+  | "invalid_staff_id"
+  | "invalid_note_body";
 
 export class CustomerValidationError extends Error {
   constructor(
@@ -339,4 +340,14 @@ export function validateAssignedStaffId(value: unknown): string | null {
     throw new CustomerValidationError("invalid_staff_id", "Please provide a valid staff username.");
   }
   return value.trim().toLowerCase();
+}
+
+const PRODUCTION_NOTE_BODY_MAX_LENGTH = 2000;
+
+/** Trimmed, required, 1..2000 characters. Server-derived fields (id/createdAt/createdBy/productionJobId) are never accepted here. */
+export function validateProductionNoteBody(value: unknown): string {
+  if (!isNonEmptyString(value) || value.trim().length > PRODUCTION_NOTE_BODY_MAX_LENGTH) {
+    throw new CustomerValidationError("invalid_note_body", "Please provide a valid production note.");
+  }
+  return value.trim();
 }

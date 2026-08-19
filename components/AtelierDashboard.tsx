@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { LogoutButton } from "@/components/LogoutButton";
 import { UsageHistory } from "@/components/UsageHistory";
 import { ProductionAssignment, assigneeLabel } from "@/components/customer/ProductionAssignment";
+import { ProductionNotes } from "@/components/customer/ProductionNotes";
 import type { AssignableStaff, ProductionJob, ProductionStage } from "@/lib/customer/types";
 
 type AtelierDashboardProps = {
@@ -32,6 +33,20 @@ const COLUMNS: Column[] = [
 ];
 
 const ACTIVE_STAGES: ProductionStage[] = COLUMNS.flatMap((column) => column.stages);
+
+function JobNotesDisclosure({ jobId }: { jobId: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <details
+      className="atelier-dashboard-job-notes"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>Notes</summary>
+      {open ? <ProductionNotes jobId={jobId} /> : null}
+    </details>
+  );
+}
 
 /**
  * A minimal production dashboard for tailor/QC staff — four columns of
@@ -157,6 +172,7 @@ export function AtelierDashboard({ displayName }: AtelierDashboardProps) {
                         ) : (
                           <span className="customer-profile-value">{assigneeLabel(null, job.assignedStaffId)}</span>
                         )}
+                        <JobNotesDisclosure jobId={job.id} />
                       </div>
                     ))
                   )}

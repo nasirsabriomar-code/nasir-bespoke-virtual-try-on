@@ -13,6 +13,7 @@ import type {
   OrderMeasurementSnapshot,
   OrderStatus,
   ProductionJob,
+  ProductionNote,
   ProductionStage,
   ProductionStageHistoryEntry,
   SavedOutfit,
@@ -245,6 +246,12 @@ export type ProductionJobFilter = {
   assignedStaffId?: string;
 };
 
+export type NewProductionNoteInput = {
+  productionJobId: string;
+  body: string;
+  createdBy: string;
+};
+
 /**
  * The customer-domain persistence contract. lib/customer/prisma-repository.ts
  * is the only production implementation (Postgres via Prisma). Route
@@ -296,4 +303,8 @@ export interface CustomerRepository {
   /** Atomically updates currentStage AND appends the corresponding ProductionStageHistory row. */
   updateProductionJobStage(id: string, input: UpdateProductionJobStageInput): Promise<ProductionJob | null>;
   listProductionStageHistory(productionJobId: string): Promise<ProductionStageHistoryEntry[]>;
+
+  createProductionNote(input: NewProductionNoteInput): Promise<ProductionNote>;
+  /** createdAt ASC. */
+  listProductionNotes(productionJobId: string): Promise<ProductionNote[]>;
 }

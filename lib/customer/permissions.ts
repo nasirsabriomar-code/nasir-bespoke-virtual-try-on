@@ -36,26 +36,34 @@ import type { StaffRole } from "./types";
  * more," to satisfy "do not allow production staff to edit customer truth"
  * structurally rather than by convention:
  *   - STYLE_CONSULTANT: read-only "customer/order visibility" — every
- *     *:read action, zero create/update actions anywhere, including its
- *     own production:read (it can see the Production section on an order
- *     it can already view, but cannot create a job or move a stage).
- *   - MASTER_TAILOR: production:read + production:update ONLY. No
- *     customer/order/fabric access at all — they work from the Atelier
- *     Dashboard (production-domain data only), not the Customer Profile
- *     tree. lib/production-handler.ts additionally scopes both actions to
- *     jobs where assignedStaffId matches their own username, and excludes
+ *     *:read action except production:note:read, zero create/update
+ *     actions anywhere, including its own production:read (it can see
+ *     the Production section on an order it can already view, but cannot
+ *     create a job, move a stage, or read/write operational notes).
+ *   - MASTER_TAILOR: production:read + production:update +
+ *     production:note:read + production:note:create. No customer/order/
+ *     fabric access at all — they work from the Atelier Dashboard
+ *     (production-domain data only), not the Customer Profile tree.
+ *     lib/production-handler.ts additionally scopes read/update to jobs
+ *     where assignedStaffId matches their own username, and excludes
  *     them from making the FINAL_QC outcome decision or from moving a job
  *     to CANCELLED — both reserved for QC_STAFF/MANAGER/OWNER respectively.
- *   - QC_STAFF: production:read + production:update ONLY, same isolation
- *     as MASTER_TAILOR. lib/production-handler.ts additionally restricts
- *     their production:update to jobs currently AT the FINAL_QC stage —
- *     "quality stage updates" only, nothing else.
+ *     Note create uses the same assigned-job 404-hide; any stage is allowed.
+ *   - QC_STAFF: same isolation as MASTER_TAILOR (production:read +
+ *     production:update + production:note:read + production:note:create).
+ *     lib/production-handler.ts additionally restricts their
+ *     production:update to jobs currently AT the FINAL_QC stage —
+ *     "quality stage updates" only, nothing else. Note create is likewise
+ *     restricted to FINAL_QC (403 otherwise); note read is not.
  * production:create (a MANAGER/OWNER call, same rationale as order:update)
  * is intentionally absent from all three new roles.
  * production:assign (Phase 4D) is likewise MANAGER/OWNER only — listing
  * assignable tailors and writing assignedStaffId. MASTER_TAILOR/QC_STAFF
  * keep production:update for stage movement of in-scope jobs but cannot
  * assign or reassign.
+ * production:note:read / production:note:create (Phase 4F) are atelier
+ * operational actions — OWNER/MANAGER/MASTER_TAILOR/QC_STAFF, never STAFF
+ * or STYLE_CONSULTANT (who keep production:read for job visibility).
  */
 export type CustomerAction =
   | "customer:create"
@@ -78,7 +86,9 @@ export type CustomerAction =
   | "production:create"
   | "production:read"
   | "production:update"
-  | "production:assign";
+  | "production:assign"
+  | "production:note:read"
+  | "production:note:create";
 
 const ALL_ACTIONS: CustomerAction[] = [
   "customer:create",
@@ -102,6 +112,8 @@ const ALL_ACTIONS: CustomerAction[] = [
   "production:read",
   "production:update",
   "production:assign",
+  "production:note:read",
+  "production:note:create",
 ];
 
 const STAFF_ACTIONS: CustomerAction[] = [
@@ -129,7 +141,12 @@ const READ_ONLY_ACTIONS: CustomerAction[] = [
   "production:read",
 ];
 
-const PRODUCTION_STAFF_ACTIONS: CustomerAction[] = ["production:read", "production:update"];
+const PRODUCTION_STAFF_ACTIONS: CustomerAction[] = [
+  "production:read",
+  "production:update",
+  "production:note:read",
+  "production:note:create",
+];
 
 const ROLE_PERMISSIONS: Record<StaffRole, ReadonlySet<CustomerAction>> = {
   OWNER: new Set(ALL_ACTIONS),
@@ -182,4 +199,17 @@ export function canUpdateProductionJob(
   if (role === "QC_STAFF") return currentStage === "FINAL_QC";
   if (role === "MASTER_TAILOR") return assignedStaffId === username && currentStage !== "FINAL_QC";
   return role === "OWNER" || role === "MANAGER";
+}
+
+/**
+ * Resource-level create check for production notes, layered on top of
+ * production:note:create (canPerform() must already have passed) and the
+ * canReadProductionJob 404-hide (Master Tailor already cannot reach an
+ * unassigned job). QC_STAFF may only add a note while the job is currently
+ * at FINAL_QC; OWNER/MANAGER/MASTER_TAILOR may add at any stage, including
+ * COMPLETED/CANCELLED.
+ */
+export function canCreateProductionNote(role: StaffRole, currentStage: string): boolean {
+  if (role === "QC_STAFF") return currentStage === "FINAL_QC";
+  return role === "OWNER" || role === "MANAGER" || role === "MASTER_TAILOR";
 }

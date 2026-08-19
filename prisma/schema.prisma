@@ -366,6 +366,7 @@ model ProductionJob {
   updatedAt DateTime @updatedAt
 
   stageHistory ProductionStageHistory[]
+  notes        ProductionNote[]
 
   @@index([orderId])
   @@map("production_jobs")
@@ -387,4 +388,19 @@ model ProductionStageHistory {
 
   @@index([productionJobId])
   @@map("production_stage_history")
+}
+
+/// Append-only operational atelier context on a production job. Not
+/// customer/measurement/order/fabric truth — never updated or deleted.
+model ProductionNote {
+  id              String        @id @default(uuid())
+  productionJobId String
+  productionJob   ProductionJob @relation(fields: [productionJobId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([productionJobId])
+  @@map("production_notes")
 }

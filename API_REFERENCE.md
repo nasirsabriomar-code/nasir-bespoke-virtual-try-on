@@ -121,7 +121,7 @@ Handler: `lib/order-material-handler.ts`. Base path: `/api/orders/{orderId}/mate
 
 ## Production domain (Phase 4C)
 
-Handler: `lib/production-handler.ts`. Base paths: `/api/orders/{orderId}/production` (create/get-by-order), `/api/production/{jobId}` (get-by-id/update), `/api/production` (list, for the Atelier Dashboard).
+Handlers: `lib/production-handler.ts`, `lib/production-notes-handler.ts`. Base paths: `/api/orders/{orderId}/production` (create/get-by-order), `/api/production/{jobId}` (get-by-id/update), `/api/production` (list, for the Atelier Dashboard), `/api/production/{jobId}/notes` (list/append notes).
 
 | Route | Method | Permission | Purpose |
 |---|---|---|---|
@@ -131,6 +131,8 @@ Handler: `lib/production-handler.ts`. Base paths: `/api/orders/{orderId}/product
 | `/api/production/{jobId}` | PATCH | `production:update` | Advances the stage per `PRODUCTION_STAGE_TRANSITIONS`, **plus** role-based resource scoping (see `PERMISSIONS.md`): a Master Tailor may only act on a job assigned to them and never on the FINAL_QC decision; a QC Staff member may only act when the job is currently at FINAL_QC; moving to `CANCELLED` or reassigning (`assignedStaffId` in the body) requires `production:assign` (Owner/Manager). `assignedStaffId` must be `null` or a `MASTER_TAILOR` username from the auth allowlist — never a free-form string. Body: `{ toStage, assignedStaffId? }`. Returns `{ job, history }`. |
 | `/api/production` | GET | `production:read` | Lists production jobs for the Atelier Dashboard, optionally filtered by `?stage=`. A Master Tailor's list is automatically filtered server-side to only jobs assigned to them (not just filtered in the response). |
 | `/api/production/assignees` | GET | `production:assign` | Lists assignable atelier workers as `{ assignees: [{ username, displayName, role }] }` — a safe projection of the auth allowlist, `MASTER_TAILOR` only. Never includes password hashes or secrets. OWNER/MANAGER only. |
+| `/api/production/{jobId}/notes` | GET | `production:note:read` | Lists notes oldest-first as `{ notes }`. 404 if the job is missing or outside the caller's read scope (e.g. a Master Tailor on an unassigned job). Readable after `COMPLETED`/`CANCELLED`. STAFF and STYLE_CONSULTANT cannot read notes (403) even though they can read the job. |
+| `/api/production/{jobId}/notes` | POST | `production:note:create` | Appends a note. Body: `{ body }` **only** (trimmed, 1–2000 chars). Server sets `createdBy` from the session — `id`, `createdAt`, `createdBy`, and `productionJobId` are rejected as unexpected fields (400). Returns the created `ProductionNote` at 201. No PATCH, no DELETE. QC Staff may only add a note when the job is currently at `FINAL_QC` (403 otherwise). Owner/Manager may add at any stage including `COMPLETED`/`CANCELLED`. Master Tailor may add on assigned jobs at any stage (unassigned → 404). |
 
 ---
 
