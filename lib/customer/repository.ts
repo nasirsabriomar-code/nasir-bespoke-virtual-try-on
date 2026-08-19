@@ -4,6 +4,9 @@ import type {
   CustomerPreferences,
   MeasurementBlock,
   MeasurementProfile,
+  Order,
+  OrderMeasurementSnapshot,
+  OrderStatus,
   SavedOutfit,
   SavedOutfitSourceType,
   ShowroomSession,
@@ -45,6 +48,28 @@ export class SessionNotFoundError extends Error {
   constructor() {
     super("Showroom session not found.");
     this.name = "SessionNotFoundError";
+  }
+}
+
+export class SavedOutfitNotFoundError extends Error {
+  constructor() {
+    super("Saved outfit not found.");
+    this.name = "SavedOutfitNotFoundError";
+  }
+}
+
+export class OrderNotFoundError extends Error {
+  constructor() {
+    super("Order not found.");
+    this.name = "OrderNotFoundError";
+  }
+}
+
+/** Thrown when an order is requested but the customer has no measurement on file yet — an order can never be created without one. */
+export class MeasurementRequiredError extends Error {
+  constructor() {
+    super("This customer has no measurements on file yet. Record a measurement before creating an order.");
+    this.name = "MeasurementRequiredError";
   }
 }
 
@@ -103,6 +128,14 @@ export type NewSavedOutfitInput = {
   createdBy: string;
 };
 
+export type NewOrderInput = {
+  customerId: string;
+  savedOutfitId: string;
+  outfitSnapshot: FinalOutfitSnapshot;
+  measurementSnapshot: OrderMeasurementSnapshot;
+  createdBy: string;
+};
+
 /**
  * The customer-domain persistence contract. lib/customer/prisma-repository.ts
  * is the only production implementation (Postgres via Prisma). Route
@@ -126,5 +159,11 @@ export interface CustomerRepository {
   listCustomerSessions(customerId: string): Promise<ShowroomSession[]>;
 
   createSavedOutfit(input: NewSavedOutfitInput): Promise<SavedOutfit>;
+  getSavedOutfitById(id: string): Promise<SavedOutfit | null>;
   listCustomerOutfits(customerId: string): Promise<SavedOutfit[]>;
+
+  createOrder(input: NewOrderInput): Promise<Order>;
+  getOrderById(id: string): Promise<Order | null>;
+  updateOrderStatus(id: string, status: OrderStatus): Promise<Order | null>;
+  listCustomerOrders(customerId: string): Promise<Order[]>;
 }

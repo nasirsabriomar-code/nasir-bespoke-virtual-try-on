@@ -5,7 +5,7 @@ import {
   TROUSER_MEASUREMENT_FIELDS,
 } from "./measurement-fields";
 import { CUSTOMER_PREFERRED_COLOUR_VALUES, CUSTOMER_PREFERRED_FIT_VALUES } from "./types";
-import type { CustomerPreferences, MeasurementBlock, ShowroomSessionStatus } from "./types";
+import type { CustomerPreferences, MeasurementBlock, OrderStatus, ShowroomSessionStatus } from "./types";
 
 export type CustomerValidationErrorCode =
   | "malformed_request"
@@ -16,7 +16,8 @@ export type CustomerValidationErrorCode =
   | "invalid_measurement_block"
   | "invalid_occasion"
   | "invalid_session_transition"
-  | "invalid_source_type";
+  | "invalid_source_type"
+  | "invalid_order_transition";
 
 export class CustomerValidationError extends Error {
   constructor(
@@ -173,6 +174,60 @@ export function assertValidSessionTransition(current: ShowroomSessionStatus, nex
     throw new CustomerValidationError(
       "invalid_session_transition",
       `Cannot move a session from ${current} to ${next}.`,
+    );
+  }
+}
+
+// ============================================================
+// ORDER STATUS STATE MACHINE (Phase 4A)
+// ------------------------------------------------------------
+// Exported (not server-only) so the client UI can render only the
+// currently-valid next-status actions — but this table is never the real
+// authority; the server independently re-validates every transition via
+// assertValidOrderTransition() regardless of what the client requests.
+// ============================================================
+
+export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  DRAFT: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["TAILORING", "CANCELLED"],
+  TAILORING: ["TRIAL", "CANCELLED"],
+  TRIAL: ["ALTERATION", "QUALITY_CHECK", "CANCELLED"],
+  ALTERATION: ["TRIAL", "CANCELLED"],
+  QUALITY_CHECK: ["READY", "ALTERATION", "CANCELLED"],
+  READY: ["DELIVERED", "CANCELLED"],
+  DELIVERED: [],
+  CANCELLED: [],
+};
+
+const ORDER_STATUSES: OrderStatus[] = [
+  "DRAFT",
+  "CONFIRMED",
+  "TAILORING",
+  "TRIAL",
+  "ALTERATION",
+  "QUALITY_CHECK",
+  "READY",
+  "DELIVERED",
+  "CANCELLED",
+];
+
+export function isOrderStatus(value: unknown): value is OrderStatus {
+  return typeof value === "string" && ORDER_STATUSES.includes(value as OrderStatus);
+}
+
+/**
+ * Pure transition-table check for orders — mirrors
+ * assertValidSessionTransition exactly. A DELIVERED or CANCELLED order can
+ * never move again (both terminal); nothing can ever jump back to DRAFT
+ * once CONFIRMED.
+ */
+export function assertValidOrderTransition(current: OrderStatus, next: OrderStatus): void {
+  if (current === next) return;
+  const allowed = ORDER_STATUS_TRANSITIONS[current] ?? [];
+  if (!allowed.includes(next)) {
+    throw new CustomerValidationError(
+      "invalid_order_transition",
+      `Cannot move an order from ${current} to ${next}.`,
     );
   }
 }

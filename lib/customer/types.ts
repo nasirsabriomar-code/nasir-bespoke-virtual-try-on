@@ -153,3 +153,47 @@ export type SavedOutfit = {
   createdBy: string;
   createdAt: string;
 };
+
+// ============================================================
+// ORDER (Phase 4A)
+// ============================================================
+
+export type OrderStatus =
+  | "DRAFT"
+  | "CONFIRMED"
+  | "TAILORING"
+  | "TRIAL"
+  | "ALTERATION"
+  | "QUALITY_CHECK"
+  | "READY"
+  | "DELIVERED"
+  | "CANCELLED";
+
+/**
+ * A full copy of one MeasurementProfile, taken at order-creation time — not
+ * a foreign key. An order must remain readable exactly as it was placed
+ * even after the customer's measurements are updated with a later version.
+ */
+export type OrderMeasurementSnapshot = {
+  measurementProfileId: string;
+  version: number;
+  jacketMeasurements: MeasurementBlock;
+  trouserMeasurements: MeasurementBlock;
+  shirtMeasurements: MeasurementBlock;
+  recordedBy: string;
+  recordedAt: string;
+};
+
+export type Order = {
+  id: string;
+  customerId: string;
+  savedOutfitId: string;
+  /** Copied from the SavedOutfit at order-creation time — never re-derived later. */
+  outfitSnapshot: FinalOutfitSnapshot;
+  measurementSnapshot: OrderMeasurementSnapshot;
+  status: OrderStatus;
+  /** Staff username who created this order — server-derived. */
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};

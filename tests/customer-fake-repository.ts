@@ -3,12 +3,13 @@ import type {
   CustomerUpdateInput,
   NewCustomerInput,
   NewMeasurementInput,
+  NewOrderInput,
   NewSavedOutfitInput,
   NewSessionInput,
   SessionUpdateInput,
 } from "@/lib/customer/repository";
 import { DuplicatePhoneError } from "@/lib/customer/repository";
-import type { Customer, MeasurementProfile, SavedOutfit, ShowroomSession } from "@/lib/customer/types";
+import type { Customer, MeasurementProfile, Order, OrderStatus, SavedOutfit, ShowroomSession } from "@/lib/customer/types";
 
 /**
  * A fully in-memory implementation of CustomerRepository — used by every
@@ -22,6 +23,8 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
   let measurements = new Map<string, MeasurementProfile[]>();
   let sessions = new Map<string, ShowroomSession>();
   let outfits = new Map<string, SavedOutfit[]>();
+  let outfitsById = new Map<string, SavedOutfit>();
+  let orders = new Map<string, Order>();
 
   function now() {
     return new Date().toISOString();
@@ -33,6 +36,8 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       measurements = new Map();
       sessions = new Map();
       outfits = new Map();
+      outfitsById = new Map();
+      orders = new Map();
     },
 
     async createCustomer(input: NewCustomerInput): Promise<Customer> {
@@ -158,11 +163,51 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
         createdAt: now(),
       };
       outfits.set(input.customerId, [...(outfits.get(input.customerId) ?? []), outfit]);
+      outfitsById.set(outfit.id, outfit);
       return outfit;
     },
 
     async listCustomerOutfits(customerId: string): Promise<SavedOutfit[]> {
       return [...(outfits.get(customerId) ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
+    async getSavedOutfitById(id: string): Promise<SavedOutfit | null> {
+      return outfitsById.get(id) ?? null;
+    },
+
+    async createOrder(input: NewOrderInput): Promise<Order> {
+      const timestamp = now();
+      const order: Order = {
+        id: crypto.randomUUID(),
+        customerId: input.customerId,
+        savedOutfitId: input.savedOutfitId,
+        outfitSnapshot: input.outfitSnapshot,
+        measurementSnapshot: input.measurementSnapshot,
+        status: "DRAFT",
+        createdBy: input.createdBy,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      orders.set(order.id, order);
+      return order;
+    },
+
+    async getOrderById(id: string): Promise<Order | null> {
+      return orders.get(id) ?? null;
+    },
+
+    async updateOrderStatus(id: string, status: OrderStatus): Promise<Order | null> {
+      const existing = orders.get(id);
+      if (!existing) return null;
+      const updated: Order = { ...existing, status, updatedAt: now() };
+      orders.set(id, updated);
+      return updated;
+    },
+
+    async listCustomerOrders(customerId: string): Promise<Order[]> {
+      return [...orders.values()]
+        .filter((order) => order.customerId === customerId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
   };
 

@@ -5,6 +5,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import type {
   Customer as PrismaCustomer,
   MeasurementProfile as PrismaMeasurementProfile,
+  Order as PrismaOrder,
   SavedOutfit as PrismaSavedOutfit,
   ShowroomSession as PrismaShowroomSession,
 } from "@/lib/generated/prisma/client";
@@ -14,6 +15,7 @@ import {
   type CustomerRepository,
   type NewCustomerInput,
   type NewMeasurementInput,
+  type NewOrderInput,
   type NewSavedOutfitInput,
   type NewSessionInput,
   type CustomerUpdateInput,
@@ -23,6 +25,9 @@ import type {
   Customer,
   MeasurementBlock,
   MeasurementProfile,
+  Order,
+  OrderMeasurementSnapshot,
+  OrderStatus,
   SavedOutfit,
   SavedOutfitSourceType,
   ShowroomSession,
@@ -105,6 +110,20 @@ function mapSavedOutfit(row: PrismaSavedOutfit): SavedOutfit {
     tryOnResultUrl: row.tryOnResultUrl,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapOrder(row: PrismaOrder): Order {
+  return {
+    id: row.id,
+    customerId: row.customerId,
+    savedOutfitId: row.savedOutfitId,
+    outfitSnapshot: row.outfitSnapshot as unknown as FinalOutfitSnapshot,
+    measurementSnapshot: row.measurementSnapshot as unknown as OrderMeasurementSnapshot,
+    status: row.status as OrderStatus,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -287,5 +306,51 @@ export const prismaCustomerRepository: CustomerRepository = {
       orderBy: { createdAt: "desc" },
     });
     return rows.map(mapSavedOutfit);
+  },
+
+  async getSavedOutfitById(id: string): Promise<SavedOutfit | null> {
+    const client = getPrismaClient();
+    const row = await client.savedOutfit.findUnique({ where: { id } });
+    return row ? mapSavedOutfit(row) : null;
+  },
+
+  async createOrder(input: NewOrderInput): Promise<Order> {
+    const client = getPrismaClient();
+    const row = await client.order.create({
+      data: {
+        customerId: input.customerId,
+        savedOutfitId: input.savedOutfitId,
+        outfitSnapshot: input.outfitSnapshot as unknown as Prisma.InputJsonValue,
+        measurementSnapshot: input.measurementSnapshot as unknown as Prisma.InputJsonValue,
+        createdBy: input.createdBy,
+      },
+    });
+    return mapOrder(row);
+  },
+
+  async getOrderById(id: string): Promise<Order | null> {
+    const client = getPrismaClient();
+    const row = await client.order.findUnique({ where: { id } });
+    return row ? mapOrder(row) : null;
+  },
+
+  async updateOrderStatus(id: string, status: OrderStatus): Promise<Order | null> {
+    const client = getPrismaClient();
+    try {
+      const row = await client.order.update({ where: { id }, data: { status } });
+      return mapOrder(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return null;
+      throw error;
+    }
+  },
+
+  async listCustomerOrders(customerId: string): Promise<Order[]> {
+    const client = getPrismaClient();
+    const rows = await client.order.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(mapOrder);
   },
 };

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { SIGNATURE_LOOK_LIBRARY } from "@/lib/showroom/look-library";
-import type { Customer, MeasurementProfile, SavedOutfit, ShowroomSession } from "@/lib/customer/types";
+import type { Customer, MeasurementProfile, Order, SavedOutfit, ShowroomSession } from "@/lib/customer/types";
 import { MeasurementWorkflow } from "./MeasurementWorkflow";
+import { OrderDetail } from "./OrderDetail";
 import { PreferencesEditor } from "./PreferencesEditor";
 
 type CustomerProfileProps = {
@@ -32,16 +33,19 @@ function formatDate(iso: string): string {
   }
 }
 
-type PanelState = "none" | "preferences" | "measurements";
+type PanelState = "none" | "preferences" | "measurements" | "order-detail";
 
 export function CustomerProfile({ customer: initialCustomer, onStartSession, onBack }: CustomerProfileProps) {
   const [customer, setCustomer] = useState<Customer>(initialCustomer);
   const [measurements, setMeasurements] = useState<MeasurementProfile[] | null>(null);
   const [outfits, setOutfits] = useState<SavedOutfit[] | null>(null);
   const [sessions, setSessions] = useState<ShowroomSession[] | null>(null);
+  const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [openPanel, setOpenPanel] = useState<PanelState>("none");
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [creatingOrderForOutfitId, setCreatingOrderForOutfitId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -49,10 +53,11 @@ export function CustomerProfile({ customer: initialCustomer, onStartSession, onB
     async function loadAll() {
       setError(null);
       try {
-        const [measurementsResponse, outfitsResponse, sessionsResponse] = await Promise.all([
+        const [measurementsResponse, outfitsResponse, sessionsResponse, ordersResponse] = await Promise.all([
           fetch(`/api/customers/${customer.id}/measurements`, { credentials: "same-origin" }),
           fetch(`/api/customers/${customer.id}/outfits`, { credentials: "same-origin" }),
           fetch(`/api/customers/${customer.id}/sessions`, { credentials: "same-origin" }),
+          fetch(`/api/customers/${customer.id}/orders`, { credentials: "same-origin" }),
         ]);
         if (!active) return;
 
@@ -68,6 +73,9 @@ export function CustomerProfile({ customer: initialCustomer, onStartSession, onB
 
         const sessionsPayload: unknown = await sessionsResponse.json();
         setSessions(isRecord(sessionsPayload) && Array.isArray(sessionsPayload.sessions) ? (sessionsPayload.sessions as ShowroomSession[]) : []);
+
+        const ordersPayload: unknown = await ordersResponse.json();
+        setOrders(isRecord(ordersPayload) && Array.isArray(ordersPayload.orders) ? (ordersPayload.orders as Order[]) : []);
       } catch (loadError: unknown) {
         if (!active) return;
         setError(loadError instanceof Error ? loadError.message : "We couldn't load this customer's history.");
@@ -97,6 +105,29 @@ export function CustomerProfile({ customer: initialCustomer, onStartSession, onB
       setError(sessionError instanceof Error ? sessionError.message : "We couldn't start a showroom session.");
     } finally {
       setIsStartingSession(false);
+    }
+  }
+
+  async function createOrder(savedOutfitId: string) {
+    setCreatingOrderForOutfitId(savedOutfitId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/customers/${customer.id}/orders`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ savedOutfitId }),
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readResponseError(payload, "We couldn't create this order."));
+      const order = payload as Order;
+      setOrders((current) => [order, ...(current ?? [])]);
+      setSelectedOrder(order);
+      setOpenPanel("order-detail");
+    } catch (orderError: unknown) {
+      setError(orderError instanceof Error ? orderError.message : "We couldn't create this order.");
+    } finally {
+      setCreatingOrderForOutfitId(null);
     }
   }
 
@@ -158,9 +189,19 @@ export function CustomerProfile({ customer: initialCustomer, onStartSession, onB
           {outfits === null ? (
             <p className="customer-profile-empty">Loading…</p>
           ) : outfits.length > 0 ? (
-            <ul className="customer-list">
+            <ul className="customer-list customer-outfit-list">
               {outfits.slice(0, 5).map((outfit) => (
-                <li key={outfit.id}>{outfitLookLabel(outfit)} — {formatDate(outfit.createdAt)}</li>
+                <li key={outfit.id} className="customer-outfit-list-item">
+                  <span>{outfitLookLabel(outfit)} — {formatDate(outfit.createdAt)}</span>
+                  <button
+                    type="button"
+                    className="showroom-link-button"
+                    onClick={() => void createOrder(outfit.id)}
+                    disabled={creatingOrderForOutfitId === outfit.id}
+                  >
+                    {creatingOrderForOutfitId === outfit.id ? "Creating…" : "Create Order"}
+                  </button>
+                </li>
               ))}
             </ul>
           ) : (
@@ -185,6 +226,33 @@ export function CustomerProfile({ customer: initialCustomer, onStartSession, onB
             <p className="customer-profile-empty">No previous sessions yet.</p>
           )}
         </div>
+
+        <div className="customer-profile-card">
+          <span className="customer-profile-card-label">Orders</span>
+          {orders === null ? (
+            <p className="customer-profile-empty">Loading…</p>
+          ) : orders.length > 0 ? (
+            <ul className="customer-list">
+              {orders.slice(0, 5).map((order) => (
+                <li key={order.id}>
+                  <button
+                    type="button"
+                    className="order-list-entry-button"
+                    onClick={() => {
+                      setSelectedOrder(order);
+                      setOpenPanel("order-detail");
+                    }}
+                  >
+                    <span className={`order-status-pill order-status-${order.status.toLowerCase()}`}>{order.status}</span>
+                    {formatDate(order.createdAt)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="customer-profile-empty">No orders yet.</p>
+          )}
+        </div>
       </div>
 
       {openPanel === "preferences" ? (
@@ -205,6 +273,18 @@ export function CustomerProfile({ customer: initialCustomer, onStartSession, onB
           onCancel={() => setOpenPanel("none")}
           onRecorded={(measurement) => {
             setMeasurements((current) => [measurement, ...(current ?? [])]);
+          }}
+        />
+      ) : null}
+
+      {openPanel === "order-detail" && selectedOrder ? (
+        <OrderDetail
+          order={selectedOrder}
+          customer={customer}
+          onClose={() => setOpenPanel("none")}
+          onStatusChanged={(updated) => {
+            setSelectedOrder(updated);
+            setOrders((current) => (current ?? []).map((entry) => (entry.id === updated.id ? updated : entry)));
           }}
         />
       ) : null}

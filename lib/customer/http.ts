@@ -9,6 +9,9 @@ import {
   DatabaseConfigurationError,
   DuplicatePhoneError,
   InvalidReferenceError,
+  MeasurementRequiredError,
+  OrderNotFoundError,
+  SavedOutfitNotFoundError,
   SessionNotFoundError,
   type CustomerRepository,
 } from "./repository";
@@ -126,6 +129,9 @@ export function mapDomainErrorToResponse(error: unknown): Response | null {
   if (error instanceof DuplicatePhoneError) return jsonError(error.message, 409);
   if (error instanceof CustomerNotFoundError) return jsonError(error.message, 404);
   if (error instanceof SessionNotFoundError) return jsonError(error.message, 404);
+  if (error instanceof SavedOutfitNotFoundError) return jsonError(error.message, 404);
+  if (error instanceof OrderNotFoundError) return jsonError(error.message, 404);
   if (error instanceof InvalidReferenceError) return jsonError(error.message, 400);
+  if (error instanceof MeasurementRequiredError) return jsonError(error.message, 400);
   return null;
 }

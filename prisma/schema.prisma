@@ -1,4 +1,5 @@
 // Nasir Bespoke — Phase 3B: Customer Intelligence + Bespoke Memory Layer.
+// Phase 4A additively extends this schema with Order (see bottom of file).
 //
 // This is the first PostgreSQL-backed schema in this repository. Everything
 // else in the app (auth sessions, rate limits, generation locks, Split
@@ -56,6 +57,7 @@ model Customer {
   measurementProfiles MeasurementProfile[]
   showroomSessions    ShowroomSession[]
   savedOutfits        SavedOutfit[]
+  orders              Order[]
 
   @@map("customers")
 }
@@ -145,7 +147,68 @@ model SavedOutfit {
   createdBy String
   createdAt DateTime @default(now())
 
+  orders Order[]
+
   @@index([customerId])
   @@index([sessionId])
   @@map("saved_outfits")
+}
+
+// ============================================================
+// PHASE 4A — ORDER FOUNDATION
+// ------------------------------------------------------------
+// An Order converts an approved SavedOutfit into a persistent bespoke
+// transaction record. This is deliberately NOT an ERP: no payments,
+// invoicing, inventory, or production-tracking fields exist here — only
+// the minimal record an atelier needs to track "this customer committed
+// to this exact outfit, in this exact size, and here is where that
+// commitment stands."
+// ============================================================
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  TAILORING
+  TRIAL
+  ALTERATION
+  QUALITY_CHECK
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+/// Orders preserve historical truth — they never depend on future customer
+/// data. `outfitSnapshot` and `measurementSnapshot` are both COPIED onto the
+/// Order at creation time (not merely referenced), so the order remains
+/// fully readable exactly as it was when placed even if the customer's
+/// measurements are later updated (a new MeasurementProfile version) or the
+/// catalogue changes. See lib/order-handler.ts, the only code path allowed
+/// to write these two columns — a client can never submit either directly.
+model Order {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  savedOutfitId String
+  savedOutfit   SavedOutfit @relation(fields: [savedOutfitId], references: [id], onDelete: Restrict)
+
+  /// Copy of SavedOutfit.outfitSnapshot at the moment the order was created.
+  outfitSnapshot Json
+
+  /// Copy of the customer's latest MeasurementProfile at the moment the
+  /// order was created — the full versioned record (version, all three
+  /// garment blocks, who recorded it, when), not just a foreign key, so it
+  /// survives unaffected by any future measurement version.
+  measurementSnapshot Json
+
+  status OrderStatus @default(DRAFT)
+
+  /// Staff username who created this order — server-derived, never client-supplied.
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([savedOutfitId])
+  @@map("orders")
 }

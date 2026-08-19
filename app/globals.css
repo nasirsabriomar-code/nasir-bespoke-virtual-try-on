@@ -3258,6 +3258,134 @@ a:focus-visible {
   gap: 6px;
 }
 
+/* ORDERS (Phase 4A) */
+.customer-outfit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.customer-outfit-list-item {
+  align-items: center;
+  border-top: 1px solid var(--atelier-line);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+.customer-outfit-list-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.customer-outfit-list-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-list-entry-button {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--atelier-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 12.5px;
+  gap: 10px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+.order-list-entry-button:hover {
+  color: var(--atelier-gold);
+}
+.order-status-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.order-status-draft { color: var(--atelier-muted); }
+.order-status-confirmed,
+.order-status-tailoring,
+.order-status-trial,
+.order-status-alteration,
+.order-status-quality_check {
+  background: rgba(200, 155, 60, 0.16);
+  border-color: rgba(200, 155, 60, 0.4);
+  color: var(--atelier-gold);
+}
+.order-status-ready,
+.order-status-delivered {
+  background: rgba(90, 170, 110, 0.16);
+  border-color: rgba(90, 170, 110, 0.4);
+  color: #7fd99a;
+}
+.order-status-cancelled {
+  background: rgba(220, 90, 70, 0.14);
+  border-color: rgba(220, 90, 70, 0.4);
+  color: #ff9d88;
+}
+
+/* ORDER DETAIL PANEL */
+.order-detail {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 20px;
+  padding: 18px;
+}
+.order-detail-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.order-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.order-detail-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.order-detail-section {
+  border-top: 1px solid var(--atelier-line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+}
+.order-detail-meta {
+  color: var(--atelier-subdued);
+  font-size: 11px;
+  margin: 0;
+}
+.order-detail-actions {
+  align-items: center;
+  border-top: 1px solid var(--atelier-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  padding-top: 14px;
+}
+.order-detail-transitions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .split-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -3290,6 +3418,9 @@ a:focus-visible {
   .customer-session-banner-actions { flex-direction: column; align-items: stretch; width: 100%; }
   .measurement-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .measurement-history-entry-header { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .order-detail-actions { flex-direction: column; align-items: stretch; }
+  .order-detail-transitions { flex-direction: column; }
+  .customer-outfit-list-item { flex-wrap: wrap; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }
   .atelier-shell .level1-review { align-items: stretch; flex-direction: column; }

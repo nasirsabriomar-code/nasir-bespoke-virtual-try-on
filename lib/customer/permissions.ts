@@ -11,11 +11,15 @@ import type { StaffRole } from "./types";
  * action can be added later without redesigning this module.
  *
  * STAFF may run the full showroom flow end-to-end (create a session, save
- * an outfit) but may NOT create or edit a customer record or record a new
- * measurement version — the two actions with real, hard-to-undo
+ * an outfit, create an order) but may NOT create or edit a customer record,
+ * record a new measurement version, or move an order through its
+ * production lifecycle — these are the actions with real, hard-to-undo
  * consequences (a wrong phone number merges into someone else's history; a
- * wrong measurement drives a physical garment) are reserved for
- * MANAGER/OWNER.
+ * wrong measurement drives a physical garment; an order moved into
+ * TAILORING commits atelier resources) and are reserved for MANAGER/OWNER.
+ * Creating the order itself (DRAFT) is still a STAFF action — it is the
+ * natural conclusion of the showroom flow STAFF already owns end-to-end;
+ * everything that happens to the order AFTER that is a MANAGER/OWNER call.
  */
 export type CustomerAction =
   | "customer:create"
@@ -27,7 +31,10 @@ export type CustomerAction =
   | "session:read"
   | "session:update"
   | "outfit:create"
-  | "outfit:read";
+  | "outfit:read"
+  | "order:create"
+  | "order:read"
+  | "order:update";
 
 const ALL_ACTIONS: CustomerAction[] = [
   "customer:create",
@@ -40,6 +47,9 @@ const ALL_ACTIONS: CustomerAction[] = [
   "session:update",
   "outfit:create",
   "outfit:read",
+  "order:create",
+  "order:read",
+  "order:update",
 ];
 
 const STAFF_ACTIONS: CustomerAction[] = [
@@ -50,6 +60,8 @@ const STAFF_ACTIONS: CustomerAction[] = [
   "session:update",
   "outfit:create",
   "outfit:read",
+  "order:create",
+  "order:read",
 ];
 
 const ROLE_PERMISSIONS: Record<StaffRole, ReadonlySet<CustomerAction>> = {
