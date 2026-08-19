@@ -5,7 +5,14 @@ import {
   TROUSER_MEASUREMENT_FIELDS,
 } from "./measurement-fields";
 import { CUSTOMER_PREFERRED_COLOUR_VALUES, CUSTOMER_PREFERRED_FIT_VALUES, MATERIAL_ROLE_VALUES } from "./types";
-import type { CustomerPreferences, MaterialRole, MeasurementBlock, OrderStatus, ShowroomSessionStatus } from "./types";
+import type {
+  CustomerPreferences,
+  MaterialRole,
+  MeasurementBlock,
+  OrderStatus,
+  ProductionStage,
+  ShowroomSessionStatus,
+} from "./types";
 
 export type CustomerValidationErrorCode =
   | "malformed_request"
@@ -19,7 +26,9 @@ export type CustomerValidationErrorCode =
   | "invalid_source_type"
   | "invalid_order_transition"
   | "invalid_fabric_field"
-  | "invalid_material_role";
+  | "invalid_material_role"
+  | "invalid_production_transition"
+  | "invalid_staff_id";
 
 export class CustomerValidationError extends Error {
   constructor(
@@ -262,4 +271,72 @@ export function validateFabricSupplier(value: unknown): string | null {
 
 export function isMaterialRole(value: unknown): value is MaterialRole {
   return typeof value === "string" && MATERIAL_ROLE_VALUES.includes(value as MaterialRole);
+}
+
+// ============================================================
+// PRODUCTION STAGE STATE MACHINE (Phase 4C)
+// ------------------------------------------------------------
+// Exported (not server-only) so the client UI can render only the
+// currently-valid next-stage actions — but this table is never the real
+// authority; the server independently re-validates every transition via
+// assertValidProductionTransition() regardless of what the client
+// requests, and additionally applies role-based scoping on top (see
+// lib/customer/permissions.ts's canUpdateProductionJob).
+// ============================================================
+
+export const PRODUCTION_STAGE_TRANSITIONS: Record<ProductionStage, ProductionStage[]> = {
+  CONFIRMED: ["FABRIC_READY", "CANCELLED"],
+  FABRIC_READY: ["CUTTING", "CANCELLED"],
+  CUTTING: ["STITCHING", "CANCELLED"],
+  STITCHING: ["FIRST_TRIAL", "CANCELLED"],
+  FIRST_TRIAL: ["ALTERATION", "FINAL_QC", "CANCELLED"],
+  ALTERATION: ["FIRST_TRIAL", "CANCELLED"],
+  FINAL_QC: ["READY_FOR_DELIVERY", "ALTERATION", "CANCELLED"],
+  READY_FOR_DELIVERY: ["COMPLETED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
+const PRODUCTION_STAGES: ProductionStage[] = [
+  "CONFIRMED",
+  "FABRIC_READY",
+  "CUTTING",
+  "STITCHING",
+  "FIRST_TRIAL",
+  "ALTERATION",
+  "FINAL_QC",
+  "READY_FOR_DELIVERY",
+  "COMPLETED",
+  "CANCELLED",
+];
+
+export function isProductionStage(value: unknown): value is ProductionStage {
+  return typeof value === "string" && PRODUCTION_STAGES.includes(value as ProductionStage);
+}
+
+/**
+ * Pure transition-table check for production jobs — mirrors
+ * assertValidOrderTransition exactly. COMPLETED and CANCELLED are both
+ * terminal; nothing can ever jump back to CONFIRMED once past it.
+ */
+export function assertValidProductionTransition(current: ProductionStage, next: ProductionStage): void {
+  if (current === next) return;
+  const allowed = PRODUCTION_STAGE_TRANSITIONS[current] ?? [];
+  if (!allowed.includes(next)) {
+    throw new CustomerValidationError(
+      "invalid_production_transition",
+      `Cannot move a production job from ${current} to ${next}.`,
+    );
+  }
+}
+
+const STAFF_USERNAME_PATTERN = /^[a-z0-9._-]{2,64}$/;
+
+/** Same shape the auth allowlist itself requires (lib/auth/config.ts) — assignedStaffId is never validated against a live staff table, since none exists. */
+export function validateAssignedStaffId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !STAFF_USERNAME_PATTERN.test(value.trim().toLowerCase())) {
+    throw new CustomerValidationError("invalid_staff_id", "Please provide a valid staff username.");
+  }
+  return value.trim().toLowerCase();
 }

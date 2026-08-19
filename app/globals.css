@@ -3422,6 +3422,71 @@ a:focus-visible {
   padding: 8px 10px;
 }
 
+/* PRODUCTION (Phase 4C) */
+.production-stage-confirmed,
+.production-stage-fabric_ready {
+  color: var(--atelier-muted);
+}
+.production-stage-cutting,
+.production-stage-stitching,
+.production-stage-first_trial,
+.production-stage-alteration,
+.production-stage-final_qc {
+  background: rgba(200, 155, 60, 0.16);
+  border-color: rgba(200, 155, 60, 0.4);
+  color: var(--atelier-gold);
+}
+.production-stage-ready_for_delivery,
+.production-stage-completed {
+  background: rgba(90, 170, 110, 0.16);
+  border-color: rgba(90, 170, 110, 0.4);
+  color: #7fd99a;
+}
+.production-stage-cancelled {
+  background: rgba(220, 90, 70, 0.14);
+  border-color: rgba(220, 90, 70, 0.4);
+  color: #ff9d88;
+}
+
+/* ATELIER DASHBOARD (Phase 4C) */
+.atelier-dashboard-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.atelier-dashboard-columns {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.atelier-dashboard-column {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.atelier-dashboard-job {
+  border-top: 1px solid var(--atelier-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+.atelier-dashboard-job:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.atelier-dashboard-job-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .split-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -3435,6 +3500,7 @@ a:focus-visible {
   .mode-segmented-control { grid-template-columns: 1fr; }
   .showroom-starting-point-grid { grid-template-columns: 1fr; }
   .showroom-profile-fields { grid-template-columns: 1fr; }
+  .atelier-dashboard-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .atelier-shell .atelier-main { padding: 0 13px 28px; }
@@ -3458,6 +3524,8 @@ a:focus-visible {
   .order-detail-transitions { flex-direction: column; }
   .order-materials-picker { flex-direction: column; align-items: stretch; }
   .order-materials-picker select { width: 100%; }
+  .atelier-dashboard-header { flex-direction: column; align-items: flex-start; }
+  .atelier-dashboard-columns { grid-template-columns: 1fr; }
   .customer-outfit-list-item { flex-wrap: wrap; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }

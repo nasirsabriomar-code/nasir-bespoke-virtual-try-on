@@ -9,21 +9,27 @@ import type {
   MeasurementProfile as PrismaMeasurementProfile,
   Order as PrismaOrder,
   OrderMaterialSnapshot as PrismaOrderMaterialSnapshot,
+  ProductionJob as PrismaProductionJob,
+  ProductionStageHistory as PrismaProductionStageHistory,
   SavedOutfit as PrismaSavedOutfit,
   ShowroomSession as PrismaShowroomSession,
 } from "@/lib/generated/prisma/client";
 import { getPrismaClient } from "./db";
 import {
   DuplicatePhoneError,
+  ProductionJobAlreadyExistsError,
   type CustomerRepository,
   type NewCustomerInput,
   type NewFabricInput,
   type NewFabricVariantInput,
   type NewMeasurementInput,
   type NewOrderInput,
+  type NewProductionJobInput,
   type NewSavedOutfitInput,
   type NewSessionInput,
+  type ProductionJobFilter,
   type SetOrderMaterialInput,
+  type UpdateProductionJobStageInput,
   type CustomerUpdateInput,
   type SessionUpdateInput,
 } from "./repository";
@@ -39,6 +45,9 @@ import type {
   OrderMeasurementSnapshot,
   OrderStatus,
   MaterialRole,
+  ProductionJob,
+  ProductionStage,
+  ProductionStageHistoryEntry,
   SavedOutfit,
   SavedOutfitSourceType,
   ShowroomSession,
@@ -178,6 +187,28 @@ function mapOrderMaterialSnapshot(row: PrismaOrderMaterialSnapshot): OrderMateri
     variantColour: row.variantColour,
     selectedBy: row.selectedBy,
     selectedAt: row.selectedAt.toISOString(),
+  };
+}
+
+function mapProductionJob(row: PrismaProductionJob): ProductionJob {
+  return {
+    id: row.id,
+    orderId: row.orderId,
+    currentStage: row.currentStage as ProductionStage,
+    assignedStaffId: row.assignedStaffId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapProductionStageHistory(row: PrismaProductionStageHistory): ProductionStageHistoryEntry {
+  return {
+    id: row.id,
+    productionJobId: row.productionJobId,
+    fromStage: row.fromStage as ProductionStage | null,
+    toStage: row.toStage as ProductionStage,
+    changedBy: row.changedBy,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -505,5 +536,96 @@ export const prismaCustomerRepository: CustomerRepository = {
       orderBy: { role: "asc" },
     });
     return rows.map(mapOrderMaterialSnapshot);
+  },
+
+  async createProductionJob(input: NewProductionJobInput): Promise<ProductionJob> {
+    const client = getPrismaClient();
+    try {
+      const row = await client.$transaction(async (tx) => {
+        const job = await tx.productionJob.create({
+          data: {
+            orderId: input.orderId,
+            assignedStaffId: input.assignedStaffId,
+          },
+        });
+        await tx.productionStageHistory.create({
+          data: {
+            productionJobId: job.id,
+            fromStage: null,
+            toStage: job.currentStage,
+            changedBy: input.createdBy,
+          },
+        });
+        return job;
+      });
+      return mapProductionJob(row);
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) throw new ProductionJobAlreadyExistsError();
+      throw error;
+    }
+  },
+
+  async getProductionJobById(id: string): Promise<ProductionJob | null> {
+    const client = getPrismaClient();
+    const row = await client.productionJob.findUnique({ where: { id } });
+    return row ? mapProductionJob(row) : null;
+  },
+
+  async getProductionJobByOrderId(orderId: string): Promise<ProductionJob | null> {
+    const client = getPrismaClient();
+    const row = await client.productionJob.findUnique({ where: { orderId } });
+    return row ? mapProductionJob(row) : null;
+  },
+
+  async listProductionJobs(filter: ProductionJobFilter): Promise<ProductionJob[]> {
+    const client = getPrismaClient();
+    const rows = await client.productionJob.findMany({
+      where: {
+        ...(filter.stage !== undefined ? { currentStage: filter.stage } : {}),
+        ...(filter.assignedStaffId !== undefined ? { assignedStaffId: filter.assignedStaffId } : {}),
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    return rows.map(mapProductionJob);
+  },
+
+  async updateProductionJobStage(id: string, input: UpdateProductionJobStageInput): Promise<ProductionJob | null> {
+    const client = getPrismaClient();
+    try {
+      const row = await client.$transaction(async (tx) => {
+        const existing = await tx.productionJob.findUnique({ where: { id } });
+        if (!existing) return null;
+
+        const updated = await tx.productionJob.update({
+          where: { id },
+          data: {
+            currentStage: input.toStage,
+            ...(input.assignedStaffId !== undefined ? { assignedStaffId: input.assignedStaffId } : {}),
+          },
+        });
+        await tx.productionStageHistory.create({
+          data: {
+            productionJobId: id,
+            fromStage: existing.currentStage,
+            toStage: input.toStage,
+            changedBy: input.changedBy,
+          },
+        });
+        return updated;
+      });
+      return row ? mapProductionJob(row) : null;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return null;
+      throw error;
+    }
+  },
+
+  async listProductionStageHistory(productionJobId: string): Promise<ProductionStageHistoryEntry[]> {
+    const client = getPrismaClient();
+    const rows = await client.productionStageHistory.findMany({
+      where: { productionJobId },
+      orderBy: { createdAt: "asc" },
+    });
+    return rows.map(mapProductionStageHistory);
   },
 };

@@ -6,12 +6,15 @@ import type {
   NewFabricVariantInput,
   NewMeasurementInput,
   NewOrderInput,
+  NewProductionJobInput,
   NewSavedOutfitInput,
   NewSessionInput,
+  ProductionJobFilter,
   SessionUpdateInput,
   SetOrderMaterialInput,
+  UpdateProductionJobStageInput,
 } from "@/lib/customer/repository";
-import { DuplicatePhoneError } from "@/lib/customer/repository";
+import { DuplicatePhoneError, ProductionJobAlreadyExistsError } from "@/lib/customer/repository";
 import type {
   Customer,
   Fabric,
@@ -20,6 +23,8 @@ import type {
   Order,
   OrderMaterialSnapshot,
   OrderStatus,
+  ProductionJob,
+  ProductionStageHistoryEntry,
   SavedOutfit,
   ShowroomSession,
 } from "@/lib/customer/types";
@@ -42,6 +47,10 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
   let fabricVariants = new Map<string, FabricVariant>();
   /** Keyed by `${orderId}:${role}` to mirror the real @@unique([orderId, role]) constraint. */
   let orderMaterials = new Map<string, OrderMaterialSnapshot>();
+  let productionJobs = new Map<string, ProductionJob>();
+  /** Keyed by orderId to mirror the real @@unique([orderId]) constraint (1:1 with Order). */
+  let productionJobsByOrderId = new Map<string, string>();
+  let productionStageHistory = new Map<string, ProductionStageHistoryEntry[]>();
 
   function now() {
     return new Date().toISOString();
@@ -58,6 +67,9 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       fabrics = new Map();
       fabricVariants = new Map();
       orderMaterials = new Map();
+      productionJobs = new Map();
+      productionJobsByOrderId = new Map();
+      productionStageHistory = new Map();
     },
 
     async createCustomer(input: NewCustomerInput): Promise<Customer> {
@@ -303,6 +315,78 @@ export function createFakeCustomerRepository(): CustomerRepository & { reset: ()
       return [...orderMaterials.values()]
         .filter((snapshot) => snapshot.orderId === orderId)
         .sort((a, b) => a.role.localeCompare(b.role));
+    },
+
+    async createProductionJob(input: NewProductionJobInput): Promise<ProductionJob> {
+      if (productionJobsByOrderId.has(input.orderId)) throw new ProductionJobAlreadyExistsError();
+      const timestamp = now();
+      const job: ProductionJob = {
+        id: crypto.randomUUID(),
+        orderId: input.orderId,
+        currentStage: "CONFIRMED",
+        assignedStaffId: input.assignedStaffId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      productionJobs.set(job.id, job);
+      productionJobsByOrderId.set(input.orderId, job.id);
+      productionStageHistory.set(job.id, [
+        {
+          id: crypto.randomUUID(),
+          productionJobId: job.id,
+          fromStage: null,
+          toStage: "CONFIRMED",
+          changedBy: input.createdBy,
+          createdAt: timestamp,
+        },
+      ]);
+      return job;
+    },
+
+    async getProductionJobById(id: string): Promise<ProductionJob | null> {
+      return productionJobs.get(id) ?? null;
+    },
+
+    async getProductionJobByOrderId(orderId: string): Promise<ProductionJob | null> {
+      const id = productionJobsByOrderId.get(orderId);
+      return id ? (productionJobs.get(id) ?? null) : null;
+    },
+
+    async listProductionJobs(filter: ProductionJobFilter): Promise<ProductionJob[]> {
+      return [...productionJobs.values()]
+        .filter((job) => filter.stage === undefined || job.currentStage === filter.stage)
+        .filter((job) => filter.assignedStaffId === undefined || job.assignedStaffId === filter.assignedStaffId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async updateProductionJobStage(id: string, input: UpdateProductionJobStageInput): Promise<ProductionJob | null> {
+      const existing = productionJobs.get(id);
+      if (!existing) return null;
+      const timestamp = now();
+      const updated: ProductionJob = {
+        ...existing,
+        currentStage: input.toStage,
+        ...(input.assignedStaffId !== undefined ? { assignedStaffId: input.assignedStaffId } : {}),
+        updatedAt: timestamp,
+      };
+      productionJobs.set(id, updated);
+      const history = productionStageHistory.get(id) ?? [];
+      productionStageHistory.set(id, [
+        ...history,
+        {
+          id: crypto.randomUUID(),
+          productionJobId: id,
+          fromStage: existing.currentStage,
+          toStage: input.toStage,
+          changedBy: input.changedBy,
+          createdAt: timestamp,
+        },
+      ]);
+      return updated;
+    },
+
+    async listProductionStageHistory(productionJobId: string): Promise<ProductionStageHistoryEntry[]> {
+      return [...(productionStageHistory.get(productionJobId) ?? [])];
     },
   };
 

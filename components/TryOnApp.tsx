@@ -364,6 +364,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         </div>
         <nav className="atelier-nav" aria-label="Primary navigation">
           <span className="atelier-nav-link is-active"><span aria-hidden="true">✦</span>New Creation</span>
+          <a href="/atelier" className="atelier-nav-link">Atelier</a>
           <UsageHistory />
         </nav>
         <div className="atelier-sidebar-footer">

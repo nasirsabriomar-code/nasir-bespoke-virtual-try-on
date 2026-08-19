@@ -3,6 +3,7 @@ import test, { beforeEach } from "node:test";
 import { handleCreateCustomerRequest, handleGetCustomerRequest } from "@/lib/customer-handler";
 import { handleListFabricsRequest } from "@/lib/fabric-handler";
 import { handleListOrderMaterialsRequest } from "@/lib/order-material-handler";
+import { handleGetProductionJobByOrderRequest, handleListProductionJobsRequest } from "@/lib/production-handler";
 import { authAs, jsonRequest, OWNER_USER } from "./customer-test-http";
 
 /**
@@ -54,6 +55,23 @@ test("GET /api/orders/[id]/materials returns 503 (not a crash) when the database
   const response = await handleListOrderMaterialsRequest(
     jsonRequest("http://localhost/api/orders/00000000-0000-4000-8000-000000000000/materials", "GET"),
     "00000000-0000-4000-8000-000000000000",
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("GET /api/orders/[id]/production returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleGetProductionJobByOrderRequest(
+    jsonRequest("http://localhost/api/orders/00000000-0000-4000-8000-000000000000/production", "GET"),
+    "00000000-0000-4000-8000-000000000000",
+    { authenticate: authAs(OWNER_USER) },
+  );
+  assert.equal(response.status, 503);
+});
+
+test("GET /api/production returns 503 (not a crash) when the database is not configured", async () => {
+  const response = await handleListProductionJobsRequest(
+    jsonRequest("http://localhost/api/production", "GET"),
     { authenticate: authAs(OWNER_USER) },
   );
   assert.equal(response.status, 503);

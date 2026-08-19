@@ -12,6 +12,9 @@ import type {
   OrderMaterialSnapshot,
   OrderMeasurementSnapshot,
   OrderStatus,
+  ProductionJob,
+  ProductionStage,
+  ProductionStageHistoryEntry,
   SavedOutfit,
   SavedOutfitSourceType,
   ShowroomSession,
@@ -97,6 +100,21 @@ export class InvalidMaterialSelectionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InvalidMaterialSelectionError";
+  }
+}
+
+export class ProductionJobNotFoundError extends Error {
+  constructor() {
+    super("Production job not found.");
+    this.name = "ProductionJobNotFoundError";
+  }
+}
+
+/** Thrown when a POST attempts to create a second production job for an order that already has one — the Order:ProductionJob relationship is 1:1. */
+export class ProductionJobAlreadyExistsError extends Error {
+  constructor() {
+    super("A production job already exists for this order.");
+    this.name = "ProductionJobAlreadyExistsError";
   }
 }
 
@@ -194,6 +212,24 @@ export type SetOrderMaterialInput = {
   selectedBy: string;
 };
 
+export type NewProductionJobInput = {
+  orderId: string;
+  assignedStaffId: string | null;
+  createdBy: string;
+};
+
+export type UpdateProductionJobStageInput = {
+  toStage: ProductionStage;
+  changedBy: string;
+  /** undefined = leave assignment unchanged; null = explicitly clear it. */
+  assignedStaffId?: string | null;
+};
+
+export type ProductionJobFilter = {
+  stage?: ProductionStage;
+  assignedStaffId?: string;
+};
+
 /**
  * The customer-domain persistence contract. lib/customer/prisma-repository.ts
  * is the only production implementation (Postgres via Prisma). Route
@@ -235,4 +271,12 @@ export interface CustomerRepository {
 
   setOrderMaterial(input: SetOrderMaterialInput): Promise<OrderMaterialSnapshot>;
   listOrderMaterials(orderId: string): Promise<OrderMaterialSnapshot[]>;
+
+  createProductionJob(input: NewProductionJobInput): Promise<ProductionJob>;
+  getProductionJobById(id: string): Promise<ProductionJob | null>;
+  getProductionJobByOrderId(orderId: string): Promise<ProductionJob | null>;
+  listProductionJobs(filter: ProductionJobFilter): Promise<ProductionJob[]>;
+  /** Atomically updates currentStage AND appends the corresponding ProductionStageHistory row. */
+  updateProductionJobStage(id: string, input: UpdateProductionJobStageInput): Promise<ProductionJob | null>;
+  listProductionStageHistory(productionJobId: string): Promise<ProductionStageHistoryEntry[]>;
 }

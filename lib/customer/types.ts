@@ -16,8 +16,16 @@ import type { FinalOutfitSnapshot } from "@/lib/showroom/final-outfit";
 // STAFF AUTHORIZATION
 // ============================================================
 
-/** Minimal 3-role boundary — not a general RBAC platform. See lib/customer/permissions.ts. */
-export type StaffRole = "OWNER" | "MANAGER" | "STAFF";
+/**
+ * Minimal role boundary — not a general RBAC platform. OWNER/MANAGER/STAFF
+ * are the original showroom+admin roles; STYLE_CONSULTANT/MASTER_TAILOR/
+ * QC_STAFF (Phase 4C) are narrow atelier-operations roles layered on top,
+ * each scoped to a specific slice of the production workflow. See
+ * lib/customer/permissions.ts for the full grant table and the
+ * resource-level scoping (assigned-job-only, quality-stage-only) applied
+ * on top of it in lib/production-handler.ts.
+ */
+export type StaffRole = "OWNER" | "MANAGER" | "STAFF" | "STYLE_CONSULTANT" | "MASTER_TAILOR" | "QC_STAFF";
 
 // ============================================================
 // CUSTOMER
@@ -260,4 +268,46 @@ export type OrderMaterialSnapshot = {
   /** Staff username who made this selection — server-derived. */
   selectedBy: string;
   selectedAt: string;
+};
+
+// ============================================================
+// PRODUCTION JOB (Phase 4C)
+// ============================================================
+
+export type ProductionStage =
+  | "CONFIRMED"
+  | "FABRIC_READY"
+  | "CUTTING"
+  | "STITCHING"
+  | "FIRST_TRIAL"
+  | "ALTERATION"
+  | "FINAL_QC"
+  | "READY_FOR_DELIVERY"
+  | "COMPLETED"
+  | "CANCELLED";
+
+/**
+ * One production job per Order (1:1). `currentStage` is the live pointer —
+ * ProductionStageHistoryEntry (below) is the source of truth for how the
+ * job got there, never overwritten or deleted.
+ */
+export type ProductionJob = {
+  id: string;
+  orderId: string;
+  currentStage: ProductionStage;
+  /** Staff username of the assigned tailor — plain string, no staff table exists in this app. */
+  assignedStaffId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Append-only. `fromStage` is null only for the very first entry (job creation). */
+export type ProductionStageHistoryEntry = {
+  id: string;
+  productionJobId: string;
+  fromStage: ProductionStage | null;
+  toStage: ProductionStage;
+  /** Staff username who made this change — server-derived. */
+  changedBy: string;
+  createdAt: string;
 };

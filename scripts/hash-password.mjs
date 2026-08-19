@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 
 const username = String(process.argv[2] ?? "").trim().toLowerCase();
 const displayName = String(process.argv[3] ?? "").trim();
-const STAFF_ROLES = ["OWNER", "MANAGER", "STAFF"];
+const STAFF_ROLES = ["OWNER", "MANAGER", "STAFF", "STYLE_CONSULTANT", "MASTER_TAILOR", "QC_STAFF"];
 const role = String(process.argv[4] ?? "STAFF").trim().toUpperCase();
 
 if (
@@ -11,7 +11,7 @@ if (
   displayName.length > 80 ||
   !STAFF_ROLES.includes(role)
 ) {
-  console.error('Usage: npm run auth:create-user -- username "Display Name" [OWNER|MANAGER|STAFF]');
+  console.error('Usage: npm run auth:create-user -- username "Display Name" [OWNER|MANAGER|STAFF|STYLE_CONSULTANT|MASTER_TAILOR|QC_STAFF]');
   process.exit(1);
 }
 

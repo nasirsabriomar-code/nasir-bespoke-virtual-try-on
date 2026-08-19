@@ -5,6 +5,7 @@ import { findSplitOption } from "@/lib/split-outfit/compatibility";
 import { ORDER_STATUS_TRANSITIONS } from "@/lib/customer/validation";
 import type { Customer, Order, OrderStatus } from "@/lib/customer/types";
 import { OrderMaterials } from "./OrderMaterials";
+import { OrderProduction } from "./OrderProduction";
 
 type OrderDetailProps = {
   order: Order;
@@ -132,6 +133,8 @@ export function OrderDetail({ order, customer, onStatusChanged, onClose }: Order
       </div>
 
       <OrderMaterials orderId={order.id} />
+
+      <OrderProduction orderId={order.id} />
 
       <div className="order-detail-actions">
         <button type="button" className="showroom-link-button" onClick={onClose}>

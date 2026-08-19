@@ -209,6 +209,7 @@ model Order {
   updatedAt DateTime @updatedAt
 
   materialSnapshots OrderMaterialSnapshot[]
+  productionJob     ProductionJob?
 
   @@index([customerId])
   @@index([savedOutfitId])
@@ -315,4 +316,75 @@ model OrderMaterialSnapshot {
   @@unique([orderId, role])
   @@index([orderId])
   @@map("order_material_snapshots")
+}
+
+// ============================================================
+// PHASE 4C — ATELIER OPERATIONS FOUNDATION
+// ------------------------------------------------------------
+// Tracks how an accepted Order moves through the workshop. Deliberately NOT
+// an ERP, inventory, or supplier-management system — no costing, no
+// material-consumption tracking, no scheduling/capacity planning. One
+// ProductionJob per Order (1:1); every stage change is preserved in
+// ProductionStageHistory rather than only overwriting currentStage, so the
+// full production timeline of an order is always reconstructable.
+// `assignedStaffId` is a plain staff USERNAME string, never a database
+// foreign key — this app has no staff table (staff identities live only in
+// the AUTH_USERS_JSON allowlist, see lib/auth/config.ts), matching the
+// existing createdBy/recordedBy/selectedBy convention used everywhere else
+// in this schema.
+// ============================================================
+
+enum ProductionStage {
+  CONFIRMED
+  FABRIC_READY
+  CUTTING
+  STITCHING
+  FIRST_TRIAL
+  ALTERATION
+  FINAL_QC
+  READY_FOR_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+/// One production job per Order. `currentStage` is the live pointer;
+/// ProductionStageHistory (below) is the source of truth for "how did we
+/// get here" — see lib/production-handler.ts, the only code path allowed
+/// to write either table.
+model ProductionJob {
+  id      String @id @default(uuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  currentStage ProductionStage @default(CONFIRMED)
+
+  /// Staff username of the assigned tailor — optional (a job may be
+  /// created before a tailor is assigned), plain string (see file header).
+  assignedStaffId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stageHistory ProductionStageHistory[]
+
+  @@index([orderId])
+  @@map("production_jobs")
+}
+
+/// Append-only — never updated or deleted once written. `fromStage` is
+/// null only for the very first row (job creation: null -> CONFIRMED).
+model ProductionStageHistory {
+  id              String        @id @default(uuid())
+  productionJobId String
+  productionJob   ProductionJob @relation(fields: [productionJobId], references: [id], onDelete: Cascade)
+
+  fromStage ProductionStage?
+  toStage   ProductionStage
+
+  /// Staff username who made this change — server-derived, never client-supplied.
+  changedBy String
+  createdAt DateTime @default(now())
+
+  @@index([productionJobId])
+  @@map("production_stage_history")
 }

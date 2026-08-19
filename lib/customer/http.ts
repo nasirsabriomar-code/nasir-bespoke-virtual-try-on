@@ -14,6 +14,8 @@ import {
   InvalidReferenceError,
   MeasurementRequiredError,
   OrderNotFoundError,
+  ProductionJobAlreadyExistsError,
+  ProductionJobNotFoundError,
   SavedOutfitNotFoundError,
   SessionNotFoundError,
   type CustomerRepository,
@@ -139,5 +141,7 @@ export function mapDomainErrorToResponse(error: unknown): Response | null {
   if (error instanceof FabricNotFoundError) return jsonError(error.message, 404);
   if (error instanceof FabricVariantNotFoundError) return jsonError(error.message, 404);
   if (error instanceof InvalidMaterialSelectionError) return jsonError(error.message, 400);
+  if (error instanceof ProductionJobNotFoundError) return jsonError(error.message, 404);
+  if (error instanceof ProductionJobAlreadyExistsError) return jsonError(error.message, 409);
   return null;
 }
