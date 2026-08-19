@@ -8,7 +8,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { TryOnResult } from "@/components/TryOnResult";
 import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
-import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
+import { ShowroomJourney } from "@/components/showroom/ShowroomJourney";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import { isSplitOutfitEnabled } from "@/lib/split-outfit/config";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
@@ -484,7 +484,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           ) : null}
         </>
       ) : (
-        <SplitOutfitWorkspace
+        <ShowroomJourney
           state={splitOutfit}
           onChange={setSplitOutfit}
         />

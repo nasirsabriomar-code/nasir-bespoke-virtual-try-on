@@ -2728,6 +2728,222 @@ a:focus-visible {
   color: var(--atelier-muted) !important;
 }
 
+/* SHOWROOM PROVENANCE (surfaced in SplitOutfitReview) */
+.split-provenance-note {
+  font-size: 12px;
+  color: var(--atelier-gold);
+  letter-spacing: 0.02em;
+  margin: -6px 0 18px;
+}
+.split-provenance-note strong {
+  color: var(--atelier-text);
+}
+
+/* SHOWROOM JOURNEY — shared primary/secondary action styles */
+.showroom-cta-button {
+  background: var(--atelier-gold);
+  border: 1px solid var(--atelier-gold);
+  color: #18150f;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  min-height: 44px;
+  padding: 0 22px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-radius: 2px;
+}
+.showroom-cta-button:hover {
+  background: #dbad51;
+  box-shadow: 0 14px 29px rgba(201, 154, 61, 0.2);
+}
+.showroom-link-button {
+  background: none;
+  border: none;
+  color: var(--atelier-muted);
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  padding: 8px 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.showroom-link-button:hover {
+  color: var(--atelier-text);
+}
+
+/* STARTING POINT */
+.showroom-starting-point-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.showroom-starting-point-card {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  color: var(--atelier-text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 26px 24px;
+  text-align: left;
+  transition: all 180ms ease;
+}
+.showroom-starting-point-card:hover {
+  border-color: var(--atelier-gold);
+  background: #191c19;
+  transform: translateY(-2px);
+}
+.showroom-starting-point-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--atelier-gold);
+}
+.showroom-starting-point-desc {
+  font-size: 12.5px;
+  color: var(--atelier-muted);
+  line-height: 1.5;
+}
+
+/* RECOMMENDATION PROFILE FORM */
+.showroom-profile-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.showroom-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--atelier-muted);
+  letter-spacing: 0.02em;
+}
+.showroom-profile-field select {
+  background: var(--atelier-interactive);
+  border: 1px solid var(--atelier-line-strong);
+  border-radius: 2px;
+  color: var(--atelier-text);
+  font-size: 13px;
+  padding: 10px 12px;
+}
+.showroom-profile-actions {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: flex-end;
+}
+
+/* RECOMMENDATION RESULTS */
+.showroom-look-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+.showroom-look-card {
+  background: var(--atelier-surface);
+  border: 1px solid var(--atelier-line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 20px 22px;
+}
+.showroom-look-card-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.showroom-look-card-header h3 {
+  color: var(--atelier-text);
+  font-size: 16px;
+  margin: 0;
+}
+.showroom-look-score {
+  background: rgba(200, 155, 60, 0.16);
+  border: 1px solid rgba(200, 155, 60, 0.4);
+  border-radius: 2px;
+  color: var(--atelier-gold);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+.showroom-look-desc {
+  color: var(--atelier-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+.showroom-look-components {
+  color: var(--atelier-text);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+.showroom-look-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  list-style: none;
+  margin: 2px 0 4px;
+  padding: 0;
+}
+.showroom-reason-chip {
+  color: #a8a49a;
+  font-size: 11px;
+  line-height: 1.4;
+  padding-left: 12px;
+  position: relative;
+}
+.showroom-reason-chip::before {
+  color: var(--atelier-gold);
+  content: "•";
+  left: 0;
+  position: absolute;
+}
+.showroom-look-cta {
+  margin-top: auto;
+  width: 100%;
+}
+
+/* WORKSPACE PROVENANCE TOOLBAR */
+.showroom-workspace-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.showroom-provenance-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.showroom-provenance-pill {
+  background: rgba(200, 155, 60, 0.14);
+  border: 1px solid rgba(200, 155, 60, 0.35);
+  border-radius: 2px;
+  color: var(--atelier-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 5px 10px;
+}
+.showroom-provenance-pill strong {
+  color: var(--atelier-gold);
+}
+.showroom-provenance-pill.is-manual {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--atelier-line);
+}
+
 @media (max-width: 1380px) {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .split-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2739,6 +2955,8 @@ a:focus-visible {
   .atelier-shell .level1-design-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
   .split-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mode-segmented-control { grid-template-columns: 1fr; }
+  .showroom-starting-point-grid { grid-template-columns: 1fr; }
+  .showroom-profile-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .atelier-shell .atelier-main { padding: 0 13px 28px; }
@@ -2748,6 +2966,9 @@ a:focus-visible {
   .split-materials-grid { grid-template-columns: 1fr; }
   .split-summary-grid { grid-template-columns: 1fr; }
   .split-status-notice { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .showroom-look-cards { grid-template-columns: 1fr; }
+  .showroom-profile-actions { flex-wrap: wrap; justify-content: flex-start; }
+  .showroom-provenance-toolbar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .mode-selector-container { padding: 16px; }
   .mode-option-btn { min-height: 52px; padding: 12px 14px; }
   .atelier-shell .level1-review { align-items: stretch; flex-direction: column; }

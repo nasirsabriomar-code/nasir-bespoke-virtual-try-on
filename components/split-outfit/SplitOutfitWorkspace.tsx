@@ -14,6 +14,7 @@ import {
   sanitizeSplitOutfitState,
 } from "@/lib/split-outfit/compatibility";
 import type { SplitOutfitState, WaistcoatRequirement } from "@/lib/split-outfit/types";
+import type { SignatureLookProvenance } from "@/lib/showroom/types";
 import { SplitComponentCard } from "./SplitComponentCard";
 import { SplitMaterialsSection } from "./SplitMaterialsSection";
 import { SplitOutfitReview } from "./SplitOutfitReview";
@@ -21,6 +22,9 @@ import { SplitOutfitReview } from "./SplitOutfitReview";
 type SplitOutfitWorkspaceProps = {
   state: SplitOutfitState;
   onChange: (updater: (prev: SplitOutfitState) => SplitOutfitState) => void;
+  /** Safe, non-fabricated Look provenance — surfaced read-only in the review section. */
+  provenance?: SignatureLookProvenance;
+  customizedFromLook?: boolean;
 };
 
 const WAISTCOAT_REQUIREMENT_LABEL: Record<WaistcoatRequirement, string> = {
@@ -30,7 +34,7 @@ const WAISTCOAT_REQUIREMENT_LABEL: Record<WaistcoatRequirement, string> = {
   UNAVAILABLE: "Unavailable",
 };
 
-export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspaceProps) {
+export function SplitOutfitWorkspace({ state, onChange, provenance, customizedFromLook }: SplitOutfitWorkspaceProps) {
   const summary = useMemo(() => buildSplitOutfitSummary(state), [state]);
   const visibleLowers = useMemo(() => getVisibleLowerOptions(state), [state]);
   const visibleShirts = useMemo(() => getVisibleShirtOptions(state), [state]);
@@ -244,7 +248,7 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
       />
 
       {/* 07 — YOUR OUTFIT */}
-      <SplitOutfitReview summary={summary} />
+      <SplitOutfitReview summary={summary} provenance={provenance} customizedFromLook={customizedFromLook} />
     </div>
   );
 }

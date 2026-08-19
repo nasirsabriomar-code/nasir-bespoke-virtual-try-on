@@ -1,9 +1,13 @@
 "use client";
 
 import type { SplitOutfitSummary } from "@/lib/split-outfit/types";
+import type { SignatureLookProvenance } from "@/lib/showroom/types";
 
 type SplitOutfitReviewProps = {
   summary: SplitOutfitSummary;
+  /** Safe, non-fabricated provenance — omitted or "manual" shows no Look association. */
+  provenance?: SignatureLookProvenance;
+  customizedFromLook?: boolean;
 };
 
 const MISSING_COMPONENT_LABEL: Record<string, string> = {
@@ -34,7 +38,7 @@ const STATUS_COPY: Record<
   },
 };
 
-export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
+export function SplitOutfitReview({ summary, provenance, customizedFromLook }: SplitOutfitReviewProps) {
   const {
     upper,
     lower,
@@ -59,6 +63,13 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
             <h2>Your outfit</h2>
           </div>
         </div>
+
+        {provenance && provenance.type === "signature-look" ? (
+          <p className="split-provenance-note" role="status">
+            {customizedFromLook ? "Customized from: " : "Started from: "}
+            <strong>{provenance.lookName}</strong>
+          </p>
+        ) : null}
 
         <div className="split-summary-grid">
           {/* 1. UPPER */}
