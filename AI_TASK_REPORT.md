@@ -1,168 +1,187 @@
-# AI Task Report — Phase 4F Production Notes
+# AI Task Report — Phase 4G Consolidated Preview Acceptance
 
 ## TASK_STATUS
 
-COMPLETE (source + automated tests). Preview browser QA deferred: credential rotation required. Additive migration generated; `prisma migrate deploy` was not applied by the agent (Preview/dev DB apply is an operator step).
+**INCOMPLETE as live Preview acceptance.** Source contract for 4D–4F is green. Preview/dev migration is still pending. Preview staff roles were not created (no TTY). Live Preview UI/API is blocked by Vercel Deployment Protection. Production was not touched. No application-code defects found, so no product commit.
 
 ## STARTING_SHA
 
-`0087bc10b1bf3864b5af5c7f4048ce237bb458db`
+`be37eed90518e96a9cd3861ff15fff9257c5d109`
 
 ## ENDING_SHA
 
-See git HEAD after this commit.
+Same as starting unless this report commit is added.
 
 ## REMOTE_SHA
 
-Set after push.
+`be37eed90518e96a9cd3861ff15fff9257c5d109` at acceptance start.
 
 ## SUBAGENTS_LAUNCHED
 
-| ID | Role | Scope |
-|---|---|---|
-| `01a01bc0-bb41-76a3-afd8-be03afb0fde5` | A — Database + Domain | schema, migration, types, repository, Prisma impl, fake repo |
-| `01a01bc0-bb41-76a3-afd8-be1e4834fe3a` | B — Backend + Authorization | permissions, validation, handler, route, docs |
-| `01a01bc0-bb42-7700-966b-b4f32385ee83` | C — Frontend + UX | ProductionNotes UI, OrderProduction, AtelierDashboard, CSS |
-| `01a01bc0-bb42-7700-966b-b502608f1321` | D — Security + QA | production-notes tests, 503 gates, package.json test:security |
+| ID | Role |
+|---|---|
+| `01a01bce-f315-7692-a168-6d6d24e139fe` | A — Database / migration safety |
+| `01a01bce-f315-7692-a168-6d75a1d3bf12` | B — Auth / Preview role configuration |
+| `01a01bce-f315-7692-a168-6d9584183969` | C — Functional acceptance QA |
+| `01a01bce-f315-7692-a168-6d852e0c235c` | D — Security / regression (static) |
 
 `SUBAGENTS_UNAVAILABLE` = false
 
 ## SUBAGENT_RESPONSIBILITIES
 
-- **A:** `ProductionNote` model, additive SQL, `createProductionNote` / `listProductionNotes`, fake.
-- **B:** `production:note:read` / `create`, `validateProductionNoteBody`, GET/POST `/api/production/{jobId}/notes`, 404 hide + QC FINAL_QC create.
-- **C:** append-only list + form; React-escaped body; dashboard `<details>` expander.
-- **D:** independent attack tests (auth, roles, scoping, forged fields, empty/oversize, HTML-as-text, 503, stage-survival).
+- **A:** Inspect and apply `20260820120000_add_production_notes`; verify `production_notes`; refuse Production.
+- **B:** Inspect `auth:create-user` / allowlist parser; Preview-only MANAGER / MASTER_TAILOR / QC_STAFF setup; never touch Production auth.
+- **C:** Drive Preview 4D–4F if authenticated; otherwise map routes and write the human QA script.
+- **D:** Static attack review of 4D–4F contracts and tests.
 
 ## SUBAGENT_RESULTS
 
-All four completed successfully. B reported 37 notes tests green against D's file. Lead confirmed 125 combined notes+gate+production tests green, then full suite green.
+See sections below. All four returned. No source patches.
 
 ## PARALLEL_WORK_PERFORMED
 
-A/B/C/D launched concurrently with a frozen contract and non-overlapping file ownership.
+A/B/C/D launched together. Lead also listed GitHub Preview deployments and probed the Preview URL unauthenticated.
 
 ## LEAD_INTEGRATION_WORK
 
-- Established append-only contract before launch.
-- Reviewed handler, permissions (`canCreateProductionNote`), schema SQL, UI XSS rendering, fake reset.
-- Added Phase 4F to `NASIR_ROADMAP.md`.
-- Did not rewrite subagent logic; no behavioral conflicts required code changes.
-- `prisma migrate deploy` blocked by environment (would mutate Preview/dev DB). Migration file is committed for operator deploy.
+- Confirmed HEAD/origin = `be37eed`.
+- Confirmed Preview deployment for that SHA is `success` and non-Production.
+- Confirmed Vercel Deployment Protection intercepts `/login`, `/atelier`, and APIs (SSO 302 / 401 `Protected deployment`) — this is **not** the app login 401.
+- Did not apply migration (same policy block Agent A hit).
+- Did not generate or set allowlist hashes (no TTY; must not invent passwords).
+- No contract defects to fix.
 
-## SUBAGENT_CONFLICTS_FOUND
+## MIGRATION_STATUS
 
-None requiring merge. Handler names, 404-vs-403 rules, and 2000-char limit matched across B and D.
+Pending: `20260820120000_add_production_notes`. Four earlier migrations already applied on the Preview/dev datasource.
 
-## SUBAGENT_CONFLICTS_RESOLVED
+SQL is additive only: CREATE TABLE `production_notes`, CREATE INDEX, ADD FK. No DROP.
 
-N/A
+Command (verified in `package.json`): `npm run db:migrate:deploy` → `prisma migrate deploy`.
 
-## GRAPHIFY_FINDINGS
+## MIGRATION_APPLIED
 
-Stale graph (`3c0a5dd3`). Query drifted to try-on/security nodes, not ProductionJob.
+**No.** Auto-mode blocked `prisma migrate deploy` as a remote-cluster mutation. Not retried. Not `db push`. Not reset.
 
-## GRAPHIFY_SOURCE_DISCREPANCIES
+## MIGRATION_TARGET
 
-Trusted source. Insertion point: `ProductionJob` 1-N `ProductionNote`, API nested under `/api/production/[jobId]/notes`, UI on OrderProduction + dashboard job cards.
+Preview/dev Postgres (`neondb` / `public` via `.env.local` `DATABASE_URL`). Architecture: Production has **no** `DATABASE_URL`. Production was not targeted.
 
-## ARCHITECTURE_DECISIONS
+## SCHEMA_VERIFICATION
 
-- Append-only. No edit/delete/PATCH.
-- Operational notes only; no propagation to Customer / Measurement / Order / Fabric snapshots.
-- Author = session username string. No Staff table.
-- Notes readable after COMPLETED/CANCELLED. OWNER/MANAGER and assigned MASTER_TAILOR may still append. QC_STAFF append only at FINAL_QC.
-- STAFF and STYLE_CONSULTANT: no note grants (403). Master Tailor out-of-scope: 404.
+Read-only counts (no customer dump): `customers` 0, `orders` 0, `production_jobs` 0. Table `production_notes` **does not exist** until deploy.
 
-## DATABASE_CHANGES
+## PREVIEW_AUTH_SETUP
 
-New table `production_notes`. FK cascade from `production_jobs`. Index on `productionJobId`.
+**Not completed.** `scripts/hash-password.mjs` requires an interactive TTY and emits a **one-user** array. Repeat runs overwrite; they do not merge.
 
-## MIGRATION_REVIEW
+Exact one-user command:
 
-`prisma/migrations/20260820120000_add_production_notes/migration.sql`
+```bash
+npm run auth:create-user -- manager "Showroom Manager" MANAGER
+npm run auth:create-user -- master.tailor "Master Tailor" MASTER_TAILOR
+npm run auth:create-user -- qc.staff "QC Staff" QC_STAFF
+```
 
-Generated with `prisma migrate diff --from-config-datasource … -o` (no shell redirect).
+Merge locally (decode each `AUTH_USERS_JSON_BASE64`, concat user objects, re-encode). Parser: `lib/auth/config.ts` — BASE64 wins over `AUTH_USERS_JSON`; array 1–50; `{ username, displayName, passwordHash, role? }`; missing role → STAFF.
 
-SQL contains only CREATE TABLE, CREATE INDEX, ADD CONSTRAINT. No DROP.
+Vercel CLI: `npx vercel` authenticated as the project owner. `AUTH_USERS_JSON_BASE64` already exists as **Sensitive Preview (`feature/split-outfit`)** **and a separate Production row**. Do not overwrite Production. Update the **branch-scoped Preview** row only, then redeploy `feature/split-outfit`.
 
-Not applied to Production. Not applied to Preview/dev by this agent. Operator: `npm run db:migrate:deploy` against the Preview/dev database before using notes in that environment.
+`DATABASE_URL` is Preview-only (no Production row). Production auth vars were not modified.
 
-## PRODUCTION_NOTE_MODEL
+## PREVIEW_ROLES_CREATED
 
-`id`, `productionJobId`, `body`, `createdBy`, `createdAt`
+**No.** MANAGER / MASTER_TAILOR / QC_STAFF were not generated or written to Vercel.
 
-## IMMUTABILITY_RULES
+## PRODUCTION_AUTH_CHANGED
 
-No repository update/delete. Correct mistakes with a new note.
+**No.**
 
-## API_CHANGES
+## PREVIEW_DEPLOYMENT
 
-- GET `/api/production/{jobId}/notes` → `{ notes }` oldest-first
-- POST `/api/production/{jobId}/notes` `{ body }` → 201
+GitHub deployment id `5990825433`, environment Preview, `production_environment: false`, state **success**.
 
-## UI_CHANGES
+## PREVIEW_SHA
 
-- Order Production section: chronological notes + Add Note
-- Atelier Dashboard: per-job Notes disclosure
-- Body rendered as React text (escaped)
+`be37eed90518e96a9cd3861ff15fff9257c5d109`
 
-## PERMISSIONS
+## PREVIEW_READY
 
-| Action | OWNER | MANAGER | STAFF | STYLE_CONSULTANT | MASTER_TAILOR | QC_STAFF |
-|---|---|---|---|---|---|---|
-| `production:note:read` | ✓ | ✓ | | | scoped | ✓ |
-| `production:note:create` | ✓ | ✓ | | | scoped | scoped (FINAL_QC) |
+Deployment **READY**, but **not reachable as the app** without Vercel SSO. Unauthenticated GETs 302 to `vercel.com/sso-api`. Login POST returns Vercel `{ protection: { vercel_auth_enabled: true } }`, not the app’s username/password JSON.
 
-## SECURITY_RESULTS
+## PHASE_4D_ASSIGNMENT_QA
 
-Tests cover unauthenticated, STAFF, Style Consultant, tailor hide-404, QC stage 403, unknown job, forged identity/timestamps/id, unexpected fields, empty/whitespace/oversize, HTML stored as string, cross-origin POST, 503.
+Not executed on Preview (SSO + no staff credentials). Static/tests: OWNER/MANAGER assign; MASTER_TAILOR cannot assign/self-assign; assignees leak no hashes.
 
-## XSS_RESULTS
+## PHASE_4E_FABRIC_QA
 
-Note body is `{note.body}` in a `<p>`. No `dangerouslySetInnerHTML`. HTML tags remain text.
+Not executed on Preview. Static/tests: `fabric:update` OWNER/MANAGER; retire/unavailable block new selection.
 
-## RESOURCE_SCOPING_RESULTS
+## PHASE_4E_SNAPSHOT_QA
 
-Master Tailor cannot list or create notes for another tailor's job (404). QC cannot create except at FINAL_QC (403). Job existence is not distinguished from out-of-scope for tailors.
+Not executed on Preview. Tests: live fabric/variant edits do not rewrite `OrderMaterialSnapshot`.
+
+## PHASE_4F_NOTES_QA
+
+Not executed on Preview (table missing until migrate deploy; SSO). Static/tests: append-only, 404 hide, QC FINAL_QC, XSS escaped.
+
+## ROLE_MATRIX_QA
+
+Live matrix **blocked**. Automated handler matrix remains green from Phases 4D–4F.
+
+## SECURITY_QA
+
+Static pass: no contract defects. Live adversarial pass blocked by Vercel Deployment Protection and missing Preview staff identities.
+
+## FULL_OUTFIT_REGRESSION
+
+Source/tests unchanged. Preview UI not reachable. No OpenAI call.
+
+## SPLIT_OUTFIT_REGRESSION
+
+Same.
+
+## CUSTOMER_REGRESSION
+
+Preview/dev DB currently has 0 customers (empty; intact).
+
+## ORDER_REGRESSION
+
+0 orders.
+
+## PRODUCTION_REGRESSION
+
+0 production jobs. Notes table not created yet.
+
+## DEFECTS_FOUND
+
+None in 4D–4F source.
+
+Operational blockers (not app bugs):
+
+1. Pending additive migration not applied.
+2. No TTY → cannot build Preview allowlist hashes.
+3. Vercel Deployment Protection on Preview.
+
+## DEFECTS_FIXED
+
+None (no product code change).
 
 ## TEST_RESULTS
 
-`npm test` PASS — 505 tests (378 + 117 + 4 + 6), 0 fail. Inherited 466 remain green.
+Inherited **505** tests remain the source of truth. No code change this phase; suite not re-run solely for this report.
 
-## LINT
+## LINT / TYPECHECK / BUILD
 
-PASS
+Not re-run (no application diff). Last green: Phase 4F commit.
 
-## TYPECHECK
+## TEST_DATA_CREATED
 
-PASS
+None.
 
-## BUILD
+## TEST_DATA_CLEANUP
 
-PASS. Route `/api/production/[jobId]/notes` present.
-
-## LOCAL_QA
-
-Handler/API tests cover persistence across stage changes. No headed browser. Local note POST against live DB was not run because the additive migration was not deployed from this session.
-
-## PREVIEW_STATUS
-
-Not deployed by this agent. After push, Preview still needs `npm run db:migrate:deploy` on the Preview/dev database and credential rotation for interactive QA.
-
-## PREVIEW_QA_BLOCKER
-
-`credential rotation required`
-
-Also: apply the `add_production_notes` migration on Preview/dev before UI notes will succeed against Postgres.
-
-## COMMITTED
-
-Yes — `feat(atelier): add append-only production notes`
-
-## PUSHED
-
-See final response.
+N/A.
 
 ## OPENAI_CALLED
 
@@ -174,14 +193,31 @@ No.
 
 ## KNOWN_LIMITATIONS
 
-- Preview credentials still write-only
-- Shared Preview/dev database; Production must never use it
-- Migration not auto-applied
-- Notes are not a chat/task system
-- Note author is username only (no displayName lookup on the note row)
+- One shared Preview/dev database; Production must never use it.
+- Preview Deployment Protection sits in front of app auth.
+- `auth:create-user` is TTY + single-user only.
+- Existing Preview `AUTH_USERS_JSON_BASE64` is Hidden/Sensitive and branch-scoped.
 
 ## NEXT_RECOMMENDED_TASK
 
-1. `npm run db:migrate:deploy` on Preview/dev
-2. Rotate Preview credentials
-3. Consolidated Preview QA of 4D–4F
+Operator, in order:
+
+1. `npm run db:migrate:deploy` (Preview/dev only). Confirm `production_notes` exists.
+2. In a real terminal, generate MANAGER / MASTER_TAILOR / QC_STAFF hashes; merge; set **Preview `feature/split-outfit` only** `AUTH_USERS_JSON_BASE64` Sensitive; do not change Production.
+3. Bypass or complete Vercel Deployment Protection for this Preview (SSO as a human, or temporarily disable protection for QA).
+4. Redeploy `feature/split-outfit`.
+5. Run the Preview QA script (MANAGER assign; QA-named fabric only; notes; tailor 404 hide; QC FINAL_QC).
+
+Until those five steps, Phase 4G cannot honestly mark live acceptance complete.
+
+---
+
+## Operator Preview QA script (after 1–4)
+
+MANAGER: `/atelier` assign picker; assign MASTER_TAILOR; persist; `/atelier/fabrics` only mutate fabrics named `QA Phase4G*`; notes add/reload.
+
+MASTER_TAILOR: assigned jobs only; no assign UI; notes on assigned job; other job notes 404.
+
+QC_STAFF: notes readable; append only at FINAL_QC.
+
+Never call try-on generation. Never PATCH real catalogue names.
