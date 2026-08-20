@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
+import { buildSplitOutfitSummary } from "@/lib/split-outfit/compatibility";
 import { applySignatureLook, deriveCustomizedFromLook } from "@/lib/showroom/look-application";
 import { SIGNATURE_LOOK_LIBRARY } from "@/lib/showroom/look-library";
 import { recommendSignatureLooks } from "@/lib/showroom/recommendation-engine";
@@ -13,6 +14,7 @@ import type {
 } from "@/lib/showroom/types";
 import type { SplitOutfitState } from "@/lib/split-outfit/types";
 import { LookRecommendationList } from "./LookRecommendationList";
+import { OutfitReview } from "./OutfitReview";
 import { RecommendationProfileForm } from "./RecommendationProfileForm";
 import { StartingPointSelector } from "./StartingPointSelector";
 
@@ -100,6 +102,14 @@ export function ShowroomJourney({ state, onChange, onProvenanceChange }: Showroo
     setJourneyStep("starting-point");
   }, []);
 
+  const reviewOutfit = useCallback(() => {
+    setJourneyStep("review");
+  }, []);
+
+  const continueEditing = useCallback(() => {
+    setJourneyStep("workspace");
+  }, []);
+
   if (journeyStep === "starting-point") {
     return <StartingPointSelector onSelectSignatureLooks={startSignatureLookIntake} onSelectManual={startManualBuild} />;
   }
@@ -120,6 +130,17 @@ export function ShowroomJourney({ state, onChange, onProvenanceChange }: Showroo
     );
   }
 
+  if (journeyStep === "review") {
+    return (
+      <OutfitReview
+        summary={buildSplitOutfitSummary(state)}
+        provenance={provenance}
+        customizedFromLook={customizedFromLook}
+        onContinueEditing={continueEditing}
+      />
+    );
+  }
+
   return (
     <div className="showroom-workspace-wrap">
       <div className="showroom-provenance-toolbar">
@@ -131,9 +152,14 @@ export function ShowroomJourney({ state, onChange, onProvenanceChange }: Showroo
         ) : (
           <span className="showroom-provenance-pill is-manual">Manual build</span>
         )}
-        <button type="button" className="showroom-link-button" onClick={changeStartingPoint}>
-          Change starting point
-        </button>
+        <span className="showroom-provenance-toolbar-actions">
+          <button type="button" className="showroom-link-button" onClick={reviewOutfit}>
+            Review &amp; finish
+          </button>
+          <button type="button" className="showroom-link-button" onClick={changeStartingPoint}>
+            Change starting point
+          </button>
+        </span>
       </div>
       <SplitOutfitWorkspace
         state={state}

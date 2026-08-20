@@ -122,7 +122,7 @@ export type SignatureLookRecommendation = {
 };
 
 /** Which starting point the current Split session is on. */
-export type ShowroomJourneyStep = "starting-point" | "profile" | "recommendations" | "workspace";
+export type ShowroomJourneyStep = "starting-point" | "profile" | "recommendations" | "workspace" | "review";
 
 /** Whether the current Split recipe was built manually or from a curated Look. */
 export type SignatureLookProvenance =

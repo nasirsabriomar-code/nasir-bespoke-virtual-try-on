@@ -1,33 +1,43 @@
-# AI Task Report — Phase 5A: Premium Outfit & Order Presentation
+# AI Task Report — Phase 5B: Showroom Review & Finish Step
 
 ## TASK_STATUS
 
-COMPLETE (source-verified; live browser/visual acceptance still pending — see `VISUAL_REVIEW_STATUS` below). Phase 5A implemented per the approved plan (`/root/.claude/plans/nasir-bespoke-phase-5-curious-hopper.md`). No Phase 5B work started. No Production impact.
+COMPLETE (code/tests/build). Live browser QA deferred to the operator per this session's operating mode — see `DEFERRED_OPERATOR_QA`. No Production impact. No Phase 5C work started.
 
 ## TASK_NAME
 
-Phase 5A — Premium Outfit & Order Presentation: a luxury, customer-facing bespoke presentation document reached from `OrderDetail.tsx`, built as a pure read-only presentation layer over already-existing, already-server-validated data.
+Phase 5B — Showroom Journey Review & Finish step: closes a real UX gap identified during Phase 5 scoping (the showroom journey's `"workspace"` step looped indefinitely with no dedicated summary/pause point before saving).
+
+## MILESTONE_SELECTION_RATIONALE
+
+This session was scoped to code-only work with no operator/Vercel dependency. Candidates considered:
+
+- **Showroom Journey Review step (chosen)** — the earlier Phase 5 codebase survey found `lib/showroom/types.ts`'s `ShowroomJourneyStep` union had no review/finalize step, even though `ShowroomJourney.tsx`'s own doc comment already named the intended flow as "...CUSTOMIZE → MATERIALS → REVIEW" — the REVIEW phase was designed for but never built. Zero backend surface: no migration, no new permission, no new route. Fully validated by the existing `npm test`/lint/typecheck/build pipeline (no live DB or Preview dependency).
+- **Phase 5B "delivery confirmation"** (named as the natural next milestone in the Phase 5A plan) — deferred. It requires a new Prisma model, migration, and permission — larger surface than warranted for a single code-only session, and better served by its own planning pass per the standing rule against starting new domain work without explicit scoping.
+- **Costing/pricing, inventory, scheduling** — explicitly out of scope per this session's hard constraints and every prior architecture document.
 
 ## OBJECTIVE
 
-Turn one piece of the internal operating system into a "premium showroom experience" per the Phase 5 strategy brief: not an administrative order summary, but a private-client document a customer would want to keep, with zero backend/schema/permission changes.
+Give staff a genuine pause point to review a built outfit (components, materials, validity) before saving it to customer history, instead of the workspace step looping with no summary. The existing "Save Outfit to Customer History" action (owned by `CustomerGate.tsx`, unchanged) remains the actual save path — this milestone adds a presentation-only step in front of it.
 
 ## WORK_COMPLETED
 
-- Evaluated five Phase 5 candidates (customer value / revenue / complexity / risk / effort) via two Explore-agent codebase surveys; chose the bounded, lowest-risk, highest-value option and ruled out costing/pricing and the operational-domain candidates explicitly.
-- Verified the actual brand system in `app/globals.css` by direct inspection (not assumption) before designing: `.atelier-shell`'s real dark palette (canvas `#080908`, gold `#c99a3d`, text `#f4f1e9`), the one existing brand-mark usage (`app/login/page.tsx:23-24`), and which existing classes read as "dashboard chrome" to avoid (`.order-status-pill`, `.customer-chip`) versus reusable as-is (`.customer-profile-card-label`, `.brand-kicker`/`.brand-rule`).
-- Implemented `components/customer/OrderPresentation.tsx`, wired a "Present to Customer" entry point into `OrderDetail.tsx`, and added scoped presentation + print CSS to `app/globals.css`.
-- Caught and fixed a real bug during implementation: the first print-stylesheet draft referenced `var(--paper)`/`var(--ink)`, which are redefined dark inside `.atelier-shell` (`app/globals.css:1663-1666`) — under `@media print` they'd still resolve dark, since class-scoped custom properties aren't affected by the media query. Fixed by hardcoding the actual `:root` light hex values with an explanatory comment.
-- Ran full source validation after implementation (see `TEST_RESULTS`/`LINT`/`TYPECHECK`/`BUILD`).
+- Read `NASIR_ARCHITECTURE.md`, `DOMAIN_RULES.md`, `PERMISSIONS.md`, `API_REFERENCE.md`, `AI_ENGINEERING_GUIDE.md`, `NASIR_ROADMAP.md`, and this report's prior entries (already covered earlier this session — not re-read line by line, but their constraints were applied throughout).
+- Verified `ShowroomJourneyStep` and `ShowroomSessionState`/`DEFAULT_SHOWROOM_SESSION_STATE` are referenced only inside `lib/showroom/types.ts` itself (no exhaustive switch or server-side validator elsewhere) before adding a new literal — confirmed zero downstream breakage risk from the type change.
+- Added `"review"` to `ShowroomJourneyStep` (`lib/showroom/types.ts`).
+- Added `components/showroom/OutfitReview.tsx` — a read-only summary of the current `SplitOutfitSummary` (outfit components, active material slots, recipe-status warnings for `CONFLICT`/`INCOMPLETE`), reusing `buildSplitOutfitSummary()` (existing, `lib/split-outfit/compatibility.ts`) and existing CSS classes (`.customer-list`, `.customer-profile-card-label`, `.order-detail-section`, `.showroom-cta-button`) rather than inventing new visual language.
+- Wired a "Review & finish" action into `ShowroomJourney.tsx`'s workspace toolbar, alongside the existing "Change starting point" control, plus a `journeyStep === "review"` branch and a `continueEditing` callback back to `"workspace"`.
+- Added a small `.showroom-provenance-toolbar-actions` CSS wrapper (`app/globals.css`) so the toolbar cleanly holds two link-buttons alongside the provenance pill, on both desktop and the existing mobile breakpoint.
 
 ## FILES_CREATED
 
-- `components/customer/OrderPresentation.tsx`
+- `components/showroom/OutfitReview.tsx`
 
 ## FILES_MODIFIED
 
-- `components/customer/OrderDetail.tsx` — import, `presenting` state, "Present to Customer" button (hidden on `CANCELLED`), conditional render swapping in `OrderPresentation`
-- `app/globals.css` — new `.order-presentation*` rule set + `@media print` block
+- `lib/showroom/types.ts` — added `"review"` to `ShowroomJourneyStep`
+- `components/showroom/ShowroomJourney.tsx` — import, `reviewOutfit`/`continueEditing` callbacks, toolbar button, new `review` render branch
+- `app/globals.css` — `.showroom-provenance-toolbar-actions` (+ mobile wrap rule)
 - `AI_TASK_REPORT.md` — this report
 
 ## FILES_DELETED
@@ -36,7 +46,7 @@ None.
 
 ## ARCHITECTURE_CHANGES
 
-None.
+None. Purely additive client-side journey state — the actual `SplitOutfitState`/garment recipe is untouched, still owned entirely by `TryOnApp`/the existing compatibility engine.
 
 ## DATABASE_CHANGES
 
@@ -48,48 +58,39 @@ None.
 
 ## API_CHANGES
 
-None. `OrderPresentation` reuses the existing `GET /api/orders/{orderId}/materials` route (the same call `OrderMaterials.tsx` already makes) and the `Order`/`Customer` objects already fetched to render `OrderDetail.tsx`.
+None. No new fetch calls — `OutfitReview` receives `summary`/`provenance`/`customizedFromLook` as props, computed from data `ShowroomJourney` already holds.
 
 ## PERMISSION_CHANGES
 
-None. Gated on the same `order:read` permission `OrderDetail.tsx` already requires (STAFF/OWNER/MANAGER/STYLE_CONSULTANT) — a strict read-narrowing of a view the caller already has access to, not a new grant.
+None.
 
 ## UI_CHANGES
 
-New "Present to Customer" action on `OrderDetail.tsx` (hidden for `CANCELLED` orders) opens a full presentation view in place of the staff detail body: customer name as the typographic focal point, outfit components, measurements (garment-grouped, humanized field names, no version/recordedBy), and materials (proper role names, no raw enum) — with a `Print / Save as PDF` control. No new route; this is a client-side view swap within the existing Order Detail panel.
+New "Review & finish" action in the Split Outfit workspace toolbar opens a review screen (outfit summary, materials, validity warnings) with a "Continue Editing" action back to the workspace. The existing "Save Outfit to Customer History" / "Complete Session" controls in `CustomerGate.tsx`'s persistent banner are unchanged and remain visible above this step.
 
 ## SECURITY_CONSIDERATIONS
 
-- No new attack surface: no new endpoint, no new mutation path, no new permission. `OrderPresentation` never fetches or imports production data (`OrderProduction`/`ProductionNotes` are not referenced), so there is no code path for it to leak anything beyond what `order:read` already grants.
-- Content-transformation is presentation-only and local to the new file: `order.id`, `measurementSnapshot.recordedBy`, `.version`, and every raw `OrderStatus`/`MaterialRole` enum value are either omitted or passed through a local `STATUS_PHRASES`/`ROLE_LABELS` map — none of this touches `lib/customer/types.ts` or `lib/customer/validation.ts`.
+None applicable — no new data flow, no new permission surface, no new endpoint. `OutfitReview` renders only data already present in client state.
 
 ## ARCHITECTURAL_INVARIANTS_PRESERVED
 
-Snapshot-not-reference (renders `order.outfitSnapshot`/`order.measurementSnapshot` as already fetched, never re-derives from live catalogue/customer data), server-owns-truth (zero client-side derivation of anything authoritative — this is pure display), flat permission model (no resource-scoping added, no new action), not-an-ERP (no pricing/invoicing surfaced or added). All unchanged.
+The Split compatibility engine (`lib/split-outfit/compatibility.ts`) remains the sole authority for recipe validity — `OutfitReview` reads `recipeStatus`/`missingComponents` from `buildSplitOutfitSummary()`, never recomputes or second-guesses them. No parallel garment-state system introduced (per `ShowroomJourney.tsx`'s existing doc comment, still true). No customer/business-domain data touched.
 
 ## SUBAGENTS_USED
 
-Two `Explore` agents (parallel, background) during Phase 5 strategy scoping — one surveyed delivery/completion/export tooling, one surveyed showroom/presentation UI and the design-system tokens. One `Plan` agent to draft the initial Phase 5A implementation shape, subsequently revised in-session (not by a subagent) after the owner's design-refinement feedback rounds and my own direct-file verification of the brand system.
-
-## SUBAGENT_RESPONSIBILITIES
-
-Explore agents: read-only codebase survey only, no code written. Plan agent: produced a first-pass implementation plan later corrected and grounded against actual file contents (`app/globals.css`, `app/login/page.tsx`) I read directly before finalizing the approved plan.
-
-## SUBAGENT_RESULTS
-
-Both Explore surveys confirmed zero pre-existing print/export/delivery-confirmation code and identified `OrderDetail.tsx`/the "Midnight Atelier" theme as the correct extension points — both claims verified independently by direct file reads before implementation, not taken on faith.
+None this session — direct source inspection (`Grep`/`Read`) was sufficient given the change's small, well-bounded surface.
 
 ## TESTS_ADDED
 
-None. No `.tsx` component-rendering test harness exists anywhere in this codebase (confirmed: zero `*.test.tsx` files, consistent with the existing testing strategy) — this is a UI-only milestone with no handler/domain logic to unit-test.
+None. No `.tsx` component-rendering test harness exists anywhere in this codebase (confirmed again: consistent with Phase 5A's finding) — `OutfitReview` and the `ShowroomJourney` step-machine change are UI-only with no new pure business logic to unit-test (all validity computation is delegated to the already-tested `buildSplitOutfitSummary()`).
 
 ## TEST_RESULTS
 
-`npm test` — **515 pass, 0 fail** (388 security + 117 catalog + 4 bespoke + 6 render). Identical to the pre-implementation baseline — expected, since no `lib/` handler code was touched.
+`npm test` — **515 pass, 0 fail** (388 security + 117 catalog + 4 bespoke + 6 render). Identical to the pre-change baseline — expected, no `lib/` handler or domain logic touched.
 
 ## LINT
 
-PASS.
+PASS (one `react/no-unescaped-entities` violation caught and fixed during implementation — straight double quotes in JSX text replaced with `&quot;`).
 
 ## TYPECHECK
 
@@ -97,35 +98,27 @@ PASS.
 
 ## BUILD
 
-PASS. No new routes (expected — this is a client component swap, not a new page/API route).
+PASS. No new routes (expected — client-side component/state change only, no new page).
 
-## PREVIEW_STATUS
+## OPENAI_CALLED
 
-Not deployed or tested live this session — see `VISUAL_REVIEW_STATUS`.
+NO.
 
-## DATABASE_STATE
+## PRODUCTION_AFFECTED
 
-Unchanged. This container has no `.env.local`/`DATABASE_URL` (same limitation noted in the Phase 4G sessions) — no database connection was made or needed for this UI-only milestone.
+NO.
 
-## VISUAL_REVIEW_STATUS
+## DEFERRED_OPERATOR_QA
 
-**Honest limitation, stated plainly rather than papered over:** the plan's actual acceptance bar — "would a luxury menswear client feel proud receiving this document?" and "would a client set this aside to keep?" — requires viewing the rendered output in a browser against a real order. This container has no `DATABASE_URL`, so no real `Order`/`Customer` data exists to render against, and no browser session was available to screenshot the result. I verified the two things I *can* verify from source alone:
-- **No dashboard characteristics**: confirmed by reading the markup/CSS directly — no `.order-status-pill`, no `.customer-chip` clusters, no bordered card container anywhere in `OrderPresentation.tsx`/its CSS.
-- **No software-terminology leaks**: confirmed every rendered string traces through `STATUS_PHRASES`/`ROLE_LABELS`/`humanizeField()` — no raw enum, ID, or username reaches the DOM.
+Per this session's operating mode (code-only, no live Preview/Vercel dependency), the following are explicitly deferred to the operator and were not attempted:
 
-The third question — does it actually *read* as a kept luxury document — was **not** independently verified against real rendered output this session. Recommend a quick look on the dev server or the next Preview deploy before treating Phase 5A as fully accepted, the same way Phase 4's live OWNER acceptance needed an actual pass beyond source review.
-
-## KNOWN_BLOCKERS
-
-None for shipping the code. The visual-acceptance gap above is the one open item before calling Phase 5A fully done in the luxury-document sense, not just the correctness sense.
-
-## KNOWN_LIMITATIONS
-
-Same standing limitations carried from every prior report: single shared Preview/dev database, no Production database, this Cloud session has no reliable credentialed path to a live deployment (Vercel SSO unchanged). No new limitations introduced by this milestone.
+- Visual/interactive confirmation that the "Review & finish" button appears correctly in the workspace toolbar and that the review screen renders cleanly for both a Signature-Look-started and a manually-built outfit.
+- Confirmation that recipe-status warnings (`CONFLICT`/`INCOMPLETE`) display correctly when deliberately triggered in a real session.
+- No Vercel environment variables, Preview redeploys, Deployment Protection, or credentials were touched or requested.
 
 ## GIT_STATUS
 
-Three files changed (2 modified, 1 new) plus this report, all on `feature/split-outfit`.
+Four files changed (3 modified, 1 new) plus this report, all on `feature/split-outfit`.
 
 ## COMMITTED
 
@@ -141,23 +134,17 @@ See final chat response (recorded after push).
 
 ## COMMIT_MESSAGE
 
-`feat(customer): add premium outfit & order presentation (Phase 5A)`
-
-## PRODUCTION_AFFECTED
-
-NO.
-
-## OPENAI_CALLED
-
-NO.
+`feat(showroom): add review & finish step to the showroom journey`
 
 ## RECOMMENDED_NEXT_ACTION
 
-View `OrderPresentation.tsx` rendered against a real order (dev server with `DATABASE_URL` set, or the next Preview deploy) and judge it against the plan's actual acceptance bar — a luxury-perception pass, not a functional one. If it holds up, Phase 5A is genuinely done. If not, the fix is almost certainly typography/spacing tuning within the same file, not a re-architecture. Phase 5B (formal delivery confirmation) remains the logical next milestone after that — not started, not scoped further than the one paragraph in the Phase 5 plan.
+Two independent open items, neither blocking the other:
+1. **Operator visual QA** for this milestone (see `DEFERRED_OPERATOR_QA`) and for Phase 5A (still outstanding from the prior report) — both are UI-only checks a dev server or Preview deploy can confirm.
+2. **Phase 5B "delivery confirmation"** (the formal sign-off record named in the Phase 5A plan) remains the next larger-surface milestone, not started, requiring its own scoping pass (new Prisma model, migration, permission) before implementation — consistent with the standing rule against starting new domain work without explicit approval.
 
 ## NEXT_AGENT_CONTEXT
 
-- `components/customer/OrderPresentation.tsx` is the whole feature — read-only, presentation-only, isolated from `OrderDetail.tsx`'s staff workflow logic. `STATUS_PHRASES`/`ROLE_LABELS`/`humanizeField()` are the three places customer-facing copy lives; edit there, not in `lib/customer/types.ts` or `lib/customer/validation.ts`.
-- The print stylesheet in `app/globals.css` intentionally hardcodes light hex values instead of `var(--paper)`/`var(--ink)` — those custom properties are shadowed dark inside `.atelier-shell`, so a `var()` reference would not actually produce a light printed page. Don't "clean this up" back to `var()` without re-checking that shadowing.
-- Phase 5A has not had a live visual/browser review — that's the one remaining step before treating it as fully accepted per the plan's actual acceptance bar (see `VISUAL_REVIEW_STATUS`).
-- Phase 5B (delivery confirmation — a new record capturing customer sign-off/delivery date) is the next logical milestone per `NASIR_ROADMAP.md`/the Phase 5 plan, but is not scoped in detail and should not be started without a fresh planning pass, per the standing rule across this whole engagement.
+- `components/showroom/OutfitReview.tsx` is presentation-only, reading `SplitOutfitSummary` computed by the existing `buildSplitOutfitSummary()` — do not add new validity logic here; extend the compatibility engine instead if a new rule is ever needed.
+- `ShowroomJourneyStep` now has five values (`"starting-point" | "profile" | "recommendations" | "workspace" | "review"`) — confirmed via source search that nothing outside `lib/showroom/types.ts` pattern-matches this union exhaustively, so future additions are similarly low-risk, but re-verify before assuming that stays true.
+- The actual "save outfit" action was not moved or duplicated — it still lives in `CustomerGate.tsx`'s persistent banner, unchanged, and stays visible above the journey regardless of which step is showing (including the new `"review"` step).
+- Two milestones remain open for a future session: operator visual QA on both Phase 5A and 5B (this milestone), and a proper scoping pass for formal delivery confirmation before any implementation starts.
