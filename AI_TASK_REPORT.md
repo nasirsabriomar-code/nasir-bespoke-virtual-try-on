@@ -1,43 +1,43 @@
-# AI Task Report — Phase 5B: Showroom Review & Finish Step
+# AI Task Report — Phase 5C: In-Session Order Creation Handoff
 
 ## TASK_STATUS
 
-COMPLETE (code/tests/build). Live browser QA deferred to the operator per this session's operating mode — see `DEFERRED_OPERATOR_QA`. No Production impact. No Phase 5C work started.
+COMPLETE (code/tests/build). Live browser QA deferred to the operator per this session's operating mode — see `DEFERRED_OPERATOR_QA`. No Production impact. No further milestone started.
 
 ## TASK_NAME
 
-Phase 5B — Showroom Journey Review & Finish step: closes a real UX gap identified during Phase 5 scoping (the showroom journey's `"workspace"` step looped indefinitely with no dedicated summary/pause point before saving).
+Phase 5C — Create Order handoff from a just-saved outfit: closes a real dead end in the showroom flow where saving an outfit gave staff no path to create an order without abandoning the session and re-searching for the customer.
 
 ## MILESTONE_SELECTION_RATIONALE
 
-This session was scoped to code-only work with no operator/Vercel dependency. Candidates considered:
+Traced the full flow end-to-end in source before choosing, per this session's instruction to find the next real gap rather than follow roadmap order:
 
-- **Showroom Journey Review step (chosen)** — the earlier Phase 5 codebase survey found `lib/showroom/types.ts`'s `ShowroomJourneyStep` union had no review/finalize step, even though `ShowroomJourney.tsx`'s own doc comment already named the intended flow as "...CUSTOMIZE → MATERIALS → REVIEW" — the REVIEW phase was designed for but never built. Zero backend surface: no migration, no new permission, no new route. Fully validated by the existing `npm test`/lint/typecheck/build pipeline (no live DB or Preview dependency).
-- **Phase 5B "delivery confirmation"** (named as the natural next milestone in the Phase 5A plan) — deferred. It requires a new Prisma model, migration, and permission — larger surface than warranted for a single code-only session, and better served by its own planning pass per the standing rule against starting new domain work without explicit scoping.
-- **Costing/pricing, inventory, scheduling** — explicitly out of scope per this session's hard constraints and every prior architecture document.
+`TryOnApp` → `ModeSelector` → `CustomerGate` → `ShowroomJourney` → `SplitOutfitWorkspace` → Review & Finish (Phase 5B) → Save Outfit to Customer History → **dead end**.
+
+`CustomerGate.tsx`'s `saveOutfit()` posted to `/api/customers/{id}/outfits`, set `saveStatus = "saved"`, and stopped. The only "Create Order" action in the whole app lived in `CustomerProfile.tsx` under "Previous Looks" — but `CustomerGate`'s in-session view has no path back to `CustomerProfile` once a session starts (confirmed: no "back to profile" control anywhere in that branch), and completing/cancelling a session tells staff to "Return to search to start a new visit" with no route back into the profile that now holds the outfit they just saved. The only way to create an order from a freshly-saved outfit was to abandon the session, search for the same customer again, and find it in a list.
+
+This also directly connects the two most recent milestones: an order created this way is the only entry point into Phase 5A's "Present to Customer" presentation, and Phase 5B's Review & Finish step pointed at "Save Outfit..." without a next step after it. Evaluated against the required criteria: high showroom/operational value (removes a genuine workflow break at the exact moment of sale), zero backend impact (reuses the existing `POST /api/customers/{id}/orders` endpoint and `order:create` permission verbatim), low complexity, low regression risk (one file, additive only), fully validatable locally (no DB/Preview dependency — same precedent as Phase 5A/5B). Decision recorded before implementation: **IMPLEMENT NOW** (presentation/wiring only, no domain expansion).
 
 ## OBJECTIVE
 
-Give staff a genuine pause point to review a built outfit (components, materials, validity) before saving it to customer history, instead of the workspace step looping with no summary. The existing "Save Outfit to Customer History" action (owned by `CustomerGate.tsx`, unchanged) remains the actual save path — this milestone adds a presentation-only step in front of it.
+Let staff create an order immediately after saving an outfit, from the same screen, without leaving the showroom session — reusing the exact same order-creation call `CustomerProfile.tsx` already makes, not a new code path.
 
 ## WORK_COMPLETED
 
-- Read `NASIR_ARCHITECTURE.md`, `DOMAIN_RULES.md`, `PERMISSIONS.md`, `API_REFERENCE.md`, `AI_ENGINEERING_GUIDE.md`, `NASIR_ROADMAP.md`, and this report's prior entries (already covered earlier this session — not re-read line by line, but their constraints were applied throughout).
-- Verified `ShowroomJourneyStep` and `ShowroomSessionState`/`DEFAULT_SHOWROOM_SESSION_STATE` are referenced only inside `lib/showroom/types.ts` itself (no exhaustive switch or server-side validator elsewhere) before adding a new literal — confirmed zero downstream breakage risk from the type change.
-- Added `"review"` to `ShowroomJourneyStep` (`lib/showroom/types.ts`).
-- Added `components/showroom/OutfitReview.tsx` — a read-only summary of the current `SplitOutfitSummary` (outfit components, active material slots, recipe-status warnings for `CONFLICT`/`INCOMPLETE`), reusing `buildSplitOutfitSummary()` (existing, `lib/split-outfit/compatibility.ts`) and existing CSS classes (`.customer-list`, `.customer-profile-card-label`, `.order-detail-section`, `.showroom-cta-button`) rather than inventing new visual language.
-- Wired a "Review & finish" action into `ShowroomJourney.tsx`'s workspace toolbar, alongside the existing "Change starting point" control, plus a `journeyStep === "review"` branch and a `continueEditing` callback back to `"workspace"`.
-- Added a small `.showroom-provenance-toolbar-actions` CSS wrapper (`app/globals.css`) so the toolbar cleanly holds two link-buttons alongside the provenance pill, on both desktop and the existing mobile breakpoint.
+- Verified the gap directly in source (`CustomerGate.tsx`, `CustomerProfile.tsx`) rather than assuming it from the roadmap.
+- Confirmed `order:create` is already STAFF-permitted (`lib/customer/permissions.ts`, unchanged) and the target endpoint's contract (`POST /api/customers/{id}/orders`, body `{ savedOutfitId }` only) from `API_REFERENCE.md` and `CustomerProfile.tsx`'s existing call — implemented a byte-for-byte matching request, not a new variant.
+- Added `lastSavedOutfitId`/`createOrderStatus`/`createOrderError` state to `CustomerGate.tsx`; `saveOutfit()` now captures the saved outfit's ID from the response.
+- Added `createOrderFromLastSaved()` — calls the existing endpoint, no new backend touched.
+- Added a "Create Order" action to the session banner, shown once an outfit has been saved; on success it becomes "View in Customer Profile", which switches `CustomerGate`'s step to `"profile"` — `CustomerProfile.tsx` re-fetches on mount and shows the new order immediately, one click from Phase 5A's "Present to Customer".
+- Reset `lastSavedOutfitId`/`createOrderStatus` alongside the existing `saveStatus` reset (on provenance change), matching the file's existing reset pattern rather than inventing a new one.
 
 ## FILES_CREATED
 
-- `components/showroom/OutfitReview.tsx`
+None.
 
 ## FILES_MODIFIED
 
-- `lib/showroom/types.ts` — added `"review"` to `ShowroomJourneyStep`
-- `components/showroom/ShowroomJourney.tsx` — import, `reviewOutfit`/`continueEditing` callbacks, toolbar button, new `review` render branch
-- `app/globals.css` — `.showroom-provenance-toolbar-actions` (+ mobile wrap rule)
+- `components/customer/CustomerGate.tsx` — the entire change
 - `AI_TASK_REPORT.md` — this report
 
 ## FILES_DELETED
@@ -46,7 +46,7 @@ None.
 
 ## ARCHITECTURE_CHANGES
 
-None. Purely additive client-side journey state — the actual `SplitOutfitState`/garment recipe is untouched, still owned entirely by `TryOnApp`/the existing compatibility engine.
+None.
 
 ## DATABASE_CHANGES
 
@@ -58,39 +58,39 @@ None.
 
 ## API_CHANGES
 
-None. No new fetch calls — `OutfitReview` receives `summary`/`provenance`/`customizedFromLook` as props, computed from data `ShowroomJourney` already holds.
+None. Reuses `POST /api/customers/{id}/orders` (Phase 4A, unchanged) exactly as `CustomerProfile.tsx` already calls it.
 
 ## PERMISSION_CHANGES
 
-None.
+None. `order:create` was already STAFF-permitted.
 
 ## UI_CHANGES
 
-New "Review & finish" action in the Split Outfit workspace toolbar opens a review screen (outfit summary, materials, validity warnings) with a "Continue Editing" action back to the workspace. The existing "Save Outfit to Customer History" / "Complete Session" controls in `CustomerGate.tsx`'s persistent banner are unchanged and remain visible above this step.
+New "Create Order" button in `CustomerGate`'s session banner, enabled once the current outfit has been saved. On success it becomes "View in Customer Profile", navigating to the profile view where the new order is listed and reachable into `OrderDetail` → "Present to Customer" (Phase 5A).
 
 ## SECURITY_CONSIDERATIONS
 
-None applicable — no new data flow, no new permission surface, no new endpoint. `OutfitReview` renders only data already present in client state.
+None new — the request body is `{ savedOutfitId }` only, identical to the existing call site; the server independently re-validates the outfit belongs to this customer and that a measurement exists, exactly as it already does for `CustomerProfile.tsx`'s call. No new client-supplied field, no new trust boundary.
 
 ## ARCHITECTURAL_INVARIANTS_PRESERVED
 
-The Split compatibility engine (`lib/split-outfit/compatibility.ts`) remains the sole authority for recipe validity — `OutfitReview` reads `recipeStatus`/`missingComponents` from `buildSplitOutfitSummary()`, never recomputes or second-guesses them. No parallel garment-state system introduced (per `ShowroomJourney.tsx`'s existing doc comment, still true). No customer/business-domain data touched.
+Order creation still flows exclusively through the existing server-side reconstruction in `lib/order-handler.ts` (client never supplies `outfitSnapshot`/`measurementSnapshot`/`status`) — this change only adds a second call site for the same client request shape, not a new creation path. `MeasurementRequiredError` and every other existing server-side check apply unchanged and surface through the same generic error-display pattern already used elsewhere in this file.
 
 ## SUBAGENTS_USED
 
-None this session — direct source inspection (`Grep`/`Read`) was sufficient given the change's small, well-bounded surface.
+None — direct source tracing of the existing flow was sufficient.
 
 ## TESTS_ADDED
 
-None. No `.tsx` component-rendering test harness exists anywhere in this codebase (confirmed again: consistent with Phase 5A's finding) — `OutfitReview` and the `ShowroomJourney` step-machine change are UI-only with no new pure business logic to unit-test (all validity computation is delegated to the already-tested `buildSplitOutfitSummary()`).
+None. No `.tsx` component-rendering test harness exists anywhere in this codebase (consistent with the Phase 5A/5B finding) — this is UI wiring with no new pure logic to unit-test; the underlying `POST /api/customers/{id}/orders` handler already has full coverage in `tests/order.test.ts`, unchanged.
 
 ## TEST_RESULTS
 
-`npm test` — **515 pass, 0 fail** (388 security + 117 catalog + 4 bespoke + 6 render). Identical to the pre-change baseline — expected, no `lib/` handler or domain logic touched.
+`npm test` — **515 pass, 0 fail** (388 security + 117 catalog + 4 bespoke + 6 render). Identical to the pre-change baseline — expected, no `lib/` handler touched.
 
 ## LINT
 
-PASS (one `react/no-unescaped-entities` violation caught and fixed during implementation — straight double quotes in JSX text replaced with `&quot;`).
+PASS.
 
 ## TYPECHECK
 
@@ -98,7 +98,7 @@ PASS.
 
 ## BUILD
 
-PASS. No new routes (expected — client-side component/state change only, no new page).
+PASS. No new routes (expected — no new API surface, client-side wiring only).
 
 ## OPENAI_CALLED
 
@@ -110,15 +110,15 @@ NO.
 
 ## DEFERRED_OPERATOR_QA
 
-Per this session's operating mode (code-only, no live Preview/Vercel dependency), the following are explicitly deferred to the operator and were not attempted:
+Per this session's operating mode, not attempted:
 
-- Visual/interactive confirmation that the "Review & finish" button appears correctly in the workspace toolbar and that the review screen renders cleanly for both a Signature-Look-started and a manually-built outfit.
-- Confirmation that recipe-status warnings (`CONFLICT`/`INCOMPLETE`) display correctly when deliberately triggered in a real session.
+- Visual/interactive confirmation that "Create Order" appears correctly after a save, that clicking it creates the order and shows "View in Customer Profile", and that clicking that lands on the correct customer profile with the new order visible and openable.
+- Confirmation that the `MeasurementRequiredError` path (creating an order for a customer with no measurement on file) surfaces a sensible message through this new button.
 - No Vercel environment variables, Preview redeploys, Deployment Protection, or credentials were touched or requested.
 
 ## GIT_STATUS
 
-Four files changed (3 modified, 1 new) plus this report, all on `feature/split-outfit`.
+One file changed plus this report, on `feature/split-outfit`.
 
 ## COMMITTED
 
@@ -134,17 +134,15 @@ See final chat response (recorded after push).
 
 ## COMMIT_MESSAGE
 
-`feat(showroom): add review & finish step to the showroom journey`
+`feat(customer): add in-session order creation after saving an outfit`
 
 ## RECOMMENDED_NEXT_ACTION
 
-Two independent open items, neither blocking the other:
-1. **Operator visual QA** for this milestone (see `DEFERRED_OPERATOR_QA`) and for Phase 5A (still outstanding from the prior report) — both are UI-only checks a dev server or Preview deploy can confirm.
-2. **Phase 5B "delivery confirmation"** (the formal sign-off record named in the Phase 5A plan) remains the next larger-surface milestone, not started, requiring its own scoping pass (new Prisma model, migration, permission) before implementation — consistent with the standing rule against starting new domain work without explicit approval.
+Operator visual QA for Phase 5A, 5B, and this milestone (5C) — all three are UI-only checks a dev server or Preview deploy can confirm in one pass, since they now form a single connected flow (build → review → save → create order → present to customer). Beyond that, no further Phase 5 code-only milestone was identified as both real and bounded in this session; the next candidate requiring a decision is formal delivery confirmation (new Prisma model/permission), which per the standing rule still needs its own scoping pass before any implementation.
 
 ## NEXT_AGENT_CONTEXT
 
-- `components/showroom/OutfitReview.tsx` is presentation-only, reading `SplitOutfitSummary` computed by the existing `buildSplitOutfitSummary()` — do not add new validity logic here; extend the compatibility engine instead if a new rule is ever needed.
-- `ShowroomJourneyStep` now has five values (`"starting-point" | "profile" | "recommendations" | "workspace" | "review"`) — confirmed via source search that nothing outside `lib/showroom/types.ts` pattern-matches this union exhaustively, so future additions are similarly low-risk, but re-verify before assuming that stays true.
-- The actual "save outfit" action was not moved or duplicated — it still lives in `CustomerGate.tsx`'s persistent banner, unchanged, and stays visible above the journey regardless of which step is showing (including the new `"review"` step).
-- Two milestones remain open for a future session: operator visual QA on both Phase 5A and 5B (this milestone), and a proper scoping pass for formal delivery confirmation before any implementation starts.
+- `components/customer/CustomerGate.tsx` now owns the full save → create-order handoff inline in its session banner. `createOrderFromLastSaved()` is a second call site for the same `POST /api/customers/{id}/orders` request `CustomerProfile.tsx`'s `createOrder()` already makes — if that endpoint's contract ever changes, update both call sites together.
+- The "View in Customer Profile" button works by switching `CustomerGate`'s internal `step` state to `"profile"` — `CustomerProfile` remounts and re-fetches on `customer.id`, so no explicit order-list refresh wiring was needed.
+- Phases 5A (Present to Customer), 5B (Review & Finish), and 5C (this milestone) now form one connected, closed-loop flow from outfit build to order presentation — verified in source, not yet in a live browser (see `DEFERRED_OPERATOR_QA`).
+- Formal delivery confirmation remains an unstarted future candidate requiring a new Prisma model, migration, and permission — do not implement without a dedicated scoping/approval pass, per the standing rule.

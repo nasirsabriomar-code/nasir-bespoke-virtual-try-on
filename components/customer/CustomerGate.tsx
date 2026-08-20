@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShowroomJourney } from "@/components/showroom/ShowroomJourney";
 import { buildSplitOutfitSummary } from "@/lib/split-outfit/compatibility";
 import type { SplitOutfitState } from "@/lib/split-outfit/types";
-import type { Customer, ShowroomSession, ShowroomSessionStatus } from "@/lib/customer/types";
+import type { Customer, SavedOutfit, ShowroomSession, ShowroomSessionStatus } from "@/lib/customer/types";
 import type { SignatureLookProvenance } from "@/lib/showroom/types";
 import { CustomerProfile } from "./CustomerProfile";
 import { CustomerSearch } from "./CustomerSearch";
@@ -61,6 +61,9 @@ export function CustomerGate({ state, onChange }: CustomerGateProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
+  const [lastSavedOutfitId, setLastSavedOutfitId] = useState<string | null>(null);
+  const [createOrderStatus, setCreateOrderStatus] = useState<"idle" | "creating" | "created" | "error">("idle");
+  const [createOrderError, setCreateOrderError] = useState<string | null>(null);
 
   const summary = useMemo(() => buildSplitOutfitSummary(state), [state]);
 
@@ -82,6 +85,8 @@ export function CustomerGate({ state, onChange }: CustomerGateProps) {
   const handleProvenanceChange = useCallback((next: SignatureLookProvenance) => {
     setProvenance(next);
     setSaveStatus("idle");
+    setLastSavedOutfitId(null);
+    setCreateOrderStatus("idle");
   }, []);
 
   const saveOutfit = useCallback(async () => {
@@ -107,18 +112,42 @@ export function CustomerGate({ state, onChange }: CustomerGateProps) {
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readResponseError(payload, "We couldn't save this outfit."));
+      const saved = payload as SavedOutfit;
       setSaveStatus("saved");
+      setLastSavedOutfitId(saved.id);
+      setCreateOrderStatus("idle");
+      setCreateOrderError(null);
       if (session) {
         // The server already advanced the session to OUTFIT_SELECTED as a
         // side effect of the save above — refresh the local copy so the
         // "Complete Session" action becomes available immediately.
-        setSession((current) => (current ? { ...current, status: "OUTFIT_SELECTED", finalOutfitSnapshotId: (payload as { id: string }).id } : current));
+        setSession((current) => (current ? { ...current, status: "OUTFIT_SELECTED", finalOutfitSnapshotId: saved.id } : current));
       }
     } catch (error: unknown) {
       setSaveStatus("error");
       setSaveError(error instanceof Error ? error.message : "We couldn't save this outfit.");
     }
   }, [customer, session, provenance, state]);
+
+  const createOrderFromLastSaved = useCallback(async () => {
+    if (!customer || !lastSavedOutfitId) return;
+    setCreateOrderStatus("creating");
+    setCreateOrderError(null);
+    try {
+      const response = await fetch(`/api/customers/${customer.id}/orders`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ savedOutfitId: lastSavedOutfitId }),
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readResponseError(payload, "We couldn't create this order."));
+      setCreateOrderStatus("created");
+    } catch (error: unknown) {
+      setCreateOrderStatus("error");
+      setCreateOrderError(error instanceof Error ? error.message : "We couldn't create this order.");
+    }
+  }, [customer, lastSavedOutfitId]);
 
   const completeSession = useCallback(async () => {
     if (!session) return;
@@ -195,6 +224,22 @@ export function CustomerGate({ state, onChange }: CustomerGateProps) {
             >
               {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : "Save Outfit to Customer History"}
             </button>
+            {saveStatus === "saved" && lastSavedOutfitId ? (
+              createOrderStatus === "created" ? (
+                <button type="button" className="showroom-link-button" onClick={() => setStep("profile")}>
+                  View in Customer Profile
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="showroom-cta-button"
+                  onClick={() => void createOrderFromLastSaved()}
+                  disabled={createOrderStatus === "creating"}
+                >
+                  {createOrderStatus === "creating" ? "Creating Order…" : "Create Order"}
+                </button>
+              )
+            ) : null}
             {session && !sessionIsTerminal ? (
               <>
                 <button
@@ -215,6 +260,7 @@ export function CustomerGate({ state, onChange }: CustomerGateProps) {
         </div>
       ) : null}
       {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
+      {createOrderError ? <p className="form-error" role="alert">{createOrderError}</p> : null}
       {sessionActionError ? <p className="form-error" role="alert">{sessionActionError}</p> : null}
       {sessionIsTerminal ? (
         <p className="split-section-intro">
