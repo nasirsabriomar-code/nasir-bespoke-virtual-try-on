@@ -3422,6 +3422,113 @@ a:focus-visible {
   padding: 8px 10px;
 }
 
+/* ORDER PRESENTATION (Phase 5A) — private-client document, not a panel */
+.order-presentation {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  margin: 0 auto;
+  max-width: 560px;
+  padding: 12px 4px 8px;
+}
+.order-presentation-header {
+  text-align: center;
+}
+.order-presentation-title {
+  font-family: var(--serif);
+  font-size: clamp(34px, 5vw, 52px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 18px 0 10px;
+}
+.order-presentation-subtitle {
+  color: var(--atelier-muted);
+  font-family: var(--serif);
+  font-size: 14px;
+  font-style: italic;
+  margin: 0;
+}
+.order-presentation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.order-presentation-list {
+  color: var(--atelier-text);
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.6;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.order-presentation-list li + li {
+  margin-top: 10px;
+}
+.order-presentation-meta {
+  color: var(--atelier-subdued);
+  font-size: 11px;
+  margin: 0;
+}
+.order-presentation-divider {
+  background: var(--atelier-gold);
+  display: block;
+  height: 1px;
+  margin: 0 auto;
+  opacity: 0.5;
+  width: 28px;
+}
+.order-presentation-closing {
+  color: var(--atelier-muted);
+  font-family: var(--serif);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  margin: 10px 0 0;
+  text-align: center;
+}
+.order-presentation-controls {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  padding-top: 10px;
+}
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  /*
+   * .order-presentation renders inside .atelier-shell, which redefines
+   * --paper/--ink/--muted-ink to its dark palette (app/globals.css:1663-1666)
+   * — referencing those custom properties here would still resolve to the
+   * dark values under print, since the class scope shadows :root regardless
+   * of media query. Reasserting the *actual* :root light values (:4-11)
+   * directly is the only way to get a light printed page.
+   */
+  .order-presentation {
+    background: #f5f3ed;
+    color: #171714;
+    max-width: none;
+  }
+  .order-presentation-title,
+  .order-presentation-list,
+  .order-presentation-subtitle,
+  .order-presentation-closing {
+    color: #171714;
+  }
+  .order-presentation-divider {
+    background: #9b8258;
+  }
+  .order-presentation-meta {
+    color: #6f6c63;
+  }
+  .order-presentation-section {
+    page-break-inside: avoid;
+  }
+}
+
 /* PRODUCTION (Phase 4C) */
 .production-stage-confirmed,
 .production-stage-fabric_ready {

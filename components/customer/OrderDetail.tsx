@@ -6,6 +6,7 @@ import { ORDER_STATUS_TRANSITIONS } from "@/lib/customer/validation";
 import type { Customer, Order, OrderStatus } from "@/lib/customer/types";
 import { OrderMaterials } from "./OrderMaterials";
 import { OrderProduction } from "./OrderProduction";
+import { OrderPresentation } from "./OrderPresentation";
 
 type OrderDetailProps = {
   order: Order;
@@ -58,6 +59,7 @@ function outfitComponentSummary(order: Order): string[] {
 export function OrderDetail({ order, customer, onStatusChanged, onClose }: OrderDetailProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [presenting, setPresenting] = useState(false);
 
   async function moveTo(next: OrderStatus) {
     setIsUpdating(true);
@@ -81,6 +83,10 @@ export function OrderDetail({ order, customer, onStatusChanged, onClose }: Order
 
   const nextStatuses = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
   const measurements = order.measurementSnapshot;
+
+  if (presenting) {
+    return <OrderPresentation order={order} customer={customer} onClose={() => setPresenting(false)} />;
+  }
 
   return (
     <div className="order-detail" aria-label={`Order detail for ${order.id}`}>
@@ -140,6 +146,11 @@ export function OrderDetail({ order, customer, onStatusChanged, onClose }: Order
         <button type="button" className="showroom-link-button" onClick={onClose}>
           Close
         </button>
+        {order.status !== "CANCELLED" ? (
+          <button type="button" className="showroom-cta-button" onClick={() => setPresenting(true)}>
+            Present to Customer
+          </button>
+        ) : null}
         {nextStatuses.length > 0 ? (
           <div className="order-detail-transitions">
             {nextStatuses.map((status) => (
