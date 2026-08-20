@@ -17,21 +17,30 @@ This supersedes the root `ROADMAP.md`, which reflects a Phase 1/2-era plan and i
 | 4D — Atelier Assignment | ✅ | Owner/Manager assign/reassign UI; allowlist-projected assignees (`GET /api/production/assignees`); `assignedStaffId` must be a `MASTER_TAILOR` identity. No Staff table, no migration. |
 | 4E — Fabric Catalogue Management | ✅ | Edit/retire/reactivate fabrics; variant colour + availability; historical `OrderMaterialSnapshot` unchanged. No migration, not inventory. |
 | 4F — Production Notes | ✅ | Append-only `ProductionNote` on `ProductionJob`. Atelier operational context only; never mutates measurements, preferences, or snapshots. |
+| 4G — Preview Acceptance | ⚠️ | Source contracts green. Live Preview QA **incomplete**. Operator has applied `20260820120000_add_production_notes` to Preview/dev. Preview multi-role credentials still incomplete. Vercel Deployment Protection intercepts Preview before app auth. |
 
-See `NASIR_ARCHITECTURE.md` for what each phase actually built, and each phase's `AI_TASK_REPORT.md`-era snapshot (in git history) for verification detail — reports are overwritten each phase, so only the latest is present in the working tree at any time; prior ones are recoverable from commit history if needed.
+See `NASIR_ARCHITECTURE.md` for what each phase actually built, and `CLAUDE_RETURN_HANDOFF.md` for the Grok→Claude return.
 
 ## Recurring known limitations (carried forward from every recent phase report)
 
 These are not phase-specific bugs — they are standing gaps that should be closed by whichever future work naturally touches them, or deliberately scheduled:
 
-- **Only one Postgres database exists**, serving both local development and the Preview deployment. It currently holds no Production data (fine for now), but a **separate, dedicated database must be provisioned before Production is ever activated** — never point Production at this same Preview/dev database.
-- **The Preview-only STAFF test account's credentials are not recoverable by an agent** (stored as a write-only Vercel "Sensitive" env var). This has meant Preview-UI interactive QA has been substituted with local-UI QA against the identical live database for every phase since 3C. A future session should either rotate that account (recording the new password somewhere retrievable, outside the repo) or provision dedicated Preview identities for the newer roles (`MANAGER`/`OWNER`, and now `MASTER_TAILOR`/`QC_STAFF`) so a future Preview pass can exercise the full role matrix through the deployed UI directly.
-## Next milestones (🔜 — natural next steps, not yet started)
+- **Only one Postgres database exists**, serving both local development and the Preview deployment. Production must **never** use this same `DATABASE_URL`. A dedicated Production database must be provisioned before Production is ever activated.
+- **Preview role credentials are incomplete.** `npm run auth:create-user` emits a one-user `AUTH_USERS_JSON_BASE64` array and does not merge. Needed Preview identities for live QA: `MANAGER`, `MASTER_TAILOR`, `QC_STAFF`. This is an operator action (TTY + Vercel Sensitive Preview/`feature/split-outfit` only). Do not change Production auth.
+- **Vercel Deployment Protection** intercepts unauthenticated Preview requests (SSO 302 / `Protected deployment`) before Nasir app login. This is not an application login defect. Live Preview QA cannot be marked complete until an operator authenticates through protection or intentionally changes Preview protection settings. Do not disable it as part of engineering work unless the owner asks.
+- **Assignment history is not recorded** beyond current `ProductionJob.assignedStaffId`.
+- **ProductionNote.createdBy** is a username string, not a display-name lookup.
+- **No inventory, pricing/costing, procurement, or scheduling.**
 
-These follow from the standing gaps above — pick based on what the atelier actually needs next, not necessarily in this order:
+## Next immediate operator / QA work (not a product phase)
 
-1. **Preview role credentials.** Rotate or provision proper `MANAGER`/`OWNER`/`MASTER_TAILOR`/`QC_STAFF` Preview identities (see limitations above) so future Preview QA doesn't have to fall back to local verification every time.
-2. **Dedicated Production database provisioning**, whenever Production activation is actually planned — this is infrastructure work, not a code change, but should happen before any Production deploy of the business domains.
+1. Finish multi-role Preview `AUTH_USERS_JSON_BASE64` (MANAGER / MASTER_TAILOR / QC_STAFF), Preview branch only.
+2. Authenticate through Vercel Deployment Protection (or change it deliberately).
+3. Run live 4D–4F Preview QA (assignment, QA-named fabric only, notes scoping). Do not call paid try-on generation.
+
+## Next engineering milestone
+
+No next product phase is committed. Before new feature work, Claude should do a short planning pass with the owner. Speculative directions remain in the section below — they are **not** a queue.
 
 ## Future architecture (🗺️ — plausible, not designed, not committed)
 

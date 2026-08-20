@@ -1,223 +1,121 @@
-# AI Task Report — Phase 4G Consolidated Preview Acceptance
+# AI Task Report — Grok → Claude Code return handoff
 
 ## TASK_STATUS
 
-**INCOMPLETE as live Preview acceptance.** Source contract for 4D–4F is green. Preview/dev migration is still pending. Preview staff roles were not created (no TTY). Live Preview UI/API is blocked by Vercel Deployment Protection. Production was not touched. No application-code defects found, so no product commit.
+COMPLETE as a documentation/GitHub freeze. No product code change. Live Preview QA remains incomplete (documented, not hidden).
+
+## BRANCH
+
+`feature/split-outfit`
 
 ## STARTING_SHA
 
-`be37eed90518e96a9cd3861ff15fff9257c5d109`
+`69ce2385a8e1eaf9547e91dfa24f690c83216eaa`
 
 ## ENDING_SHA
 
-Same as starting unless this report commit is added.
+This documentation commit (see `TRANSFER_CHECKSUM.md` / `git rev-parse HEAD` after push).
 
 ## REMOTE_SHA
 
-`be37eed90518e96a9cd3861ff15fff9257c5d109` at acceptance start.
+Must equal HEAD after `git push origin feature/split-outfit`.
 
-## SUBAGENTS_LAUNCHED
+## SOURCE_VALIDATION
 
-| ID | Role |
-|---|---|
-| `01a01bce-f315-7692-a168-6d6d24e139fe` | A — Database / migration safety |
-| `01a01bce-f315-7692-a168-6d75a1d3bf12` | B — Auth / Preview role configuration |
-| `01a01bce-f315-7692-a168-6d9584183969` | C — Functional acceptance QA |
-| `01a01bce-f315-7692-a168-6d852e0c235c` | D — Security / regression (static) |
-
-`SUBAGENTS_UNAVAILABLE` = false
-
-## SUBAGENT_RESPONSIBILITIES
-
-- **A:** Inspect and apply `20260820120000_add_production_notes`; verify `production_notes`; refuse Production.
-- **B:** Inspect `auth:create-user` / allowlist parser; Preview-only MANAGER / MASTER_TAILOR / QC_STAFF setup; never touch Production auth.
-- **C:** Drive Preview 4D–4F if authenticated; otherwise map routes and write the human QA script.
-- **D:** Static attack review of 4D–4F contracts and tests.
-
-## SUBAGENT_RESULTS
-
-See sections below. All four returned. No source patches.
-
-## PARALLEL_WORK_PERFORMED
-
-A/B/C/D launched together. Lead also listed GitHub Preview deployments and probed the Preview URL unauthenticated.
-
-## LEAD_INTEGRATION_WORK
-
-- Confirmed HEAD/origin = `be37eed`.
-- Confirmed Preview deployment for that SHA is `success` and non-Production.
-- Confirmed Vercel Deployment Protection intercepts `/login`, `/atelier`, and APIs (SSO 302 / 401 `Protected deployment`) — this is **not** the app login 401.
-- Did not apply migration (same policy block Agent A hit).
-- Did not generate or set allowlist hashes (no TTY; must not invent passwords).
-- No contract defects to fix.
-
-## MIGRATION_STATUS
-
-Pending: `20260820120000_add_production_notes`. Four earlier migrations already applied on the Preview/dev datasource.
-
-SQL is additive only: CREATE TABLE `production_notes`, CREATE INDEX, ADD FK. No DROP.
-
-Command (verified in `package.json`): `npm run db:migrate:deploy` → `prisma migrate deploy`.
-
-## MIGRATION_APPLIED
-
-**No.** Auto-mode blocked `prisma migrate deploy` as a remote-cluster mutation. Not retried. Not `db push`. Not reset.
-
-## MIGRATION_TARGET
-
-Preview/dev Postgres (`neondb` / `public` via `.env.local` `DATABASE_URL`). Architecture: Production has **no** `DATABASE_URL`. Production was not targeted.
-
-## SCHEMA_VERIFICATION
-
-Read-only counts (no customer dump): `customers` 0, `orders` 0, `production_jobs` 0. Table `production_notes` **does not exist** until deploy.
-
-## PREVIEW_AUTH_SETUP
-
-**Not completed.** `scripts/hash-password.mjs` requires an interactive TTY and emits a **one-user** array. Repeat runs overwrite; they do not merge.
-
-Exact one-user command:
-
-```bash
-npm run auth:create-user -- manager "Showroom Manager" MANAGER
-npm run auth:create-user -- master.tailor "Master Tailor" MASTER_TAILOR
-npm run auth:create-user -- qc.staff "QC Staff" QC_STAFF
-```
-
-Merge locally (decode each `AUTH_USERS_JSON_BASE64`, concat user objects, re-encode). Parser: `lib/auth/config.ts` — BASE64 wins over `AUTH_USERS_JSON`; array 1–50; `{ username, displayName, passwordHash, role? }`; missing role → STAFF.
-
-Vercel CLI: `npx vercel` authenticated as the project owner. `AUTH_USERS_JSON_BASE64` already exists as **Sensitive Preview (`feature/split-outfit`)** **and a separate Production row**. Do not overwrite Production. Update the **branch-scoped Preview** row only, then redeploy `feature/split-outfit`.
-
-`DATABASE_URL` is Preview-only (no Production row). Production auth vars were not modified.
-
-## PREVIEW_ROLES_CREATED
-
-**No.** MANAGER / MASTER_TAILOR / QC_STAFF were not generated or written to Vercel.
-
-## PRODUCTION_AUTH_CHANGED
-
-**No.**
-
-## PREVIEW_DEPLOYMENT
-
-GitHub deployment id `5990825433`, environment Preview, `production_environment: false`, state **success**.
-
-## PREVIEW_SHA
-
-`be37eed90518e96a9cd3861ff15fff9257c5d109`
-
-## PREVIEW_READY
-
-Deployment **READY**, but **not reachable as the app** without Vercel SSO. Unauthenticated GETs 302 to `vercel.com/sso-api`. Login POST returns Vercel `{ protection: { vercel_auth_enabled: true } }`, not the app’s username/password JSON.
-
-## PHASE_4D_ASSIGNMENT_QA
-
-Not executed on Preview (SSO + no staff credentials). Static/tests: OWNER/MANAGER assign; MASTER_TAILOR cannot assign/self-assign; assignees leak no hashes.
-
-## PHASE_4E_FABRIC_QA
-
-Not executed on Preview. Static/tests: `fabric:update` OWNER/MANAGER; retire/unavailable block new selection.
-
-## PHASE_4E_SNAPSHOT_QA
-
-Not executed on Preview. Tests: live fabric/variant edits do not rewrite `OrderMaterialSnapshot`.
-
-## PHASE_4F_NOTES_QA
-
-Not executed on Preview (table missing until migrate deploy; SSO). Static/tests: append-only, 404 hide, QC FINAL_QC, XSS escaped.
-
-## ROLE_MATRIX_QA
-
-Live matrix **blocked**. Automated handler matrix remains green from Phases 4D–4F.
-
-## SECURITY_QA
-
-Static pass: no contract defects. Live adversarial pass blocked by Vercel Deployment Protection and missing Preview staff identities.
-
-## FULL_OUTFIT_REGRESSION
-
-Source/tests unchanged. Preview UI not reachable. No OpenAI call.
-
-## SPLIT_OUTFIT_REGRESSION
-
-Same.
-
-## CUSTOMER_REGRESSION
-
-Preview/dev DB currently has 0 customers (empty; intact).
-
-## ORDER_REGRESSION
-
-0 orders.
-
-## PRODUCTION_REGRESSION
-
-0 production jobs. Notes table not created yet.
-
-## DEFECTS_FOUND
-
-None in 4D–4F source.
-
-Operational blockers (not app bugs):
-
-1. Pending additive migration not applied.
-2. No TTY → cannot build Preview allowlist hashes.
-3. Vercel Deployment Protection on Preview.
-
-## DEFECTS_FIXED
-
-None (no product code change).
+Working tree at start: clean except untracked `.claude/` (not committed). HEAD matched origin/feature/split-outfit. origin/main `160f71ce` untouched.
 
 ## TEST_RESULTS
 
-Inherited **505** tests remain the source of truth. No code change this phase; suite not re-run solely for this report.
+`npm test` PASS — **505** (378 security + 117 catalog + 4 bespoke + 6 render). 0 fail.
 
-## LINT / TYPECHECK / BUILD
+## LINT
 
-Not re-run (no application diff). Last green: Phase 4F commit.
+PASS
 
-## TEST_DATA_CREATED
+## TYPECHECK
 
-None.
+PASS
 
-## TEST_DATA_CLEANUP
+## BUILD
 
-N/A.
+PASS
 
-## OPENAI_CALLED
+## DOCUMENTS_UPDATED
 
-No.
+- `NASIR_ARCHITECTURE.md` — Phases 4D–4F, ProductionNote, directory map
+- `NASIR_ROADMAP.md` — 4G partial; operator next steps; no invented product phase
+- `GROK_HANDOFF.md` — stale-for-4C banner; pointer to return handoff
+- `AI_ENGINEERING_GUIDE.md` — allowlist helper, Vercel protection, notes migration already applied
+- `DOMAIN_RULES.md` / `API_REFERENCE.md` / `PERMISSIONS.md` — already current for 4D–4F; left in place
 
-## PRODUCTION_AFFECTED
+## DOCUMENTS_CREATED
 
-No.
+- `CLAUDE_RETURN_HANDOFF.md`
+- `TRANSFER_CHECKSUM.md`
+
+## PHASE_4D_HANDOFF
+
+Assignment workflow on GitHub at `db91564`. `production:assign`, allowlist assignees, no Staff table, no assignment history.
+
+## PHASE_4E_HANDOFF
+
+Catalogue management on GitHub at `0087bc1`. `fabric:update`, retire/reactivate, variant availability, snapshot invariant.
+
+## PHASE_4F_HANDOFF
+
+Notes on GitHub at `be37eed`. Append-only `ProductionNote`. Migration `20260820120000_add_production_notes` **applied by operator** to Preview/dev.
+
+## PHASE_4G_STATUS
+
+Investigation only. Live Preview acceptance incomplete. Source green. Auth roles not created. Vercel Deployment Protection still intercepts Preview.
+
+## DATABASE_STATE
+
+Shared Preview/dev Postgres. Includes `production_notes` after operator migrate. Production must not use this `DATABASE_URL`.
+
+## MIGRATION_STATE
+
+`20260820120000_add_production_notes` applied on Preview/dev by operator. Do not re-run unnecessarily. Not on Production.
+
+## AUTH_STATE
+
+Env allowlist. No Staff table. `npm run auth:create-user -- <username> "Display Name" <ROLE>` — TTY, one-user BASE64, no merge.
+
+## PREVIEW_ROLE_STATE
+
+MANAGER / MASTER_TAILOR / QC_STAFF Preview identities **not** completed.
+
+## VERCEL_PROTECTION_STATE
+
+Preview Deployment Protection SSO in front of app auth. Not an application login defect. Do not disable as part of this handoff.
+
+## ARCHITECTURAL_INVARIANTS
+
+See `CLAUDE_RETURN_HANDOFF.md`. Server owns truth; snapshots; append-only measurements/history/notes; no Staff table; OpenAI only in `lib/tryon/`; not an ERP.
 
 ## KNOWN_LIMITATIONS
 
-- One shared Preview/dev database; Production must never use it.
-- Preview Deployment Protection sits in front of app auth.
-- `auth:create-user` is TTY + single-user only.
-- Existing Preview `AUTH_USERS_JSON_BASE64` is Hidden/Sensitive and branch-scoped.
+Shared Preview/dev DB; no Production DB; incomplete Preview roles; Vercel protection; no assignment history table; note author is username; no inventory/pricing/procurement/scheduling.
 
-## NEXT_RECOMMENDED_TASK
+## PRODUCTION_AFFECTED
 
-Operator, in order:
+NO
 
-1. `npm run db:migrate:deploy` (Preview/dev only). Confirm `production_notes` exists.
-2. In a real terminal, generate MANAGER / MASTER_TAILOR / QC_STAFF hashes; merge; set **Preview `feature/split-outfit` only** `AUTH_USERS_JSON_BASE64` Sensitive; do not change Production.
-3. Bypass or complete Vercel Deployment Protection for this Preview (SSO as a human, or temporarily disable protection for QA).
-4. Redeploy `feature/split-outfit`.
-5. Run the Preview QA script (MANAGER assign; QA-named fabric only; notes; tailor 404 hide; QC FINAL_QC).
+## OPENAI_CALLED
 
-Until those five steps, Phase 4G cannot honestly mark live acceptance complete.
+NO
 
----
+## COMMITTED
 
-## Operator Preview QA script (after 1–4)
+Yes — `docs: prepare return handoff to claude code`
 
-MANAGER: `/atelier` assign picker; assign MASTER_TAILOR; persist; `/atelier/fabrics` only mutate fabrics named `QA Phase4G*`; notes add/reload.
+## PUSHED
 
-MASTER_TAILOR: assigned jobs only; no assign UI; notes on assigned job; other job notes 404.
+See final response.
 
-QC_STAFF: notes readable; append only at FINAL_QC.
+## CLAUDE_NEXT_ACTION
 
-Never call try-on generation. Never PATCH real catalogue names.
+1. Clone from GitHub `feature/split-outfit`.
+2. Read `CLAUDE_RETURN_HANDOFF.md`.
+3. Do not re-apply the notes migration unless `prisma migrate status` shows it pending on a new database.
+4. Do not invent a product phase. Planning pass with the owner, or operator Preview QA (allowlist + Vercel protection + live 4D–4F).

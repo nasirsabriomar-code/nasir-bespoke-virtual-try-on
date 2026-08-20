@@ -1,6 +1,6 @@
 # Nasir Bespoke — System Architecture
 
-This document is the current, authoritative architectural map of the Nasir Bespoke platform as of the end of Phase 4C. It supersedes the older `ARCHITECTURE.md`/`ROADMAP.md`/`SECURITY.md` files at the repo root, which describe an earlier (Phase 1-era) snapshot and were left in place only as historical record — do not treat them as current.
+This document is the current, authoritative architectural map of the Nasir Bespoke platform as of the end of Phase 4F (with Phase 4G Preview-acceptance investigation recorded in `NASIR_ROADMAP.md`). It supersedes the older `ARCHITECTURE.md`/`ROADMAP.md`/`SECURITY.md` files at the repo root, which describe an earlier (Phase 1-era) snapshot and were left in place only as historical record — do not treat them as current. For the Grok→Claude return, start with `CLAUDE_RETURN_HANDOFF.md`.
 
 ## What this system is
 
@@ -25,8 +25,11 @@ These two eras coexist in the same codebase and the same running app. The visual
 | 4A | Orders | `Order` domain: converts an approved `SavedOutfit` into a persistent bespoke transaction record, with server-built `outfitSnapshot`/`measurementSnapshot` copies (never live references) and a validated order-status state machine (`DRAFT` → ... → `DELIVERED`/`CANCELLED`). |
 | 4B | Fabric Intelligence | `Fabric`/`FabricVariant` curated catalogue plus `OrderMaterialSnapshot` — lets an order remember exactly which fabric (and optional colourway variant) was selected for it, as a server-built copy, not a live reference. |
 | 4C | Atelier Production Foundation | `ProductionJob` (1:1 with Order) + append-only `ProductionStageHistory` — tracks how an accepted order moves through the workshop across a 10-stage state machine. Added three narrow atelier-operations roles (`STYLE_CONSULTANT`, `MASTER_TAILOR`, `QC_STAFF`) with resource-level scoping layered on top of the existing flat-grant permission model. Added the Atelier Dashboard. |
+| 4D | Atelier Assignment | Owner/Manager assign/reassign of `ProductionJob.assignedStaffId` to a `MASTER_TAILOR` from a safe auth-allowlist projection (`GET /api/production/assignees`). No Staff table. No assignment-history table. |
+| 4E | Fabric Catalogue Management | Owner/Manager edit/retire/reactivate fabrics and toggle variant availability. Live catalogue changes never rewrite `OrderMaterialSnapshot`. Not inventory. |
+| 4F | Production Notes | Append-only `ProductionNote` on a production job. Operational atelier context only; never mutates customer, measurement, order, or fabric truth. |
 
-See `NASIR_ROADMAP.md` for what comes next.
+See `NASIR_ROADMAP.md` for what comes next. Phase 4G was a Preview-acceptance investigation, not a product domain.
 
 ## High-level system diagram
 
@@ -69,6 +72,7 @@ See `NASIR_ROADMAP.md` for what comes next.
 app/
   page.tsx                       — root auth gate + TryOnApp shell (Full/Split Outfit workspace)
   atelier/page.tsx                — auth gate + Atelier Dashboard (Phase 4C)
+  atelier/fabrics/page.tsx        — fabric catalogue management (Phase 4E)
   login/                          — staff login page
   api/
     auth/{login,logout}/          — session issuance/teardown
@@ -80,8 +84,8 @@ app/
     customers/, customers/[id]/{measurements,outfits,sessions,orders}/  — Phase 3B/4A
     sessions/[id]/                — showroom session status updates
     orders/[id]/, orders/[id]/{materials,production}/     — Phase 4A/4B/4C
-    fabrics/, fabrics/[id]/variants/                       — Phase 4B
-    production/, production/[id]/                          — Phase 4C
+    fabrics/, fabrics/[id]/, fabrics/[id]/variants/, fabrics/[id]/variants/[variantId]/  — Phase 4B/4E
+    production/, production/[id]/, production/assignees/, production/[id]/notes/         — Phase 4C/4D/4F
 
 components/
   TryOnApp.tsx                    — the whole Full Outfit / Split Outfit workspace shell
@@ -91,8 +95,9 @@ components/
   showroom/                       — Phase 3A Signature Looks UI (ShowroomJourney, RecommendationProfileForm, ...)
   customer/                       — Phase 3B-4C business-domain UI:
     CustomerSearch.tsx, CustomerGate.tsx, CustomerProfile.tsx, PreferencesEditor.tsx,
-    MeasurementWorkflow.tsx, OrderDetail.tsx, OrderMaterials.tsx, OrderProduction.tsx
-  AtelierDashboard.tsx            — Phase 4C dashboard
+    MeasurementWorkflow.tsx, OrderDetail.tsx, OrderMaterials.tsx, OrderProduction.tsx,
+    ProductionAssignment.tsx, ProductionNotes.tsx, FabricCatalogue.tsx, FabricCataloguePage.tsx
+  AtelierDashboard.tsx            — Phase 4C dashboard (+ 4D assignment + 4F notes)
 
 lib/
   auth/                           — session issuance, JWT/cookie handling, staff allowlist (config.ts)
@@ -108,10 +113,11 @@ lib/
   showroom/                       — Phase 3A domain: look library, recommendation engine, scoring config,
                                      final-outfit snapshot construction, look application/validation
   customer/                       — Phase 3B-4C business-domain core:
-    types.ts                      — every shared domain type (Customer, Order, Fabric, ProductionJob, ...)
+    types.ts                      — every shared domain type (Customer, Order, Fabric, ProductionJob, ProductionNote, ...)
     permissions.ts                — the CustomerAction/StaffRole grant table + resource-level scoping helpers
     validation.ts                 — field validators + every state machine (session/order/production)
     repository.ts                 — the CustomerRepository interface + domain error classes (contract)
+    staff-directory.ts            — safe MASTER_TAILOR projection of the auth allowlist (Phase 4D)
     prisma-repository.ts          — the real Postgres-backed implementation of that interface
     db.ts                         — lazy Prisma client singleton, DATABASE_URL-gated
     http.ts                       — shared route-handler primitives (auth, permission check, error mapping)
@@ -119,7 +125,7 @@ lib/
   *-handler.ts (repo root of lib/) — one handler file per domain, each exporting the route-level functions:
     customer-handler.ts, measurement-handler.ts, session-handler.ts, saved-outfit-handler.ts,
     showroom-finalize-handler.ts, order-handler.ts, order-material-handler.ts, fabric-handler.ts,
-    production-handler.ts, try-on-handler.ts, split-try-on-handler.ts
+    production-handler.ts, production-notes-handler.ts, try-on-handler.ts, split-try-on-handler.ts
 
 prisma/
   schema.prisma                   — the single source of truth for every database table
@@ -200,15 +206,21 @@ ProductionJob
  │                FINAL_QC | READY_FOR_DELIVERY | COMPLETED | CANCELLED
  ├─ assignedStaffId?   (plain staff username string — no staff table exists, see below)
  ├─ createdAt, updatedAt
- └─ 1─* ProductionStageHistory
+ ├─ 1─* ProductionStageHistory
+ └─ 1─* ProductionNote
 
 ProductionStageHistory   (append-only, never updated or deleted)
  ├─ id, productionJobId → ProductionJob (cascade delete)
  ├─ fromStage? (null only for the job-creation row), toStage
  └─ changedBy, createdAt
+
+ProductionNote   (append-only operational context, never customer truth)
+ ├─ id, productionJobId → ProductionJob (cascade delete)
+ ├─ body (plain text, 1–2000 chars)
+ └─ createdBy, createdAt   (server-derived username + timestamp)
 ```
 
-**Important: there is no `Staff`/`User` table in Postgres.** Staff identities live entirely outside the database, in the `AUTH_USERS_JSON`/`AUTH_USERS_JSON_BASE64` environment-variable allowlist (see `lib/auth/config.ts`). Every "who did this" field across the schema (`createdBy`, `recordedBy`, `selectedBy`, `changedBy`, `assignedStaffId`) is a plain string holding a staff **username**, server-derived from the authenticated session — never a foreign key, never client-suppliable. Do not introduce a Staff table without a deliberate, explicit decision to change this — every domain from 3B through 4C depends on this boundary staying exactly where it is.
+**Important: there is no `Staff`/`User` table in Postgres.** Staff identities live entirely outside the database, in the `AUTH_USERS_JSON`/`AUTH_USERS_JSON_BASE64` environment-variable allowlist (see `lib/auth/config.ts`). Every "who did this" field across the schema (`createdBy`, `recordedBy`, `selectedBy`, `changedBy`, `assignedStaffId`) is a plain string holding a staff **username**, server-derived from the authenticated session — never a foreign key, never client-suppliable. Do not introduce a Staff table without a deliberate, explicit decision to change this — every domain from 3B through 4F depends on this boundary staying exactly where it is.
 
 ## Domain relationships
 
@@ -219,9 +231,10 @@ Customer ──1:*── ShowroomSession ──1:*── SavedOutfit ──1:*�
                                                           └─1:*── OrderMaterialSnapshot ──*:1── Fabric ──1:*── FabricVariant
                                                                                                               (└ referenced by OrderMaterialSnapshot too)
                                                                        ProductionJob ──1:*── ProductionStageHistory
+                                                                       ProductionJob ──1:*── ProductionNote
 ```
 
-Reading this chain end to end: a **Customer** accumulates **MeasurementProfile** versions over time; a **ShowroomSession** is one visit during which a **SavedOutfit** may be created (either from a curated Signature Look or built manually); a **SavedOutfit** may later become an **Order** (a business commitment, snapshotting the outfit and the customer's current measurements at that moment); an **Order** may have **Fabric** selections attached per role via **OrderMaterialSnapshot**; and an **Order** may have exactly one **ProductionJob** tracking its progress through the workshop, with every stage change preserved in **ProductionStageHistory**.
+Reading this chain end to end: a **Customer** accumulates **MeasurementProfile** versions over time; a **ShowroomSession** is one visit during which a **SavedOutfit** may be created (either from a curated Signature Look or built manually); a **SavedOutfit** may later become an **Order** (a business commitment, snapshotting the outfit and the customer's current measurements at that moment); an **Order** may have **Fabric** selections attached per role via **OrderMaterialSnapshot**; and an **Order** may have exactly one **ProductionJob** tracking its progress through the workshop, with every stage change preserved in **ProductionStageHistory** and optional operational comments in **ProductionNote**.
 
 ## Architecture principles (established across all phases — do not violate)
 

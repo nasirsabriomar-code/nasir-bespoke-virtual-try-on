@@ -1,6 +1,8 @@
 # Handoff to the Next Engineering Agent
 
-You're picking up Nasir Bespoke after Phases 1 through 4C, done by a prior Claude agent working turn-by-turn with the project owner over several sessions. This document is written directly to you — read it before touching anything, and use it to decide how to work, not just what exists.
+**Stale as a starting map for post-4C work.** Phases 4D–4F were implemented after this file was written. If you are Claude Code picking up from Grok, read `CLAUDE_RETURN_HANDOFF.md` first, then this package.
+
+You're picking up Nasir Bespoke after Phases 1 through 4C, done by a prior Claude agent working turn-by-turn with the project owner over several sessions. This document is written directly to you — read it before touching anything, and use it to decide how to work, not just what exists. The Grok period added assignment, fabric catalogue management, and production notes on top of this map.
 
 ## Read order
 
@@ -51,4 +53,4 @@ These are architectural commitments, not style preferences. Changing any of them
 
 ## One honest note
 
-This handoff package (`NASIR_ARCHITECTURE.md`, `DOMAIN_RULES.md`, `AI_ENGINEERING_GUIDE.md`, `API_REFERENCE.md`, `PERMISSIONS.md`, `NASIR_ROADMAP.md`, and this file) is accurate as of commit `71a2cef08ba2424b29a96738fca5b15a872fc861` on `feature/split-outfit`. It will drift the moment anything changes. Treat it as a strong starting map, not a substitute for reading the code — and if you find it's wrong about something, that's worth fixing in the docs as part of whatever change made it wrong, so the next handoff after yours starts from an accurate baseline too.
+This file originally described the system as of commit `71a2cef08ba2424b29a96738fca5b15a872fc861` (end of Phase 4C). The architecture package was later updated for Phases 4D–4F. **Current return handoff:** `CLAUDE_RETURN_HANDOFF.md`. Treat any remaining Phase-4C-only wording here as historical, not current.
