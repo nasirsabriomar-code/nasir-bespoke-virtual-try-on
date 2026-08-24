@@ -1,0 +1,100 @@
+# Nasir Bespoke — Permissions
+
+Source of truth: `lib/customer/permissions.ts` (the grant table) plus, for Production, the resource-level scoping functions in that same file, applied inside `lib/production-handler.ts` and `lib/production-notes-handler.ts`. This is a **minimal, flat action → role-set model**, not a general RBAC platform — deliberately kept small (task instructions across Phases 3B-4C have consistently said "do not create unnecessary RBAC complexity," and the design has honored that every time).
+
+## Roles
+
+Six `StaffRole` values exist, in two groups:
+
+**Original showroom/admin roles** (Phase 3B):
+- `OWNER` and `MANAGER` — intentionally identical to each other. There is no owner-only operation yet (no user management, no deletion, no billing); the two are kept distinct in the type system only so a genuinely owner-only action can be added later without a redesign.
+- `STAFF` — the general showroom-staff role. Can run the full customer-facing flow end-to-end (create a session, save an outfit, create an order, select fabric) but cannot create/edit a customer record, record a measurement, change an order's status, create/edit a fabric, or write production. They have `production:read` (job visibility on an order they can already view) but **not** production notes.
+
+**Atelier-operations roles** (Phase 4C — narrow, purpose-built, additive):
+- `STYLE_CONSULTANT` — read-only "customer/order visibility." Every `*:read` action across every domain except `production:note:read`; zero create/update actions anywhere. Notes are atelier operational context, not showroom-visibility data.
+- `MASTER_TAILOR` — `production:read` + `production:update` + `production:note:read` + `production:note:create`. No customer/order/fabric access of any kind. Works from the Atelier Dashboard (a production-domain-only view), not the Customer Profile tree.
+- `QC_STAFF` — same isolation as Master Tailor (`production:read` + `production:update` + `production:note:read` + `production:note:create`), but scoped differently — see Resource-level scoping below.
+
+There is no staff/user database table (see `NASIR_ARCHITECTURE.md`) — a staff identity's role is read directly from the `AUTH_USERS_JSON`/`AUTH_USERS_JSON_BASE64` allowlist entry at authentication time. An allowlist entry with no `role` field defaults to `STAFF` (`DEFAULT_STAFF_ROLE`), the least-privilege default — never an elevated role.
+
+## Actions (`CustomerAction`)
+
+Grouped by domain, in the order they were introduced:
+
+| Domain | Actions |
+|---|---|
+| Customer | `customer:create`, `customer:read`, `customer:update` |
+| Measurement | `measurement:create`, `measurement:read` |
+| Session | `session:create`, `session:read`, `session:update` |
+| Saved Outfit | `outfit:create`, `outfit:read` |
+| Order | `order:create`, `order:read`, `order:update` |
+| Fabric | `fabric:create`, `fabric:read`, `fabric:update` |
+| Order Material | `order:material:update` (reading materials reuses `order:read` — there is no separate `order:material:read`) |
+| Production | `production:create`, `production:read`, `production:update`, `production:assign`, `production:note:read`, `production:note:create` |
+
+## Grant table
+
+| Action | OWNER | MANAGER | STAFF | STYLE_CONSULTANT | MASTER_TAILOR | QC_STAFF |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `customer:create` | ✓ | ✓ | | | | |
+| `customer:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `customer:update` | ✓ | ✓ | | | | |
+| `measurement:create` | ✓ | ✓ | | | | |
+| `measurement:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `session:create` | ✓ | ✓ | ✓ | | | |
+| `session:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `session:update` | ✓ | ✓ | ✓ | | | |
+| `outfit:create` | ✓ | ✓ | ✓ | | | |
+| `outfit:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `order:create` | ✓ | ✓ | ✓ | | | |
+| `order:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `order:update` | ✓ | ✓ | | | | |
+| `fabric:create` | ✓ | ✓ | | | | |
+| `fabric:read` | ✓ | ✓ | ✓ | ✓ | | |
+| `fabric:update` | ✓ | ✓ | | | | |
+| `order:material:update` | ✓ | ✓ | ✓ | | | |
+| `production:create` | ✓ | ✓ | | | | |
+| `production:read` | ✓ | ✓ | ✓ | ✓ | ✓ (scoped) | ✓ |
+| `production:update` | ✓ | ✓ | | | ✓ (scoped) | ✓ (scoped) |
+| `production:assign` | ✓ | ✓ | | | | |
+| `production:note:read` | ✓ | ✓ | | | ✓ (scoped) | ✓ |
+| `production:note:create` | ✓ | ✓ | | | ✓ (scoped) | ✓ (scoped) |
+
+`canPerform(role, action)` in `lib/customer/permissions.ts` is the single function every route handler calls (via `authorizeStaffRequest()` in `lib/customer/http.ts`) to check this table. A `false` result is a 403.
+
+## Rationale behind the grant boundaries
+
+- **`order:create` is STAFF-permitted; `order:update` is not.** Creating an order is the natural conclusion of the showroom flow STAFF already owns end-to-end. Everything that happens to an order *after* creation (status changes toward delivery) is treated as a hard-to-undo, managerial-consequence action.
+- **`order:material:update` is STAFF-permitted**, for the same reason as `order:create` — it's a selection made as part of the same showroom finalization, not a production-lifecycle change. It is deliberately *not* bundled with `order:update`.
+- **`fabric:create` is MANAGER/OWNER-only** — fabric catalogue entries are curated business data with the same "wrong entry has real consequences" rationale as `customer:create`. `fabric:read` is open to STAFF because they need to browse the catalogue while placing an order.
+- **`fabric:update` is MANAGER/OWNER-only** — edit, retire, and reactivate catalogue rows and variants. It does not rewrite historical `OrderMaterialSnapshot` copies.
+- **`production:create` is MANAGER/OWNER-only**, same rationale as `order:update` — starting a production job is a managerial decision, not part of the showroom flow.
+- **`production:assign` is MANAGER/OWNER-only** — listing assignable tailors (a safe projection of the auth allowlist) and writing `assignedStaffId`. It is deliberately *not* bundled with `production:update`, so Master Tailor / QC Staff can move in-scope stages without gaining assignment authority.
+- **`production:note:read` / `production:note:create` are atelier-operational, not showroom-staff actions.** OWNER/MANAGER/MASTER_TAILOR/QC_STAFF only. STAFF and STYLE_CONSULTANT keep `production:read` for job visibility but cannot list or add notes (403 at the flat grant). Notes never mutate measurements, preferences, or snapshots — see `DOMAIN_RULES.md`.
+- **The three atelier roles are each granted only what their one job requires**, not "STAFF plus a bit more." This was a deliberate structural choice to satisfy "do not allow production staff to edit customer truth": Master Tailor and QC Staff have *zero* access to Customer/Measurement/Outfit/Order/Fabric data through the permission table — they cannot even read a customer record.
+
+## Resource-level scoping (Production only)
+
+Every other domain in this codebase uses **flat, non-resource-scoped** grants — if a role has `order:read`, it can read *any* order, full stop. Production is the one deliberate exception, because the task requirements ("Master Tailor: assigned production jobs" / "QC Staff: quality stage updates") are specific enough to require it. This scoping is implemented as functions in `lib/customer/permissions.ts`, consulted by `lib/production-handler.ts` and `lib/production-notes-handler.ts` **after** the flat `canPerform()` check has already passed:
+
+**`canReadProductionJob(role, username, assignedStaffId)`**
+- `MASTER_TAILOR`: only if `assignedStaffId === username`. A job assigned to someone else — or unassigned — returns 404 (not 403; consistent with the "never leak cross-tenant existence" rule).
+- Every other role with `production:read` (`OWNER`, `MANAGER`, `STAFF`, `STYLE_CONSULTANT`, `QC_STAFF`): unrestricted.
+- Applied to `GET /api/orders/{id}/production`, `GET /api/production/{jobId}`, `GET`/`POST /api/production/{jobId}/notes`, and (as a query filter, not just a response filter) `GET /api/production`.
+
+**`canUpdateProductionJob(role, username, currentStage, assignedStaffId, toStage)`**
+- If `toStage === "CANCELLED"`: only `OWNER`/`MANAGER`, regardless of every other rule below.
+- Else if `role === "QC_STAFF"`: only if `currentStage === "FINAL_QC"` — i.e. QC Staff may only make the FINAL_QC outcome decision (`FINAL_QC → READY_FOR_DELIVERY` or `FINAL_QC → ALTERATION`), nothing else.
+- Else if `role === "MASTER_TAILOR"`: only if `assignedStaffId === username` **and** `currentStage !== "FINAL_QC"` — a tailor can drive every stage of their own assigned job except the FINAL_QC decision itself, which is QC Staff's call.
+- Else (`OWNER`/`MANAGER`): unrestricted.
+- Reassignment is a separate check inside `handleUpdateProductionJobStageRequest`: if the request body includes `assignedStaffId` at all (even `null`, to clear it), the caller must be `OWNER`/`MANAGER` — this holds even for an otherwise-valid Master Tailor stage update that also tries to change the assignment in the same request.
+
+**Production notes (`lib/production-notes-handler.ts`)**
+- Both GET and POST load the job first. Missing job → 404. Then `canReadProductionJob` — if the caller cannot read the job, 404 (same hide as other production reads). This is what restricts Master Tailor to assigned jobs for both listing and adding notes.
+- **`canCreateProductionNote(role, currentStage)`** (after the 404-hide):
+  - `QC_STAFF`: only if `currentStage === "FINAL_QC"`, else 403 `"You do not have permission to add a note to this production job."`
+  - `OWNER`/`MANAGER`: any stage, including `COMPLETED`/`CANCELLED`.
+  - `MASTER_TAILOR`: any stage on an assigned job (unassigned already 404'd).
+- Notes remain readable after `COMPLETED`/`CANCELLED`. There is no PATCH or DELETE.
+
+No other domain has resource-level scoping. Do not add it elsewhere without a specific, explicit requirement — see `AI_ENGINEERING_GUIDE.md` on avoiding unnecessary RBAC complexity.

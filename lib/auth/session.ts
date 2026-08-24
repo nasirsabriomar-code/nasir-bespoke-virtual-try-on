@@ -1,7 +1,7 @@
 import "server-only";
 
 import { SignJWT, jwtVerify } from "jose";
-import { AuthConfigurationError, findAuthorizedUser } from "@/lib/auth/config";
+import { AuthConfigurationError, findAuthorizedUser, type AuthorizedUser } from "@/lib/auth/config";
 import { activateSession, isSessionActive, revokeSession } from "@/lib/auth/session-store";
 
 const SESSION_ISSUER = "nasir-bespoke-try-on";
@@ -128,10 +128,14 @@ export function getSessionTokenFromRequest(request: Request) {
   return readCookie(request.headers.get("cookie"), getSessionCookieName());
 }
 
-export async function requireRequestUser(request: Request) {
+export async function requireRequestUser(request: Request): Promise<AuthorizedUser | null> {
   const user = await getCurrentUserFromToken(getSessionTokenFromRequest(request));
   if (!user && process.env.NODE_ENV === "development") {
-    return { username: "showroom", displayName: "Showroom Staff" };
+    // Dev-only fallback (no real session configured) — never a real
+    // credential. Full OWNER access so local testing of every customer-
+    // domain permission tier isn't blocked; passwordHash is a placeholder
+    // that is never read (this object never goes through findAuthorizedUser).
+    return { username: "showroom", displayName: "Showroom Staff", passwordHash: "", role: "OWNER" };
   }
   return user;
 }

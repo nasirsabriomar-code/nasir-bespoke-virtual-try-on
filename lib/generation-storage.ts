@@ -4,7 +4,7 @@ import { del, get, put } from "@vercel/blob";
 
 const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
-export type GenerationAssetKey = "person" | "outfit" | "fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail";
+export type GenerationAssetKey = "person" | "outfit" | "fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper-construction" | "split-waistcoat-construction" | "split-material";
 
 export type GenerationAssetRefs = Partial<Record<GenerationAssetKey, {
   pathname: string;
@@ -15,7 +15,11 @@ export type GenerationAssetInput = {
   generationId: string;
   person: File;
   outfit?: File;
-  fabric: File;
+  // Optional: Full Outfit and Level1 always supply a single showroom fabric
+  // photo. Split Outfit has no single "fabric" field — its material swatches
+  // are stored via `references` (role "split-material", one per canonical
+  // material group) instead, so this stays unset for Split generations.
+  fabric?: File;
   references: Array<{ role: Exclude<GenerationAssetKey, "person" | "outfit" | "fabric" | "result">; file: File }>;
   resultBytes: Uint8Array;
   resultContentType: string;
@@ -66,7 +70,7 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
     const entries: Array<[GenerationAssetKey, Blob, string]> = [
       ["person", input.person, input.person.type || "image/jpeg"],
       ...(input.outfit ? [["outfit", input.outfit, input.outfit.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
-      ["fabric", input.fabric, input.fabric.type || "image/jpeg"],
+      ...(input.fabric ? [["fabric", input.fabric, input.fabric.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
       ...input.references.map(({ role, file }) => [role, file, file.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]),
       ["result", new Blob([new Uint8Array(input.resultBytes)]), input.resultContentType],
     ];

@@ -1,0 +1,406 @@
+// Nasir Bespoke — Phase 3B: Customer Intelligence + Bespoke Memory Layer.
+// Phase 4A additively extends this schema with Order (see bottom of file).
+//
+// This is the first PostgreSQL-backed schema in this repository. Everything
+// else in the app (auth sessions, rate limits, generation locks, Split
+// reference-asset registry, usage history) intentionally stays on Upstash
+// Redis or Vercel Blob — those are locks/ephemeral/temporary state, or
+// binary assets. Customer/Measurement/ShowroomSession/SavedOutfit are the
+// first genuinely PERMANENT business records in this app, which is why they
+// get a real relational database instead.
+//
+// See lib/customer/db.ts for the driver-adapter-based client (Prisma v7
+// requires an explicit adapter — see .claude/skills/prisma-upgrade-v7 for
+// the migration guide this schema was built against).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ShowroomSessionStatus {
+  OPEN
+  EXPLORING
+  OUTFIT_SELECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum SavedOutfitSourceType {
+  MANUAL
+  SIGNATURE_LOOK
+}
+
+/// A Nasir Bespoke client. Preferences are structured, explicit,
+/// customer-declared fields — never an uncontrolled JSON blob, and never an
+/// inferred appearance/ethnicity/personality field. See lib/customer/types.ts
+/// for the closed value sets each array is validated against at the
+/// application layer (Prisma stores them as plain Postgres text[] columns).
+model Customer {
+  id    String  @id @default(uuid())
+  name  String
+  phone String  @unique
+  email String?
+
+  preferredStyles    String[] @default([])
+  preferredColours   String[] @default([])
+  preferredFit       String?
+  preferredOccasions String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  measurementProfiles MeasurementProfile[]
+  showroomSessions    ShowroomSession[]
+  savedOutfits        SavedOutfit[]
+  orders              Order[]
+
+  @@map("customers")
+}
+
+/// Measurements are an APPEND-ONLY history — never updated in place. A new
+/// fitting always creates the next `version` for the customer; nothing here
+/// is ever mutated once written. jacket/trouser/shirtMeasurements are Json
+/// columns (a deliberate, documented exception to "no uncontrolled JSON" —
+/// see lib/customer/measurement-fields.ts) so new measurement fields can be
+/// added later without a migration, while every write is still validated
+/// server-side against a known, versioned allow-list of field names.
+model MeasurementProfile {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  version Int
+
+  jacketMeasurements  Json @default("{}")
+  trouserMeasurements Json @default("{}")
+  shirtMeasurements   Json @default("{}")
+
+  /// Staff username who recorded this version — server-derived from the
+  /// authenticated session, never client-supplied.
+  recordedBy String
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, version])
+  @@index([customerId])
+  @@map("measurement_profiles")
+}
+
+/// A single showroom visit. `finalOutfitSnapshotId` is a denormalized
+/// pointer to the SavedOutfit created when staff saves the customer's
+/// chosen outfit for this session — set by application logic, not a
+/// Prisma-enforced FK, to avoid a redundant dual relation with
+/// SavedOutfit.sessionId (the canonical, FK-enforced direction).
+model ShowroomSession {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  status                ShowroomSessionStatus @default(OPEN)
+  occasion              String?
+  selectedLookId        String?
+  finalOutfitSnapshotId String?
+
+  /// Staff username who opened this session — server-derived, never client-supplied.
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  savedOutfits SavedOutfit[]
+
+  @@index([customerId])
+  @@map("showroom_sessions")
+}
+
+/// Persistent history of a customer's outfit selections. `outfitSnapshot`
+/// stores the FULL validated Phase 3A FinalOutfitSnapshot object (component
+/// IDs, server-derived material groups, recipeStatus) at the moment it was
+/// saved — deliberately NOT just a set of catalogue IDs, because the
+/// catalogue can change later and this history must preserve "what did the
+/// customer actually select" at that point in time. Never contains private
+/// asset paths, prompts, model/provider names, or secrets — see
+/// lib/customer/saved-outfit.ts, the only code path allowed to write this
+/// column, which only ever accepts a snapshot built by
+/// buildFinalOutfitSnapshot() (lib/showroom/final-outfit.ts).
+model SavedOutfit {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  sessionId String?
+  session   ShowroomSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  sourceType   SavedOutfitSourceType
+  sourceLookId String?
+
+  outfitSnapshot Json
+
+  /// Reserved for a future generated-image reference (safe URL only, never a
+  /// private path) — always null in this milestone; no generation occurs.
+  tryOnResultUrl String?
+
+  /// Staff username who saved this outfit — server-derived, never client-supplied.
+  createdBy String
+  createdAt DateTime @default(now())
+
+  orders Order[]
+
+  @@index([customerId])
+  @@index([sessionId])
+  @@map("saved_outfits")
+}
+
+// ============================================================
+// PHASE 4A — ORDER FOUNDATION
+// ------------------------------------------------------------
+// An Order converts an approved SavedOutfit into a persistent bespoke
+// transaction record. This is deliberately NOT an ERP: no payments,
+// invoicing, inventory, or production-tracking fields exist here — only
+// the minimal record an atelier needs to track "this customer committed
+// to this exact outfit, in this exact size, and here is where that
+// commitment stands."
+// ============================================================
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  TAILORING
+  TRIAL
+  ALTERATION
+  QUALITY_CHECK
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+/// Orders preserve historical truth — they never depend on future customer
+/// data. `outfitSnapshot` and `measurementSnapshot` are both COPIED onto the
+/// Order at creation time (not merely referenced), so the order remains
+/// fully readable exactly as it was when placed even if the customer's
+/// measurements are later updated (a new MeasurementProfile version) or the
+/// catalogue changes. See lib/order-handler.ts, the only code path allowed
+/// to write these two columns — a client can never submit either directly.
+model Order {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  savedOutfitId String
+  savedOutfit   SavedOutfit @relation(fields: [savedOutfitId], references: [id], onDelete: Restrict)
+
+  /// Copy of SavedOutfit.outfitSnapshot at the moment the order was created.
+  outfitSnapshot Json
+
+  /// Copy of the customer's latest MeasurementProfile at the moment the
+  /// order was created — the full versioned record (version, all three
+  /// garment blocks, who recorded it, when), not just a foreign key, so it
+  /// survives unaffected by any future measurement version.
+  measurementSnapshot Json
+
+  status OrderStatus @default(DRAFT)
+
+  /// Staff username who created this order — server-derived, never client-supplied.
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  materialSnapshots OrderMaterialSnapshot[]
+  productionJob     ProductionJob?
+
+  @@index([customerId])
+  @@index([savedOutfitId])
+  @@map("orders")
+}
+
+// ============================================================
+// PHASE 4B — FABRIC INTELLIGENCE FOUNDATION
+// ------------------------------------------------------------
+// A curated fabric catalogue plus the ability for an Order to remember
+// exactly which fabric (and optional variant) was chosen for it. This is
+// deliberately NOT inventory or supplier management: no stock counts, no
+// per-location quantities, no reorder thresholds, no pricing — only the
+// descriptive material facts a bespoke order needs to preserve. Fabric rows
+// are curated business data entered by staff, never AI-generated.
+// ============================================================
+
+enum FabricStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// The fabric catalogue. `colour` here is the fabric's own reference colour
+/// (e.g. the swatch as photographed/labelled); FabricVariant exists
+/// separately for genuine colourway/availability variation on top of that.
+model Fabric {
+  id          String   @id @default(uuid())
+  name        String
+  composition String
+  weight      String
+  season      String
+  colour      String
+  supplier    String?
+  status      FabricStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+
+  variants               FabricVariant[]
+  orderMaterialSnapshots OrderMaterialSnapshot[]
+
+  @@map("fabrics")
+}
+
+/// A fabric may have variants — e.g. the same cloth in a different
+/// colourway, or currently unavailable. Deliberately minimal: colour +
+/// availability only. This is NOT inventory (no stock counts, no
+/// per-location quantities) — `isAvailable` is a simple staff-set flag.
+model FabricVariant {
+  id       String @id @default(uuid())
+  fabricId String
+  fabric   Fabric @relation(fields: [fabricId], references: [id], onDelete: Cascade)
+
+  colour      String
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  orderMaterialSnapshots OrderMaterialSnapshot[]
+
+  @@index([fabricId])
+  @@map("fabric_variants")
+}
+
+enum MaterialRole {
+  SUIT_FABRIC
+  SHIRT_FABRIC
+}
+
+/// The order's material truth. Like Order.outfitSnapshot/measurementSnapshot,
+/// this preserves what was actually selected — fabricName/composition/
+/// weight/season/colour/supplier/variantColour are all COPIED at selection
+/// time, never re-derived from the live Fabric/FabricVariant rows, so a
+/// snapshot stays fully readable exactly as chosen even if the fabric is
+/// later edited or retired. fabricId/fabricVariantId are still kept as real
+/// foreign keys (ON DELETE RESTRICT) purely so a fabric/variant that has
+/// been used on an order can never be deleted out from under it — the
+/// snapshot columns, not these FKs, are what the app actually reads back.
+/// One row per (orderId, role) — re-selecting a role's fabric replaces the
+/// existing row rather than appending a new one (this is a live selection,
+/// not an append-only history like MeasurementProfile).
+model OrderMaterialSnapshot {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  role MaterialRole
+
+  fabricId String
+  fabric   Fabric @relation(fields: [fabricId], references: [id], onDelete: Restrict)
+
+  fabricVariantId String?
+  fabricVariant   FabricVariant? @relation(fields: [fabricVariantId], references: [id], onDelete: Restrict)
+
+  fabricName    String
+  composition   String
+  weight        String
+  season        String
+  colour        String
+  supplier      String?
+  variantColour String?
+
+  /// Staff username who made this selection — server-derived, never client-supplied.
+  selectedBy String
+  selectedAt DateTime @default(now())
+
+  @@unique([orderId, role])
+  @@index([orderId])
+  @@map("order_material_snapshots")
+}
+
+// ============================================================
+// PHASE 4C — ATELIER OPERATIONS FOUNDATION
+// ------------------------------------------------------------
+// Tracks how an accepted Order moves through the workshop. Deliberately NOT
+// an ERP, inventory, or supplier-management system — no costing, no
+// material-consumption tracking, no scheduling/capacity planning. One
+// ProductionJob per Order (1:1); every stage change is preserved in
+// ProductionStageHistory rather than only overwriting currentStage, so the
+// full production timeline of an order is always reconstructable.
+// `assignedStaffId` is a plain staff USERNAME string, never a database
+// foreign key — this app has no staff table (staff identities live only in
+// the AUTH_USERS_JSON allowlist, see lib/auth/config.ts), matching the
+// existing createdBy/recordedBy/selectedBy convention used everywhere else
+// in this schema.
+// ============================================================
+
+enum ProductionStage {
+  CONFIRMED
+  FABRIC_READY
+  CUTTING
+  STITCHING
+  FIRST_TRIAL
+  ALTERATION
+  FINAL_QC
+  READY_FOR_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+/// One production job per Order. `currentStage` is the live pointer;
+/// ProductionStageHistory (below) is the source of truth for "how did we
+/// get here" — see lib/production-handler.ts, the only code path allowed
+/// to write either table.
+model ProductionJob {
+  id      String @id @default(uuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  currentStage ProductionStage @default(CONFIRMED)
+
+  /// Staff username of the assigned tailor — optional (a job may be
+  /// created before a tailor is assigned), plain string (see file header).
+  assignedStaffId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stageHistory ProductionStageHistory[]
+  notes        ProductionNote[]
+
+  @@index([orderId])
+  @@map("production_jobs")
+}
+
+/// Append-only — never updated or deleted once written. `fromStage` is
+/// null only for the very first row (job creation: null -> CONFIRMED).
+model ProductionStageHistory {
+  id              String        @id @default(uuid())
+  productionJobId String
+  productionJob   ProductionJob @relation(fields: [productionJobId], references: [id], onDelete: Cascade)
+
+  fromStage ProductionStage?
+  toStage   ProductionStage
+
+  /// Staff username who made this change — server-derived, never client-supplied.
+  changedBy String
+  createdAt DateTime @default(now())
+
+  @@index([productionJobId])
+  @@map("production_stage_history")
+}
+
+/// Append-only operational atelier context on a production job. Not
+/// customer/measurement/order/fabric truth — never updated or deleted.
+model ProductionNote {
+  id              String        @id @default(uuid())
+  productionJobId String
+  productionJob   ProductionJob @relation(fields: [productionJobId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([productionJobId])
+  @@map("production_notes")
+}

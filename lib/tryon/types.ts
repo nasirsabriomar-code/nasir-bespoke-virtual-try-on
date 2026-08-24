@@ -11,7 +11,26 @@ export type TryOnInput = {
   outfit?: TryOnImage;
   fabric: TryOnImage;
   references: Array<{
-    role: "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail";
+    role:
+      | "upper"
+      | "lower"
+      | "subtype"
+      | "turban"
+      | "shoes"
+      | "upper-style"
+      | "lower-style"
+      | "turban-style"
+      | "shoe-style"
+      | "bespoke-detail-1"
+      | "bespoke-detail-2"
+      | "curated-design"
+      | "curated-detail"
+      // Split Outfit (Phase 2a foundation): construction-reference and
+      // material-swatch roles. Never invoked against the real provider in
+      // this milestone — SPLIT_GENERATION_ENABLED defaults to false.
+      | "split-upper-construction"
+      | "split-waistcoat-construction"
+      | "split-material";
     image: TryOnImage;
   }>;
   selection: TryOnSelection;

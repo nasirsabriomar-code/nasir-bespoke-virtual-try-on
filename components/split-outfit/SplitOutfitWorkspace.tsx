@@ -1,19 +1,20 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  SUIT_ACCESSORY_OPTIONS,
-  SUIT_FOOTWEAR_OPTIONS,
-  SUIT_LOWER_OPTIONS,
-  SUIT_SHIRT_OPTIONS,
-  SUIT_UPPER_OPTIONS,
-  SUIT_WAISTCOAT_OPTIONS,
-} from "@/lib/split-outfit/catalogue";
+import { SUIT_UPPER_OPTIONS } from "@/lib/split-outfit/catalogue";
 import {
   buildSplitOutfitSummary,
   evaluateOptionCompatibility,
+  getVisibleAccessoryOptions,
+  getVisibleFootwearOptions,
+  getVisibleLowerOptions,
+  getVisibleShirtOptions,
+  getVisibleWaistcoatOptions,
+  getWaistcoatRequirement,
+  sanitizeSplitOutfitState,
 } from "@/lib/split-outfit/compatibility";
-import type { SplitOutfitState } from "@/lib/split-outfit/types";
+import type { SplitOutfitState, WaistcoatRequirement } from "@/lib/split-outfit/types";
+import type { SignatureLookProvenance } from "@/lib/showroom/types";
 import { SplitComponentCard } from "./SplitComponentCard";
 import { SplitMaterialsSection } from "./SplitMaterialsSection";
 import { SplitOutfitReview } from "./SplitOutfitReview";
@@ -21,13 +22,36 @@ import { SplitOutfitReview } from "./SplitOutfitReview";
 type SplitOutfitWorkspaceProps = {
   state: SplitOutfitState;
   onChange: (updater: (prev: SplitOutfitState) => SplitOutfitState) => void;
+  /** Safe, non-fabricated Look provenance — surfaced read-only in the review section. */
+  provenance?: SignatureLookProvenance;
+  customizedFromLook?: boolean;
 };
 
-export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspaceProps) {
+const WAISTCOAT_REQUIREMENT_LABEL: Record<WaistcoatRequirement, string> = {
+  REQUIRED: "Required",
+  OPTIONAL: "Optional",
+  CONDITIONAL: "Conditional",
+  UNAVAILABLE: "Unavailable",
+};
+
+export function SplitOutfitWorkspace({ state, onChange, provenance, customizedFromLook }: SplitOutfitWorkspaceProps) {
   const summary = useMemo(() => buildSplitOutfitSummary(state), [state]);
+  const visibleLowers = useMemo(() => getVisibleLowerOptions(state), [state]);
+  const visibleShirts = useMemo(() => getVisibleShirtOptions(state), [state]);
+  const visibleWaistcoats = useMemo(() => getVisibleWaistcoatOptions(state), [state]);
+  const visibleFootwear = useMemo(() => getVisibleFootwearOptions(state), [state]);
+  const visibleAccessories = useMemo(() => getVisibleAccessoryOptions(state), [state]);
+  const waistcoatRequirement = useMemo(() => getWaistcoatRequirement(state), [state]);
+
+  // Every mutation is routed through the compatibility engine so a selection
+  // that becomes invalid when the upper design changes is cleared immediately
+  // rather than lingering as hidden, stale state.
+  const updateState = (updater: (prev: SplitOutfitState) => SplitOutfitState) => {
+    onChange((prev) => sanitizeSplitOutfitState(updater(prev)));
+  };
 
   const toggleAccessory = (id: string) => {
-    onChange((prev) => {
+    updateState((prev) => {
       const exists = prev.accessoryIds.includes(id);
       const nextAccessories = exists
         ? prev.accessoryIds.filter((accId) => accId !== id)
@@ -56,7 +80,7 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
                 key={option.id}
                 option={option}
                 selected={state.upperId === option.id}
-                onSelect={() => onChange((prev) => ({ ...prev, upperId: option.id }))}
+                onSelect={() => updateState((prev) => ({ ...prev, upperId: option.id }))}
                 compatibilityStatus={status}
               />
             );
@@ -75,14 +99,14 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </div>
 
         <div className="split-cards-grid">
-          {SUIT_LOWER_OPTIONS.map((option) => {
+          {visibleLowers.map((option) => {
             const status = evaluateOptionCompatibility(option, state);
             return (
               <SplitComponentCard
                 key={option.id}
                 option={option}
                 selected={state.lowerId === option.id}
-                onSelect={() => onChange((prev) => ({ ...prev, lowerId: option.id }))}
+                onSelect={() => updateState((prev) => ({ ...prev, lowerId: option.id }))}
                 compatibilityStatus={status}
               />
             );
@@ -105,14 +129,14 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
           <div className="split-subsection">
             <h3 className="split-subsection-title">Dress Shirt</h3>
             <div className="split-cards-grid">
-              {SUIT_SHIRT_OPTIONS.map((option) => {
+              {visibleShirts.map((option) => {
                 const status = evaluateOptionCompatibility(option, state);
                 return (
                   <SplitComponentCard
                     key={option.id}
                     option={option}
                     selected={state.shirtId === option.id}
-                    onSelect={() => onChange((prev) => ({ ...prev, shirtId: option.id }))}
+                    onSelect={() => updateState((prev) => ({ ...prev, shirtId: option.id }))}
                     compatibilityStatus={status}
                   />
                 );
@@ -120,24 +144,32 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
             </div>
           </div>
 
-          {/* Sub-section: Waistcoat */}
-          <div className="split-subsection">
-            <h3 className="split-subsection-title">Waistcoat (Optional Layer)</h3>
-            <div className="split-cards-grid">
-              {SUIT_WAISTCOAT_OPTIONS.map((option) => {
-                const status = evaluateOptionCompatibility(option, state);
-                return (
-                  <SplitComponentCard
-                    key={option.id}
-                    option={option}
-                    selected={state.waistcoatId === option.id}
-                    onSelect={() => onChange((prev) => ({ ...prev, waistcoatId: option.id }))}
-                    compatibilityStatus={status}
-                  />
-                );
-              })}
+          {/* Sub-section: Waistcoat — hidden entirely when the current upper
+              design does not offer one (e.g. Double-Breasted). */}
+          {waistcoatRequirement !== "UNAVAILABLE" ? (
+            <div className="split-subsection">
+              <h3 className="split-subsection-title">
+                Waistcoat
+                <span className={`split-requirement-tag is-${waistcoatRequirement.toLowerCase()}`}>
+                  {WAISTCOAT_REQUIREMENT_LABEL[waistcoatRequirement]}
+                </span>
+              </h3>
+              <div className="split-cards-grid">
+                {visibleWaistcoats.map((option) => {
+                  const status = evaluateOptionCompatibility(option, state);
+                  return (
+                    <SplitComponentCard
+                      key={option.id}
+                      option={option}
+                      selected={state.waistcoatId === option.id}
+                      onSelect={() => updateState((prev) => ({ ...prev, waistcoatId: option.id }))}
+                      compatibilityStatus={status}
+                    />
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </section>
 
@@ -152,14 +184,14 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </div>
 
         <div className="split-cards-grid">
-          {SUIT_FOOTWEAR_OPTIONS.map((option) => {
+          {visibleFootwear.map((option) => {
             const status = evaluateOptionCompatibility(option, state);
             return (
               <SplitComponentCard
                 key={option.id}
                 option={option}
                 selected={state.footwearId === option.id}
-                onSelect={() => onChange((prev) => ({ ...prev, footwearId: option.id }))}
+                onSelect={() => updateState((prev) => ({ ...prev, footwearId: option.id }))}
                 compatibilityStatus={status}
               />
             );
@@ -182,7 +214,7 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </p>
 
         <div className="split-cards-grid">
-          {SUIT_ACCESSORY_OPTIONS.map((option) => {
+          {visibleAccessories.map((option) => {
             const isSelected = state.accessoryIds.includes(option.id);
             const status = evaluateOptionCompatibility(option, state);
             return (
@@ -200,10 +232,23 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
       </section>
 
       {/* 06 — FABRICS & MATERIALS */}
-      <SplitMaterialsSection slots={summary.activeMaterialSlots} />
+      <SplitMaterialsSection
+        slots={summary.activeMaterialSlots}
+        linkGroups={summary.materialLinkGroups}
+        materialGroups={summary.materialGroups}
+        materialUploads={state.materialUploads ?? {}}
+        onUploadMaterial={(groupId, file) => {
+          updateState((prev) => {
+            const nextUploads = { ...(prev.materialUploads ?? {}) };
+            if (file) nextUploads[groupId] = file;
+            else delete nextUploads[groupId];
+            return { ...prev, materialUploads: nextUploads };
+          });
+        }}
+      />
 
       {/* 07 — YOUR OUTFIT */}
-      <SplitOutfitReview summary={summary} />
+      <SplitOutfitReview summary={summary} provenance={provenance} customizedFromLook={customizedFromLook} />
     </div>
   );
 }

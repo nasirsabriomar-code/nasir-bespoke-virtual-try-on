@@ -1,13 +1,57 @@
 "use client";
 
 import type { SplitOutfitSummary } from "@/lib/split-outfit/types";
+import type { SignatureLookProvenance } from "@/lib/showroom/types";
 
 type SplitOutfitReviewProps = {
   summary: SplitOutfitSummary;
+  /** Safe, non-fabricated provenance — omitted or "manual" shows no Look association. */
+  provenance?: SignatureLookProvenance;
+  customizedFromLook?: boolean;
 };
 
-export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
-  const { upper, lower, shirt, waistcoat, footwear, accessories, activeMaterialSlots, isComplete } = summary;
+const MISSING_COMPONENT_LABEL: Record<string, string> = {
+  lower: "Lower Garment (Trousers)",
+  shirt: "Dress Shirt",
+  footwear: "Footwear",
+  waistcoat: "Waistcoat",
+};
+
+const STATUS_COPY: Record<
+  SplitOutfitSummary["recipeStatus"],
+  { badge: string; className: string; generateLabel: string }
+> = {
+  VALID: {
+    badge: "Recipe Valid",
+    className: "is-valid",
+    generateLabel: "Ready — Generation Arrives in Phase 2",
+  },
+  INCOMPLETE: {
+    badge: "Incomplete",
+    className: "is-incomplete",
+    generateLabel: "Complete Recipe to Continue",
+  },
+  CONFLICT: {
+    badge: "Conflict",
+    className: "is-conflict",
+    generateLabel: "Resolve Conflicts to Continue",
+  },
+};
+
+export function SplitOutfitReview({ summary, provenance, customizedFromLook }: SplitOutfitReviewProps) {
+  const {
+    upper,
+    lower,
+    shirt,
+    waistcoat,
+    footwear,
+    accessories,
+    activeMaterialSlots,
+    recipeStatus,
+    missingComponents,
+    waistcoatRequirement,
+  } = summary;
+  const statusCopy = STATUS_COPY[recipeStatus];
 
   return (
     <section className="level1-review split-outfit-review" aria-label="Review your modular outfit recipe">
@@ -19,6 +63,13 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
             <h2>Your outfit</h2>
           </div>
         </div>
+
+        {provenance && provenance.type === "signature-look" ? (
+          <p className="split-provenance-note" role="status">
+            {customizedFromLook ? "Customized from: " : "Started from: "}
+            <strong>{provenance.lookName}</strong>
+          </p>
+        ) : null}
 
         <div className="split-summary-grid">
           {/* 1. UPPER */}
@@ -45,8 +96,16 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
                 : ""}
             </strong>
             <p className="split-summary-detail">
-              {shirt ? shirt.subtitle : ""}
-              {waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE" ? ` · ${waistcoat.subtitle}` : ""}
+              {[
+                shirt?.subtitle,
+                waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE" ? waistcoat.subtitle : null,
+                waistcoatRequirement === "UNAVAILABLE" ? "Waistcoat not offered for this jacket" : null,
+                waistcoatRequirement === "REQUIRED" && (!waistcoat || waistcoat.id === "SUIT_WAISTCOAT_NONE")
+                  ? "Waistcoat required — please select one"
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
 
@@ -82,12 +141,27 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
           </div>
         </div>
 
-        {/* Development State Notice */}
-        <div className="split-dev-notice" role="status">
-          <span className="split-dev-badge">Phase 1 Foundation</span>
-          <p>
-            Split Outfit architecture is configured and ready. Generation compiler connection and multi-part visual rendering are scheduled for Phase 2.
-          </p>
+        {/* Deterministic Recipe Status — computed entirely by the compatibility
+            engine (lib/split-outfit/compatibility.ts), never inferred by the AI. */}
+        <div className={`split-status-notice ${statusCopy.className}`} role="status">
+          <span className="split-status-badge">{statusCopy.badge}</span>
+          {recipeStatus === "VALID" ? (
+            <p>
+              This recipe is complete and every selection is valid for {upper?.name ?? "the selected jacket"}.
+              The generation compiler and multi-part rendering are scheduled for Phase 2 — nothing is sent for
+              generation yet.
+            </p>
+          ) : recipeStatus === "INCOMPLETE" ? (
+            <p>
+              Still needed:{" "}
+              {missingComponents.map((key) => MISSING_COMPONENT_LABEL[key] ?? key).join(", ")}.
+            </p>
+          ) : (
+            <p>
+              Some selections are no longer valid for {upper?.name ?? "the selected jacket"}. Reselect the
+              highlighted sections above.
+            </p>
+          )}
         </div>
 
         <button
@@ -97,7 +171,7 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
           aria-disabled="true"
           title="Split Outfit generation will be enabled in Phase 2"
         >
-          {isComplete ? "Generate Split Try-On (Phase 2)" : "Complete Recipe to Continue"}
+          {statusCopy.generateLabel}
         </button>
       </div>
     </section>
