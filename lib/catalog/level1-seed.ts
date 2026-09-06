@@ -1054,16 +1054,16 @@ export const LEVEL1_NEHRU_DESIGNS: CuratedDesign[] = [
     },
     generation: {
       promptFragments: [
-        "traditional men's sleeveless Nehru jacket exactly as shown in the reference image",
+        "traditional men's sleeveless Nehru jacket",
         "waist-to-hip length",
         "high standing band collar",
-        "centered front button closure",
+        "centered front button closure with four to five buttons",
         "besom hip pockets with a welt chest pocket",
         "layered over a collared shirt with the shirt collar visible above the jacket collar",
-        "preserve the reference garment's construction, proportions, and detailing exactly",
+        "preserve the reference garment's construction, silhouette, and architecture exactly as shown",
       ],
       negativeConstraints: [
-        "Never make long like a Sherwani or Achkan. Never add jacket sleeves. Do not turn into a Western blazer. Do not alter the garment's construction, cut, or detailing from the reference image.",
+        "Never make long like a Sherwani or Achkan. Never add jacket sleeves. Do not turn into a Western blazer. Do not alter the garment's construction, silhouette, or architecture from the reference image. Customer fabric photo is authoritative for colour, texture, pattern, and material — never copy the reference image's colour or fabric.",
       ],
       maximumReferenceImages: 2,
     },
