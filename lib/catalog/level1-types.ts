@@ -40,6 +40,7 @@ export const NEHRU_DESIGN_IDS = [
   "NEHRU_03_TEXTURED",
   "NEHRU_04_CONTEMPORARY",
   "NEHRU_05_STATEMENT",
+  "NEHRU_06",
 ] as const;
 
 export const KURTA_DESIGN_IDS = [

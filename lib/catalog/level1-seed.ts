@@ -141,6 +141,12 @@ const APPROVED_NEHRU_ASSETS: Record<string, { privatePath: string; checksum: str
     provenance: "Approved Nasir Bespoke Nehru Jacket catalogue image supplied by project owner on 2026-08-17.",
     contentType: "image/jpeg",
   },
+  NEHRU_06: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/NEHRU_06/approved.jpg",
+    checksum: "8f3a3881af84dd4c8faef44dfba09b94080d20577d13f39317158e8247454dd6",
+    provenance: "Approved Nasir Bespoke Nehru Jacket catalogue image supplied by project owner on 2026-09-06.",
+    contentType: "image/jpeg",
+  },
 };
 
 // The five owner-approved Kurta Set catalogue images are the trusted v1 card and
@@ -1011,6 +1017,53 @@ export const LEVEL1_NEHRU_DESIGNS: CuratedDesign[] = [
       ],
       negativeConstraints: [
         "Do not turn into costume. Do not make long like a Sherwani. Visually stronger than Contemporary while remaining wearable.",
+      ],
+      maximumReferenceImages: 2,
+    },
+  },
+  {
+    id: "NEHRU_06",
+    version: 1,
+    categoryId: "nehru-jacket",
+    status: "active",
+    sortOrder: 6,
+    customer: {
+      name: "Nehru Jacket",
+      description: "Textured navy tailored waistcoat",
+      intent: "Business formal, festive gatherings, and versatile traditional-to-formal dressing.",
+    },
+    blueprint: {
+      garmentFamily: "Traditional Nehru jacket / sleeveless bandhgala waistcoat",
+      silhouette: ["waist-to-hip length", "sleeveless tailored jacket", "clean upright fall"],
+      includedPieces: ["sleeveless Nehru jacket", "coordinated underlayer shirt", "tailored trousers"],
+      construction: {
+        jacketLength: "waist-to-hip length sleeveless Nehru jacket",
+        collar: "high standing band collar",
+        closure: "centered front button closure with four to five buttons",
+        sleeves: "sleeveless",
+        pockets: "besom hip pockets with a welt chest pocket",
+        layering: "worn over a collared shirt with the shirt collar visible above the jacket collar",
+      },
+      stylingPolicy: styling,
+      bodyFitPolicy: bodyFit,
+    },
+    assetIds: {
+      card: "NEHRU_06_CARD_V1",
+      primaryConstruction: "NEHRU_06_PRIMARY_V1",
+      details: [],
+    },
+    generation: {
+      promptFragments: [
+        "traditional men's sleeveless Nehru jacket exactly as shown in the reference image",
+        "waist-to-hip length",
+        "high standing band collar",
+        "centered front button closure",
+        "besom hip pockets with a welt chest pocket",
+        "layered over a collared shirt with the shirt collar visible above the jacket collar",
+        "preserve the reference garment's construction, proportions, and detailing exactly",
+      ],
+      negativeConstraints: [
+        "Never make long like a Sherwani or Achkan. Never add jacket sleeves. Do not turn into a Western blazer. Do not alter the garment's construction, cut, or detailing from the reference image.",
       ],
       maximumReferenceImages: 2,
     },
