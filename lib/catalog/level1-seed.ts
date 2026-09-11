@@ -152,7 +152,7 @@ const APPROVED_NEHRU_ASSETS: Record<string, { privatePath: string; checksum: str
     contentType: "image/jpeg",
   },
   NEHRU_07: {
-    privatePath: "nasir-bespoke/catalogue/level1/v1/NEHRU_07/approved.jpg",
+    privatePath: "nasir-bespoke/catalogue/level1/v1/NEHRU_07/approved.jpeg",
     checksum: "d5a3485a0c00b7ae7703cb7c4d2c73cf1f4fed7a4a0a8dee46b2c861fdf2a048",
     provenance: "Approved Nasir Bespoke Nehru Jacket catalogue image supplied by project owner on 2026-09-11.",
     contentType: "image/jpeg",
