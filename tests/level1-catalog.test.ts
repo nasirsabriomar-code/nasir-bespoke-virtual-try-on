@@ -23,7 +23,7 @@ beforeEach(() => {
   resetLevel1CatalogueForTests();
 });
 
-test("Level 1 seeds exactly 7 categories, 36 designs, and 72 asset slots with 7 active categories", async () => {
+test("Level 1 seeds exactly 7 categories, 37 designs, and 74 asset slots with 7 active categories", async () => {
   const catalogue = await getLevel1Catalogue();
 
   // 1. Categories
@@ -39,16 +39,16 @@ test("Level 1 seeds exactly 7 categories, 36 designs, and 72 asset slots with 7 
   ]);
 
   // 2. Designs
-  assert.equal(catalogue.designs.length, 36);
+  assert.equal(catalogue.designs.length, 37);
   assert.deepEqual(
     catalogue.designs.map((d) => d.id),
     CURATED_DESIGN_IDS,
   );
 
-  // Each category has exactly 5 designs, except Nehru Jacket which has 6
+  // Each category has exactly 5 designs, except Nehru Jacket which has 7
   for (const catId of CURATED_CATEGORY_IDS) {
     const catDesigns = catalogue.designs.filter((d) => d.categoryId === catId);
-    const expectedCount = catId === "nehru-jacket" ? 6 : 5;
+    const expectedCount = catId === "nehru-jacket" ? 7 : 5;
     assert.equal(catDesigns.length, expectedCount, `Category ${catId} must have exactly ${expectedCount} designs`);
     assert.deepEqual(
       catDesigns.map((d) => d.sortOrder).sort(),
@@ -57,13 +57,13 @@ test("Level 1 seeds exactly 7 categories, 36 designs, and 72 asset slots with 7 
     );
   }
 
-  // 3. Asset Slots (72 total - all 72 active!)
-  assert.equal(catalogue.assets.length, 72);
+  // 3. Asset Slots (74 total - all 74 active!)
+  assert.equal(catalogue.assets.length, 74);
   const activeAssets = catalogue.assets.filter((a) => a.status === "active");
   const pendingAssets = catalogue.assets.filter((a) => a.status === "awaiting-upload");
 
-  // 10 Suit + 10 Sherwani + 10 Bandhgala + 12 Nehru + 10 Kurta + 10 Indo + 10 Achkan = 72 active
-  assert.equal(activeAssets.length, 72);
+  // 10 Suit + 10 Sherwani + 10 Bandhgala + 14 Nehru + 10 Kurta + 10 Indo + 10 Achkan = 74 active
+  assert.equal(activeAssets.length, 74);
   assert.ok(activeAssets.every((a) => a.checksum && a.privatePath && a.contentType));
 
   // 0 remaining designs awaiting-upload
@@ -71,12 +71,12 @@ test("Level 1 seeds exactly 7 categories, 36 designs, and 72 asset slots with 7 
 
   // 4. ID Uniqueness
   const designIdSet = new Set(catalogue.designs.map((d) => d.id));
-  assert.equal(designIdSet.size, 36, "All 36 design IDs must be unique");
+  assert.equal(designIdSet.size, 37, "All 37 design IDs must be unique");
 
   const assetIdSet = new Set(catalogue.assets.map((a) => a.id));
-  assert.equal(assetIdSet.size, 72, "All 72 asset IDs must be unique");
+  assert.equal(assetIdSet.size, 74, "All 74 asset IDs must be unique");
 
-  // 5. Invariant: bodyFitPolicy for all 36 designs
+  // 5. Invariant: bodyFitPolicy for all 37 designs
   assert.ok(
     catalogue.designs.every((d) => d.blueprint.bodyFitPolicy === "adapt-garment-to-customer"),
     "Every design must enforce adapt-garment-to-customer body fit policy",
@@ -149,11 +149,11 @@ test("sanitized Level 1 catalogue view returns active categories and never leaks
     "indo-western",
     "achkan",
   ]);
-  assert.equal(view.designs.length, 36);
+  assert.equal(view.designs.length, 37);
   assert.equal(view.designs.filter((d) => d.categoryId === "suit").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "sherwani").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "bandhgala").length, 5);
-  assert.equal(view.designs.filter((d) => d.categoryId === "nehru-jacket").length, 6);
+  assert.equal(view.designs.filter((d) => d.categoryId === "nehru-jacket").length, 7);
   assert.equal(view.designs.filter((d) => d.categoryId === "kurta-set").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "indo-western").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "achkan").length, 5);
@@ -164,8 +164,8 @@ test("sanitized Level 1 catalogue view returns active categories and never leaks
   assert.doesNotMatch(serialized, /promptFragments|negativeConstraints|privatePath|bodyFitPolicy|construction/i);
 });
 
-test("development mode preview exposes all 7 categories and 36 designs, with all designs ready", async () => {
-  // 1. In production / test environment: 7 active categories (36 designs)
+test("development mode preview exposes all 7 categories and 37 designs, with all designs ready", async () => {
+  // 1. In production / test environment: 7 active categories (37 designs)
   const prodView = await getLevel1CatalogueView();
   assert.equal(prodView.categories.length, 7);
   assert.deepEqual(prodView.categories.map((c) => c.id), [
@@ -177,9 +177,9 @@ test("development mode preview exposes all 7 categories and 36 designs, with all
     "indo-western",
     "achkan",
   ]);
-  assert.equal(prodView.designs.length, 36);
+  assert.equal(prodView.designs.length, 37);
 
-  // 2. In development preview mode: all 7 categories and 36 designs
+  // 2. In development preview mode: all 7 categories and 37 designs
   const prevEnv = process.env.NODE_ENV;
   try {
     (process.env as Record<string, string | undefined>).NODE_ENV = "development";
@@ -194,9 +194,9 @@ test("development mode preview exposes all 7 categories and 36 designs, with all
       "indo-western",
       "achkan",
     ]);
-    assert.equal(devView.designs.length, 36);
+    assert.equal(devView.designs.length, 37);
 
-    // All 36 designs across all 7 categories are ready
+    // All 37 designs across all 7 categories are ready
     assert.ok(devView.designs.every((d) => d.cardImage.state === "ready" && Boolean(d.cardImage.url)));
     assert.ok(devView.designs.every((d) => d.generation.state === "ready"));
   } finally {

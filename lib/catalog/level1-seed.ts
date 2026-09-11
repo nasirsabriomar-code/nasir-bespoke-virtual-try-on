@@ -142,9 +142,19 @@ const APPROVED_NEHRU_ASSETS: Record<string, { privatePath: string; checksum: str
     contentType: "image/jpeg",
   },
   NEHRU_06: {
-    privatePath: "nasir-bespoke/catalogue/level1/v1/NEHRU_06/approved.jpg",
-    checksum: "8f3a3881af84dd4c8faef44dfba09b94080d20577d13f39317158e8247454dd6",
+    // Corrected to match the full-resolution file actually live in production Blob
+    // (uploaded 2026-09-06, replacing an earlier lower-resolution version) and
+    // synced to production Redis via the one-off patch route that day — kept in
+    // sync here so a future full-catalogue resync doesn't silently revert it.
+    privatePath: "nasir-bespoke/catalogue/level1/v1/NEHRU_06/approved.jpeg",
+    checksum: "d78e77f520f1ce6816c75f414fdedabf392fcb76a47f729f4829965a057bfb32",
     provenance: "Approved Nasir Bespoke Nehru Jacket catalogue image supplied by project owner on 2026-09-06.",
+    contentType: "image/jpeg",
+  },
+  NEHRU_07: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/NEHRU_07/approved.jpg",
+    checksum: "d5a3485a0c00b7ae7703cb7c4d2c73cf1f4fed7a4a0a8dee46b2c861fdf2a048",
+    provenance: "Approved Nasir Bespoke Nehru Jacket catalogue image supplied by project owner on 2026-09-11.",
     contentType: "image/jpeg",
   },
 };
@@ -1086,6 +1096,56 @@ export const LEVEL1_NEHRU_DESIGNS: CuratedDesign[] = [
       ],
       negativeConstraints: [
         "Never make long like a Sherwani or Achkan. Never add jacket sleeves. Do not turn into a Western blazer. Do not alter the garment's construction, silhouette, or architecture from the reference image. Customer fabric photo is authoritative for colour, texture, pattern, and material — never copy the reference image's colour or fabric.",
+      ],
+      maximumReferenceImages: 2,
+    },
+  },
+  {
+    id: "NEHRU_07",
+    version: 1,
+    categoryId: "nehru-jacket",
+    status: "active",
+    sortOrder: 7,
+    customer: {
+      name: "Pinstripe Nehru Waistcoat Two-Piece Set",
+      description: "Fine pinstripe tailored waistcoat with matching trousers",
+      intent: "Business formal, festive gatherings, and versatile traditional-to-formal dressing.",
+    },
+    blueprint: {
+      garmentFamily: "Traditional Nehru jacket / sleeveless bandhgala waistcoat",
+      silhouette: ["waist-to-hip length", "sleeveless tailored waistcoat", "clean upright fall"],
+      includedPieces: ["pinstripe Nehru waistcoat", "coordinated collared shirt", "matching pinstripe trousers"],
+      construction: {
+        jacketLength: "waist-to-hip length sleeveless Nehru waistcoat",
+        collar: "high standing band collar",
+        closure: "centered front button closure with six buttons",
+        sleeves: "sleeveless",
+        pockets: "welt hip pockets with a welt chest pocket",
+        pattern: "fine vertical pinstripe pattern throughout waistcoat and trousers",
+        layering: "worn over a collared shirt with the shirt collar visible above the jacket collar",
+      },
+      fabricRegions: { upper: ["pinstripe Nehru waistcoat"], lower: ["matching pinstripe trousers"] },
+      stylingPolicy: styling,
+      bodyFitPolicy: bodyFit,
+    },
+    assetIds: {
+      card: "NEHRU_07_CARD_V1",
+      primaryConstruction: "NEHRU_07_PRIMARY_V1",
+      details: [],
+    },
+    generation: {
+      promptFragments: [
+        "traditional men's sleeveless Nehru waistcoat",
+        "waist-to-hip length",
+        "high standing band collar",
+        "centered front button closure",
+        "welt hip pockets with a welt chest pocket",
+        "fine vertical pinstripe pattern",
+        "layered over a collared shirt with the shirt collar visible above the jacket collar",
+        "preserve the reference garment's construction, silhouette, and architecture exactly as shown",
+      ],
+      negativeConstraints: [
+        "Never make long like a Sherwani or Achkan. Never add jacket sleeves. Do not turn into a Western blazer. Do not alter the garment's construction, silhouette, or architecture from the reference image. Customer fabric photo is authoritative for colour, texture, pattern, and material — never copy the reference image's colour or fabric or override the pinstripe pattern unless the customer fabric shows one.",
       ],
       maximumReferenceImages: 2,
     },
