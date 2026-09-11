@@ -157,6 +157,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
   const [designId, setDesignId] = useState<string | null>(null);
+  const [fabricRegion, setFabricRegion] = useState<"upper" | "lower" | "both">("both");
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -278,6 +279,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       formData.set("selectionMode", "level1");
       formData.set("categoryId", categoryId);
       formData.set("designId", selectedDesign.id);
+      formData.set("fabricRegion", fabricRegion);
       formData.set("person", person.file);
       formData.set("fabric", fabric.file);
 
@@ -323,12 +325,13 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       generationKeyRef.current = null;
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, fabric, person, revokeUrl, selectedDesign]);
+  }, [categoryId, clearResult, fabric, fabricRegion, person, revokeUrl, selectedDesign]);
 
   const startOver = useCallback(() => {
     setError(null);
     clearResult();
     setDesignId(null);
+    setFabricRegion("both");
     setPerson((current) => {
       revokeUrl(current?.previewUrl);
       return null;
@@ -406,6 +409,42 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             onRemove={() => removeImage("fabric")}
             disabled={isGenerating}
           />
+        </div>
+        <div
+          className="comparison-toggle fabric-region-toggle"
+          role="radiogroup"
+          aria-label="Apply fabric colour to"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={fabricRegion === "upper"}
+            className={fabricRegion === "upper" ? "is-active" : ""}
+            onClick={() => setFabricRegion("upper")}
+            disabled={isGenerating}
+          >
+            Upper Only
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={fabricRegion === "lower"}
+            className={fabricRegion === "lower" ? "is-active" : ""}
+            onClick={() => setFabricRegion("lower")}
+            disabled={isGenerating}
+          >
+            Lower Only
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={fabricRegion === "both"}
+            className={fabricRegion === "both" ? "is-active" : ""}
+            onClick={() => setFabricRegion("both")}
+            disabled={isGenerating}
+          >
+            Both
+          </button>
         </div>
       </section>
 

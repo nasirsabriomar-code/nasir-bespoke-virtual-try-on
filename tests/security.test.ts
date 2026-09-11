@@ -320,7 +320,7 @@ test("production fails closed when persistent rate limiting is not configured", 
   setNodeEnv(originalNodeEnv);
 });
 
-test("GPT Image 2 provider submits both references in order with controlled settings", async () => {
+test("GPT Image 2.5 provider submits both references in order with controlled settings", async () => {
   let captured: Record<string, unknown> | null = null;
   const fakeClient = {
     images: {
@@ -349,7 +349,7 @@ test("GPT Image 2 provider submits both references in order with controlled sett
 
   assert.ok(captured);
   const parameters = captured as Record<string, unknown>;
-  assert.equal(parameters.model, "gpt-image-2");
+  assert.equal(parameters.model, "gpt-image-2.5-sunburst");
   assert.equal(parameters.quality, "medium");
   assert.equal(parameters.size, "auto");
   assert.equal(parameters.output_format, "jpeg");

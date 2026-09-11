@@ -37,6 +37,7 @@ export type UsageEvent = {
     curatedDesignName?: string;
     curatedDesignVersion?: number;
     curatedAssetStatus?: "ready" | "awaiting-approved-reference";
+    fabricRegion?: "upper" | "lower" | "both";
     upperGarmentId?: string;
     upperGarmentName?: string;
     lowerGarmentId?: string;
@@ -165,6 +166,9 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
   const curatedAssetStatus = record.curatedAssetStatus === "ready" || record.curatedAssetStatus === "awaiting-approved-reference"
     ? record.curatedAssetStatus
     : undefined;
+  const fabricRegion = record.fabricRegion === "upper" || record.fabricRegion === "lower" || record.fabricRegion === "both"
+    ? record.fabricRegion
+    : undefined;
   if (isLevel1Mode && (!optionalString("categoryId") || !optionalString("curatedDesignId") || !optionalString("curatedDesignName") || !curatedDesignVersion || !curatedAssetStatus)) return undefined;
   return {
     mode: isOutfitMode ? "outfit" : isLevel1Mode ? "level1" : "catalog",
@@ -174,6 +178,7 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     ...(isLevel1Mode && optionalString("curatedDesignName") ? { curatedDesignName: optionalString("curatedDesignName") } : {}),
     ...(isLevel1Mode && curatedDesignVersion ? { curatedDesignVersion } : {}),
     ...(isLevel1Mode && curatedAssetStatus ? { curatedAssetStatus } : {}),
+    ...(isLevel1Mode && fabricRegion ? { fabricRegion } : {}),
     ...(optionalString("upperGarmentId") ? { upperGarmentId: optionalString("upperGarmentId") } : {}),
     ...(optionalString("upperGarmentName") ? { upperGarmentName: optionalString("upperGarmentName") } : {}),
     ...(optionalString("lowerGarmentId") ? { lowerGarmentId: optionalString("lowerGarmentId") } : {}),

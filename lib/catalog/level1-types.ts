@@ -126,6 +126,14 @@ export type CuratedDesign = {
     silhouette: string[];
     includedPieces: string[];
     construction: Record<string, string | string[]>;
+    // Hand-authored per-design tagging (cannot be derived from includedPieces —
+    // e.g. SHERWANI_05_ROYAL's includedPieces ends in footwear, not a lower
+    // garment). "upper" = the main garment piece worn on top (jacket / coat /
+    // sherwani / achkan / kurta / bandhgala / nehru jacket / suit jacket, even if
+    // knee-length or longer — never internally split at the waist). "lower" = the
+    // trouser / churidar / pajama / salwar piece worn under it. Pieces belonging
+    // to neither region (e.g. an underlayer shirt) are simply omitted from both.
+    fabricRegions: { upper: string[]; lower: string[] };
     stylingPolicy: "preserve-existing-accessories";
     bodyFitPolicy: "adapt-garment-to-customer";
   };

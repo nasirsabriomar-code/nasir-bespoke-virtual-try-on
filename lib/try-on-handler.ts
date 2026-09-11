@@ -7,7 +7,7 @@ import { findCatalogSelection } from "@/lib/catalog/store";
 import type { CatalogSelection, ReferenceImage, StyleOption, TryOnSelection } from "@/lib/catalog/types";
 import { getPrivateLevel1Asset } from "@/lib/catalog/level1-assets";
 import { Level1CatalogueError, type CuratedAsset, type ResolvedLevel1Design } from "@/lib/catalog/level1-types";
-import { buildLevel1TryOnPrompt } from "@/lib/catalog/level1-prompt";
+import { buildLevel1TryOnPrompt, type FabricRegion } from "@/lib/catalog/level1-prompt";
 import { resolveLevel1Design } from "@/lib/catalog/level1-store";
 import { MissingApiKeyError } from "@/lib/openai";
 import {
@@ -136,13 +136,14 @@ function hasUnexpectedFields(formData: FormData) {
       "bespokeConfiguration",
       "categoryId",
       "designId",
+      "fabricRegion",
     ].includes(name)) return true;
   }
   return false;
 }
 
 function hasLevel1ForbiddenFields(formData: FormData) {
-  const level1Fields = new Set(["person", "fabric", "selectionMode", "categoryId", "designId"]);
+  const level1Fields = new Set(["person", "fabric", "selectionMode", "categoryId", "designId", "fabricRegion"]);
   for (const [name] of formData.entries()) {
     if (!level1Fields.has(name)) return true;
   }
@@ -257,7 +258,7 @@ async function recordUsageSafely(
       device: getRequestDevice(request),
       durationMs,
       provider: metadata?.provider ?? "openai",
-      model: metadata?.model ?? "gpt-image-2",
+      model: metadata?.model ?? "gpt-image-2.5-sunburst",
       quality: metadata?.quality ?? "medium",
       generation,
       assets,
@@ -374,6 +375,12 @@ export async function handleTryOnRequest(
         rateHeaders,
       );
     }
+
+    const fabricRegionValue = getExactlyOneText(formData, "fabricRegion", false);
+    if (fabricRegionValue === null || (fabricRegionValue && !["upper", "lower", "both"].includes(fabricRegionValue))) {
+      return jsonError("Please choose a valid fabric application: upper, lower, or both.", 400, rateHeaders);
+    }
+    const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" ? fabricRegionValue : "both";
 
     const [person, outfit, fabric] = await Promise.all([
       validateImageFile(personFile, "a person photo"),
@@ -526,7 +533,7 @@ export async function handleTryOnRequest(
       ? level1ReferenceInputs
       : [...await buildReferenceInputs(catalogSelection), ...bespokeReferenceInputs];
     const basePrompt = level1Resolved
-      ? buildLevel1TryOnPrompt(level1Resolved)
+      ? buildLevel1TryOnPrompt(level1Resolved, fabricRegion)
       : buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
     const prompt = outfitSpecification && bespokeConfiguration
       ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
@@ -583,6 +590,7 @@ export async function handleTryOnRequest(
         curatedDesignName: level1Resolved.design.customer.name,
         curatedDesignVersion: level1Resolved.design.version,
         curatedAssetStatus: "ready",
+        fabricRegion,
       } : selectionMode === "catalog" && resolved ? {
         mode: "catalog",
         upperGarmentId: resolved.upper.id,
@@ -646,7 +654,7 @@ export async function handleTryOnRequest(
         durationMs,
         {
           provider: "openai",
-          model: "gpt-image-2",
+          model: "gpt-image-2.5-sunburst",
           quality: "medium",
         },
       );
@@ -685,7 +693,7 @@ export async function handleTryOnRequest(
         username: user.username,
         success: false,
         provider: "openai",
-        model: "gpt-image-2",
+        model: "gpt-image-2.5-sunburst",
         durationMs,
       });
       return jsonError("OpenAI API key is not configured.", 503, rateHeaders);
@@ -698,7 +706,7 @@ export async function handleTryOnRequest(
       username: user.username,
       success: false,
       provider: "openai",
-      model: "gpt-image-2",
+      model: "gpt-image-2.5-sunburst",
       durationMs,
       ...errorMetadata,
     });

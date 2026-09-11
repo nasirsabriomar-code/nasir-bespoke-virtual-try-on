@@ -283,6 +283,61 @@ test("prompt compiler creates valid deterministic prompts for all designs", asyn
   }
 });
 
+test("fabric-region prompts correctly name pieces and preserve the unselected region for all designs", async () => {
+  const catalogue = structuredClone(DEFAULT_LEVEL1_CATALOGUE);
+
+  for (const design of catalogue.designs) {
+    const category = catalogue.categories.find((c) => c.id === design.categoryId)!;
+    const primaryAsset = {
+      id: design.assetIds.primaryConstruction,
+      designId: design.id,
+      purpose: "primary-construction" as const,
+      status: "active" as const,
+      privatePath: `nasir-bespoke/catalogue/level1/v1/${design.id}/approved.jpg`,
+      contentType: "image/jpeg" as const,
+      checksum: "0000000000000000000000000000000000000000000000000000000000000000",
+      sortOrder: 2,
+    };
+    const resolved = { category, design, primaryAsset, detailAssets: [] };
+
+    // Every design must have non-empty fabricRegions (catches any design missed during tagging).
+    assert.ok(design.blueprint.fabricRegions.upper.length > 0, `${design.id} is missing upper fabricRegions`);
+    assert.ok(design.blueprint.fabricRegions.lower.length > 0, `${design.id} is missing lower fabricRegions`);
+
+    const bothPrompt = buildLevel1TryOnPrompt(resolved, "both");
+    const noArgPrompt = buildLevel1TryOnPrompt(resolved);
+    assert.equal(bothPrompt, noArgPrompt, `${design.id}: default parameter must match explicit "both"`);
+    assert.doesNotMatch(bothPrompt, /UNCHANGED REGION/, `${design.id}: "both" must not include an unchanged-region sentence`);
+    assert.match(bothPrompt, /Apply these fabric characteristics faithfully to the selected garment pieces/, `${design.id}: "both" must keep the original unconditioned wording`);
+
+    const upperPrompt = buildLevel1TryOnPrompt(resolved, "upper");
+    for (const piece of design.blueprint.fabricRegions.upper) {
+      assert.ok(upperPrompt.includes(piece), `${design.id}: "upper" prompt must name "${piece}"`);
+    }
+    for (const piece of design.blueprint.fabricRegions.lower) {
+      assert.ok(upperPrompt.includes(piece), `${design.id}: "upper" prompt must still name the preserved lower piece "${piece}"`);
+    }
+    assert.match(upperPrompt, /UNCHANGED REGION — CRITICAL: The lower garment piece/, `${design.id}: "upper" must include the unchanged-region sentence for the lower pieces`);
+
+    const lowerPrompt = buildLevel1TryOnPrompt(resolved, "lower");
+    for (const piece of design.blueprint.fabricRegions.lower) {
+      assert.ok(lowerPrompt.includes(piece), `${design.id}: "lower" prompt must name "${piece}"`);
+    }
+    for (const piece of design.blueprint.fabricRegions.upper) {
+      assert.ok(lowerPrompt.includes(piece), `${design.id}: "lower" prompt must still name the preserved upper piece "${piece}"`);
+    }
+    assert.match(lowerPrompt, /UNCHANGED REGION — CRITICAL: The upper garment piece/, `${design.id}: "lower" must include the unchanged-region sentence for the upper pieces`);
+
+    // Every other sentence must stay byte-identical across all 3 region values.
+    const stripFabricLines = (text: string) => text
+      .split("\n\n")
+      .filter((line) => !line.startsWith("FABRIC PHOTO AUTHORITY") && !line.startsWith("UNCHANGED REGION"))
+      .join("\n\n");
+    assert.equal(stripFabricLines(bothPrompt), stripFabricLines(upperPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "upper"`);
+    assert.equal(stripFabricLines(bothPrompt), stripFabricLines(lowerPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "lower"`);
+  }
+});
+
 test("history metadata retains Level 1 selection details without exposing private asset paths", () => {
   const clientHistory = redactUsageHistoryForClient({
     total: 1,

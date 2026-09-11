@@ -1240,6 +1240,10 @@ a:focus-visible {
   content: "";
 }
 
+.fabric-region-toggle {
+  margin-top: 16px;
+}
+
 .result-frame {
   position: relative;
   display: grid;

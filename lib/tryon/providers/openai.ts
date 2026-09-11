@@ -2,14 +2,16 @@ import { toFile } from "openai";
 import { createOpenAIClient } from "@/lib/openai";
 import type { TryOnInput, TryOnOutput, TryOnProvider } from "@/lib/tryon/types";
 
-const MODEL = "gpt-image-2";
-// Let GPT Image 2 choose the closest supported canvas for the customer's source
+// Precision-first variant of OpenAI's Images 2.5 generation, released 2026-09-08.
+// Rollback pin if the unpinned alias ever regresses: "gpt-image-2.5-sunburst-2026-09-08"
+const MODEL = "gpt-image-2.5-sunburst";
+// Let GPT Image 2.5 choose the closest supported canvas for the customer's source
 // photo instead of forcing every input into a 2:3 portrait crop.
 const OUTPUT_SIZE = "auto";
 const DEFAULT_QUALITY = "medium" as const;
-const VALID_QUALITIES = new Set(["low", "medium", "high"] as const);
+const VALID_QUALITIES = new Set(["low", "medium", "high", "xhigh", "max", "auto"] as const);
 
-type ImageQuality = "low" | "medium" | "high";
+type ImageQuality = "low" | "medium" | "high" | "xhigh" | "max" | "auto";
 
 function getQuality(): ImageQuality {
   const configured = process.env.TRY_ON_QUALITY?.toLowerCase() as ImageQuality | undefined;
@@ -44,7 +46,9 @@ export class OpenAITryOnProvider implements TryOnProvider {
       model: MODEL,
       image: imageInputs,
       prompt: input.prompt,
-      quality,
+      // The installed openai SDK's types predate GPT Image 2.5's expanded quality
+      // tiers (xhigh/max) — the REST API itself accepts them for this model.
+      quality: quality as "low" | "medium" | "high" | "auto",
       size: OUTPUT_SIZE,
       output_format: "jpeg",
       output_compression: 90,
