@@ -364,6 +364,33 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
   assert.equal(images[3]?.name, "upper-blueprint");
 });
 
+test("GPT Image provider honours a per-request quality override", async () => {
+  let captured: Record<string, unknown> | null = null;
+  const fakeClient = {
+    images: {
+      edit: async (parameters: Record<string, unknown>) => {
+        captured = parameters;
+        return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64") }] };
+      },
+    },
+  };
+  const provider = new OpenAITryOnProvider(() => fakeClient as never);
+  const result = await provider.generate({
+    person: { file: tinyPng("person.png"), mime: "image/png" },
+    fabric: { file: tinyPng("fabric.png"), mime: "image/png" },
+    references: [],
+    selection: { mode: "level1", categoryId: "suit", designId: "SUIT_01_CLASSIC" },
+    quality: "high",
+    prompt: "controlled prompt",
+    requestId: "test-request-quality-override",
+  });
+
+  assert.ok(captured);
+  const parameters = captured as Record<string, unknown>;
+  assert.equal(parameters.quality, "high");
+  assert.equal(result.metadata.quality, "high");
+});
+
 test("upload validation rejects malformed, mismatched, and oversized files", async () => {
   const pngBytes = await tinyPng("x.png").arrayBuffer();
   await assert.rejects(

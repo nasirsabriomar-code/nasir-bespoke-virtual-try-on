@@ -26,7 +26,7 @@ import {
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { generateTryOn } from "@/lib/tryon";
-import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
+import type { EffortQuality, TryOnInput, TryOnOutput } from "@/lib/tryon/types";
 import { buildTryOnPrompt } from "@/lib/tryon/prompt";
 import {
   BespokeConfigurationError,
@@ -137,13 +137,14 @@ function hasUnexpectedFields(formData: FormData) {
       "categoryId",
       "designId",
       "fabricRegion",
+      "quality",
     ].includes(name)) return true;
   }
   return false;
 }
 
 function hasLevel1ForbiddenFields(formData: FormData) {
-  const level1Fields = new Set(["person", "fabric", "selectionMode", "categoryId", "designId", "fabricRegion"]);
+  const level1Fields = new Set(["person", "fabric", "selectionMode", "categoryId", "designId", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!level1Fields.has(name)) return true;
   }
@@ -382,6 +383,12 @@ export async function handleTryOnRequest(
     }
     const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" ? fabricRegionValue : "both";
 
+    const qualityValue = getExactlyOneText(formData, "quality", false);
+    if (qualityValue === null || (qualityValue && !["low", "medium", "high", "max"].includes(qualityValue))) {
+      return jsonError("Please choose a valid quality: low, medium, high, or max.", 400, rateHeaders);
+    }
+    const quality = (qualityValue ?? undefined) as EffortQuality | undefined;
+
     const [person, outfit, fabric] = await Promise.all([
       validateImageFile(personFile, "a person photo"),
       selectionMode === "outfit" && outfitFile ? validateImageFile(outfitFile, "an outfit photo") : Promise.resolve(undefined),
@@ -554,6 +561,7 @@ export async function handleTryOnRequest(
       references,
       selection: selectionIds,
       catalogSelection,
+      ...(quality ? { quality } : {}),
       prompt,
       requestId,
     });

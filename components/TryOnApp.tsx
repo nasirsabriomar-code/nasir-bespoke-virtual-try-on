@@ -158,6 +158,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [categoryId, setCategoryId] = useState("suit");
   const [designId, setDesignId] = useState<string | null>(null);
   const [fabricRegion, setFabricRegion] = useState<"upper" | "lower" | "both">("both");
+  const [quality, setQuality] = useState<"low" | "medium" | "high" | "max" | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -280,6 +281,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       formData.set("categoryId", categoryId);
       formData.set("designId", selectedDesign.id);
       formData.set("fabricRegion", fabricRegion);
+      if (quality) formData.set("quality", quality);
       formData.set("person", person.file);
       formData.set("fabric", fabric.file);
 
@@ -325,13 +327,14 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       generationKeyRef.current = null;
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, fabric, fabricRegion, person, revokeUrl, selectedDesign]);
+  }, [categoryId, clearResult, fabric, fabricRegion, person, quality, revokeUrl, selectedDesign]);
 
   const startOver = useCallback(() => {
     setError(null);
     clearResult();
     setDesignId(null);
     setFabricRegion("both");
+    setQuality(null);
     setPerson((current) => {
       revokeUrl(current?.previewUrl);
       return null;
@@ -446,6 +449,58 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             Both
           </button>
         </div>
+        <details className="style-picker">
+          <summary>
+            <span>Advanced</span>
+            <span>{quality ? `${quality[0].toUpperCase()}${quality.slice(1)} quality` : "Default quality"}</span>
+          </summary>
+          <div
+            className="comparison-toggle"
+            role="radiogroup"
+            aria-label="Generation quality"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={quality === "low"}
+              className={quality === "low" ? "is-active" : ""}
+              onClick={() => setQuality("low")}
+              disabled={isGenerating}
+            >
+              Low
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={quality === "medium"}
+              className={quality === "medium" ? "is-active" : ""}
+              onClick={() => setQuality("medium")}
+              disabled={isGenerating}
+            >
+              Medium
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={quality === "high"}
+              className={quality === "high" ? "is-active" : ""}
+              onClick={() => setQuality("high")}
+              disabled={isGenerating}
+            >
+              High
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={quality === "max"}
+              className={quality === "max" ? "is-active" : ""}
+              onClick={() => setQuality("max")}
+              disabled={isGenerating}
+            >
+              Max
+            </button>
+          </div>
+        </details>
       </section>
 
       {splitOutfitEnabled ? (

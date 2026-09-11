@@ -13,7 +13,9 @@ const VALID_QUALITIES = new Set(["low", "medium", "high", "xhigh", "max", "auto"
 
 type ImageQuality = "low" | "medium" | "high" | "xhigh" | "max" | "auto";
 
-function getQuality(): ImageQuality {
+function getQuality(override?: string): ImageQuality {
+  const normalizedOverride = override?.toLowerCase() as ImageQuality | undefined;
+  if (normalizedOverride && VALID_QUALITIES.has(normalizedOverride)) return normalizedOverride;
   const configured = process.env.TRY_ON_QUALITY?.toLowerCase() as ImageQuality | undefined;
   return configured && VALID_QUALITIES.has(configured) ? configured : DEFAULT_QUALITY;
 }
@@ -25,7 +27,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
 
   async generate(input: TryOnInput): Promise<TryOnOutput> {
     const startedAt = Date.now();
-    const quality = getQuality();
+    const quality = getQuality(input.quality);
     const client = this.clientFactory();
 
     const [personUpload, fabricUpload, ...referenceUploads] = await Promise.all([

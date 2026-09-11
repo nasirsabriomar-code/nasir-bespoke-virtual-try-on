@@ -6,6 +6,8 @@ export type TryOnImage = {
   mime: SupportedImageMime;
 };
 
+export type EffortQuality = "low" | "medium" | "high" | "max";
+
 export type TryOnInput = {
   person: TryOnImage;
   outfit?: TryOnImage;
@@ -16,6 +18,7 @@ export type TryOnInput = {
   }>;
   selection: TryOnSelection;
   catalogSelection?: CatalogSelection;
+  quality?: EffortQuality;
   prompt: string;
   requestId: string;
 };
