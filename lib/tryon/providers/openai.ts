@@ -71,6 +71,16 @@ export class OpenAITryOnProvider implements TryOnProvider {
         model: MODEL,
         quality,
         durationMs: Date.now() - startedAt,
+        // response.quality/usage are OpenAI's own server-reported values, distinct
+        // from the `quality` we requested above — see TryOnMetadata for why this matters.
+        reportedQuality: response.quality,
+        ...(response.usage ? {
+          usage: {
+            inputTokens: response.usage.input_tokens,
+            outputTokens: response.usage.output_tokens,
+            totalTokens: response.usage.total_tokens,
+          },
+        } : {}),
       },
     };
   }

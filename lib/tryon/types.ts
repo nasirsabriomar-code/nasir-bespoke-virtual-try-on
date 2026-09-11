@@ -28,6 +28,15 @@ export type TryOnMetadata = {
   model: string;
   quality: string;
   durationMs: number;
+  // Independent, server-reported confirmation from the provider's own response —
+  // not an echo of what we requested. Used to verify a quality override actually
+  // changed what the provider did, not just what we asked for.
+  reportedQuality?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
 };
 
 export type TryOnOutput = {
