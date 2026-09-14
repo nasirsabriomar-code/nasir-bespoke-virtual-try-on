@@ -391,6 +391,37 @@ test("GPT Image provider honours a per-request quality override", async () => {
   assert.equal(result.metadata.quality, "high");
 });
 
+test("GPT Image 2.5 provider places separate upper and lower fabrics before curated references", async () => {
+  let captured: Record<string, unknown> | null = null;
+  const fakeClient = {
+    images: {
+      edit: async (parameters: Record<string, unknown>) => {
+        captured = parameters;
+        return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64") }] };
+      },
+    },
+  };
+  const provider = new OpenAITryOnProvider(() => fakeClient as never);
+  await provider.generate({
+    person: { file: tinyPng("person.png"), mime: "image/png" },
+    fabric: { file: tinyPng("upper-fabric.png"), mime: "image/png" },
+    lowerFabric: { file: tinyPng("lower-fabric.png"), mime: "image/png" },
+    references: [{ role: "curated-design", image: { file: tinyPng("construction.png"), mime: "image/png" } }],
+    selection: { mode: "level1", categoryId: "suit", designId: "SUIT_01_CLASSIC" },
+    prompt: "custom fabric prompt",
+    requestId: "test-request-custom-fabrics",
+  });
+
+  assert.ok(captured);
+  const images = (captured as Record<string, unknown>).image as File[];
+  assert.deepEqual(images.map((image) => image.name), [
+    "person-reference",
+    "fabric-reference",
+    "lower-fabric-reference",
+    "curated-design-blueprint",
+  ]);
+});
+
 test("upload validation rejects malformed, mismatched, and oversized files", async () => {
   const pngBytes = await tinyPng("x.png").arrayBuffer();
   await assert.rejects(

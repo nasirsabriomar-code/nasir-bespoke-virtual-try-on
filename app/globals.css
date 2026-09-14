@@ -1244,6 +1244,19 @@ a:focus-visible {
   margin-top: 16px;
 }
 
+.fabric-reuse-toggle {
+  align-items: center;
+  color: var(--muted-ink);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fabric-reuse-toggle input {
+  accent-color: var(--ink);
+}
+
 .result-frame {
   position: relative;
   display: grid;
@@ -1913,6 +1926,8 @@ a:focus-visible {
 .atelier-shell .comparison-toggle { border-color: var(--atelier-line-strong); }
 .atelier-shell .comparison-toggle button { color: var(--atelier-muted); }
 .atelier-shell .comparison-toggle button.is-active { border-bottom-color: var(--atelier-gold); color: var(--atelier-text); }
+.atelier-shell .fabric-reuse-toggle { color: var(--atelier-muted); }
+.atelier-shell .fabric-reuse-toggle input { accent-color: var(--atelier-gold); }
 .atelier-shell .result-frame { background: #090a09; border-color: var(--atelier-line-strong); }
 .atelier-shell .result-summary { border-color: var(--atelier-line); }
 .atelier-shell .result-summary div { border-color: var(--atelier-line); }
@@ -2636,4 +2651,3 @@ a:focus-visible {
   .history-modal-root { padding: 0; }
   .history-panel { border-radius: 0; border: none; height: 100vh; max-height: 100vh; width: 100vw; max-width: 100vw; padding: 20px 16px 32px; }
 }
-

@@ -335,6 +335,14 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
       .join("\n\n");
     assert.equal(stripFabricLines(bothPrompt), stripFabricLines(upperPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "upper"`);
     assert.equal(stripFabricLines(bothPrompt), stripFabricLines(lowerPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "lower"`);
+
+    const customPrompt = buildLevel1TryOnPrompt(resolved, "custom");
+    assert.match(customPrompt, /Image 2 — physical showroom upper-garment fabric photograph/);
+    assert.match(customPrompt, /Image 3 — physical showroom lower-garment fabric photograph/);
+    assert.match(customPrompt, /Apply every visible portion of the named lower garment pieces/);
+    assert.doesNotMatch(customPrompt, /UNCHANGED REGION/);
+    for (const piece of design.blueprint.fabricRegions.upper) assert.ok(customPrompt.includes(piece), `${design.id}: custom prompt must name upper piece "${piece}"`);
+    for (const piece of design.blueprint.fabricRegions.lower) assert.ok(customPrompt.includes(piece), `${design.id}: custom prompt must name lower piece "${piece}"`);
   }
 });
 

@@ -123,6 +123,7 @@ function hasUnexpectedFields(formData: FormData) {
       "person",
       "outfit",
       "fabric",
+      "lowerFabric",
       "selectionMode",
       "upperGarmentId",
       "lowerGarmentId",
@@ -144,7 +145,7 @@ function hasUnexpectedFields(formData: FormData) {
 }
 
 function hasLevel1ForbiddenFields(formData: FormData) {
-  const level1Fields = new Set(["person", "fabric", "selectionMode", "categoryId", "designId", "fabricRegion", "quality"]);
+  const level1Fields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!level1Fields.has(name)) return true;
   }
@@ -346,6 +347,8 @@ export async function handleTryOnRequest(
     const personFile = getExactlyOneFile(formData, "person");
     const outfitFile = getExactlyOneFile(formData, "outfit");
     const fabricFile = getExactlyOneFile(formData, "fabric");
+    const lowerFabricFile = getExactlyOneFile(formData, "lowerFabric");
+    const hasLowerFabricField = formData.has("lowerFabric");
     const upperGarmentId = getExactlyOneText(formData, "upperGarmentId", false);
     const lowerGarmentId = getExactlyOneText(formData, "lowerGarmentId", false);
     const garmentSubtypeId = getExactlyOneText(formData, "garmentSubtypeId", false);
@@ -378,10 +381,19 @@ export async function handleTryOnRequest(
     }
 
     const fabricRegionValue = getExactlyOneText(formData, "fabricRegion", false);
-    if (fabricRegionValue === null || (fabricRegionValue && !["upper", "lower", "both"].includes(fabricRegionValue))) {
-      return jsonError("Please choose a valid fabric application: upper, lower, or both.", 400, rateHeaders);
+    if (fabricRegionValue === null || (fabricRegionValue && !["upper", "lower", "both", "custom"].includes(fabricRegionValue))) {
+      return jsonError("Please choose a valid fabric application: upper, lower, both, or customization.", 400, rateHeaders);
     }
-    const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" ? fabricRegionValue : "both";
+    const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" || fabricRegionValue === "custom" ? fabricRegionValue : "both";
+    if (fabricRegion === "custom" && selectionMode !== "level1") {
+      return jsonError("Customization is only available for Level 1 curated designs.", 400, rateHeaders);
+    }
+    if (selectionMode === "level1" && fabricRegion === "custom" && (!hasLowerFabricField || !lowerFabricFile)) {
+      return jsonError("Please provide a lower fabric or choose to reuse the upper fabric for both regions.", 400, rateHeaders);
+    }
+    if (hasLowerFabricField && (selectionMode !== "level1" || fabricRegion !== "custom")) {
+      return jsonError("A lower fabric can only be used with Level 1 Customization.", 400, rateHeaders);
+    }
 
     const qualityValue = getExactlyOneText(formData, "quality", false);
     if (qualityValue === null || (qualityValue && !["low", "medium", "high", "max"].includes(qualityValue))) {
@@ -394,6 +406,9 @@ export async function handleTryOnRequest(
       selectionMode === "outfit" && outfitFile ? validateImageFile(outfitFile, "an outfit photo") : Promise.resolve(undefined),
       validateImageFile(fabricFile, "a fabric photo"),
     ]);
+    const lowerFabric = selectionMode === "level1" && fabricRegion === "custom" && lowerFabricFile
+      ? await validateImageFile(lowerFabricFile, "a lower fabric photo")
+      : undefined;
 
     const selectionIds: TryOnSelection = selectionMode === "level1"
       ? { mode: "level1", categoryId: categoryId as string, designId: designId as string }
@@ -558,6 +573,7 @@ export async function handleTryOnRequest(
       person,
       ...(selectionMode === "outfit" && outfit ? { outfit } : {}),
       fabric,
+      ...(lowerFabric ? { lowerFabric } : {}),
       references,
       selection: selectionIds,
       catalogSelection,
@@ -572,6 +588,7 @@ export async function handleTryOnRequest(
         person: person.file,
         ...(selectionMode === "outfit" && outfit ? { outfit: outfit.file } : {}),
         fabric: fabric.file,
+        ...(lowerFabric ? { lowerFabric: lowerFabric.file } : {}),
         references: references.map(({ role, image }) => ({ role, file: image.file })),
         resultBytes: result.bytes,
         resultContentType: result.contentType,

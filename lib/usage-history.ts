@@ -37,7 +37,7 @@ export type UsageEvent = {
     curatedDesignName?: string;
     curatedDesignVersion?: number;
     curatedAssetStatus?: "ready" | "awaiting-approved-reference";
-    fabricRegion?: "upper" | "lower" | "both";
+    fabricRegion?: "upper" | "lower" | "both" | "custom";
     upperGarmentId?: string;
     upperGarmentName?: string;
     lowerGarmentId?: string;
@@ -119,7 +119,7 @@ function parseAssetRefs(value: unknown): GenerationAssetRefs | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const result: GenerationAssetRefs = {};
-  for (const asset of ["person", "outfit", "fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail"] as const) {
+  for (const asset of ["person", "outfit", "fabric", "lower-fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail"] as const) {
     const item = record[asset];
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;
@@ -166,7 +166,7 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
   const curatedAssetStatus = record.curatedAssetStatus === "ready" || record.curatedAssetStatus === "awaiting-approved-reference"
     ? record.curatedAssetStatus
     : undefined;
-  const fabricRegion = record.fabricRegion === "upper" || record.fabricRegion === "lower" || record.fabricRegion === "both"
+  const fabricRegion = record.fabricRegion === "upper" || record.fabricRegion === "lower" || record.fabricRegion === "both" || record.fabricRegion === "custom"
     ? record.fabricRegion
     : undefined;
   if (isLevel1Mode && (!optionalString("categoryId") || !optionalString("curatedDesignId") || !optionalString("curatedDesignName") || !curatedDesignVersion || !curatedAssetStatus)) return undefined;

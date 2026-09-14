@@ -19,7 +19,7 @@ type UploadedImage = {
   previewUrl: string;
 };
 
-type UploadRole = "person" | "fabric";
+type UploadRole = "person" | "fabric" | "lowerFabric";
 
 type TryOnAppProps = {
   displayName: string;
@@ -40,6 +40,11 @@ const UPLOAD_HELP = {
   fabric: {
     label: "Fabric",
     description: "Photograph or upload the fabric to visualize.",
+    guidance: "Capture the colour, pattern, texture, and finish clearly.",
+  },
+  lowerFabric: {
+    label: "Lower fabric",
+    description: "Photograph or upload the fabric for the lower garment.",
     guidance: "Capture the colour, pattern, texture, and finish clearly.",
   },
 } as const;
@@ -150,6 +155,7 @@ function getClientDeviceHint() {
 export function TryOnApp({ displayName }: TryOnAppProps) {
   const [person, setPerson] = useState<UploadedImage | null>(null);
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
+  const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
   const [mode, setMode] = useState<VisualTryOnMode>("full");
   const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
   const [splitOutfitEnabled, setSplitOutfitEnabled] = useState(false);
@@ -157,7 +163,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
   const [designId, setDesignId] = useState<string | null>(null);
-  const [fabricRegion, setFabricRegion] = useState<"upper" | "lower" | "both">("both");
+  const [fabricRegion, setFabricRegion] = useState<"upper" | "lower" | "both" | "custom">("both");
+  const [reuseFabricForLower, setReuseFabricForLower] = useState(false);
   const [quality, setQuality] = useState<"low" | "medium" | "high" | "max" | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -232,8 +239,13 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           revokeUrl(current?.previewUrl);
           return { file: prepared, previewUrl };
         });
-      } else {
+      } else if (role === "fabric") {
         setFabric((current) => {
+          revokeUrl(current?.previewUrl);
+          return { file: prepared, previewUrl };
+        });
+      } else {
+        setLowerFabric((current) => {
           revokeUrl(current?.previewUrl);
           return { file: prepared, previewUrl };
         });
@@ -256,15 +268,26 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       return;
     }
 
-    setFabric((current) => {
-      revokeUrl(current?.previewUrl);
-      return null;
-    });
+    if (role === "fabric") {
+      setFabric((current) => {
+        revokeUrl(current?.previewUrl);
+        return null;
+      });
+    } else {
+      setLowerFabric((current) => {
+        revokeUrl(current?.previewUrl);
+        return null;
+      });
+    }
   }, [clearResult, revokeUrl]);
 
   const generate = useCallback(async () => {
     if (!person || !fabric || !selectedDesign || selectedDesign.generation.state !== "ready") {
       setError("Add a customer photo and fabric, then choose an approved design to generate.");
+      return;
+    }
+    if (fabricRegion === "custom" && !reuseFabricForLower && !lowerFabric) {
+      setError("Add a lower fabric or choose to reuse the upper fabric for both regions.");
       return;
     }
 
@@ -280,10 +303,11 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       formData.set("selectionMode", "level1");
       formData.set("categoryId", categoryId);
       formData.set("designId", selectedDesign.id);
-      formData.set("fabricRegion", fabricRegion);
+      formData.set("fabricRegion", fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion);
       if (quality) formData.set("quality", quality);
       formData.set("person", person.file);
       formData.set("fabric", fabric.file);
+      if (fabricRegion === "custom" && !reuseFabricForLower && lowerFabric) formData.set("lowerFabric", lowerFabric.file);
 
       const idempotencyKey = crypto.randomUUID();
       generationKeyRef.current = idempotencyKey;
@@ -327,19 +351,24 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       generationKeyRef.current = null;
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, fabric, fabricRegion, person, quality, revokeUrl, selectedDesign]);
+  }, [categoryId, clearResult, fabric, fabricRegion, lowerFabric, person, quality, reuseFabricForLower, revokeUrl, selectedDesign]);
 
   const startOver = useCallback(() => {
     setError(null);
     clearResult();
     setDesignId(null);
     setFabricRegion("both");
+    setReuseFabricForLower(false);
     setQuality(null);
     setPerson((current) => {
       revokeUrl(current?.previewUrl);
       return null;
     });
     setFabric((current) => {
+      revokeUrl(current?.previewUrl);
+      return null;
+    });
+    setLowerFabric((current) => {
       revokeUrl(current?.previewUrl);
       return null;
     });
@@ -403,7 +432,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           />
           <ImageUpload
             id="fabric-photo"
-            label={UPLOAD_HELP.fabric.label}
+            label={fabricRegion === "custom" ? "Upper fabric" : UPLOAD_HELP.fabric.label}
             description={UPLOAD_HELP.fabric.description}
             guidance={UPLOAD_HELP.fabric.guidance}
             file={fabric?.file ?? null}
@@ -412,6 +441,19 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             onRemove={() => removeImage("fabric")}
             disabled={isGenerating}
           />
+          {fabricRegion === "custom" ? (
+            <ImageUpload
+              id="lower-fabric-photo"
+              label={UPLOAD_HELP.lowerFabric.label}
+              description={UPLOAD_HELP.lowerFabric.description}
+              guidance={UPLOAD_HELP.lowerFabric.guidance}
+              file={lowerFabric?.file ?? null}
+              previewUrl={lowerFabric?.previewUrl ?? null}
+              onSelect={(file) => void changeImage("lowerFabric", file)}
+              onRemove={() => removeImage("lowerFabric")}
+              disabled={isGenerating || reuseFabricForLower}
+            />
+          ) : null}
         </div>
         <div
           className="comparison-toggle fabric-region-toggle"
@@ -448,7 +490,28 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           >
             Both
           </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={fabricRegion === "custom"}
+            className={fabricRegion === "custom" ? "is-active" : ""}
+            onClick={() => setFabricRegion("custom")}
+            disabled={isGenerating}
+          >
+            Customization
+          </button>
         </div>
+        {fabricRegion === "custom" ? (
+          <label className="fabric-reuse-toggle">
+            <input
+              type="checkbox"
+              checked={reuseFabricForLower}
+              onChange={(event) => setReuseFabricForLower(event.target.checked)}
+              disabled={isGenerating}
+            />
+            <span>Use upper fabric for lower garment too</span>
+          </label>
+        ) : null}
         <details className="style-picker">
           <summary>
             <span>Advanced</span>

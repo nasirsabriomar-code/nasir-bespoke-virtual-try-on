@@ -10,6 +10,7 @@ const ASSET_KEYS = new Set<GenerationAssetKey>([
   "person",
   "outfit",
   "fabric",
+  "lower-fabric",
   "result",
   "upper",
   "lower",

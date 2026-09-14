@@ -48,6 +48,7 @@ type HistoryEvent = {
     person?: { contentType: string };
     outfit?: { contentType: string };
     fabric?: { contentType: string };
+    "lower-fabric"?: { contentType: string };
     upper?: { contentType: string };
     lower?: { contentType: string };
     subtype?: { contentType: string };
@@ -308,6 +309,7 @@ export function UsageHistory() {
                             "person",
                             "outfit",
                             "fabric",
+                            "lower-fabric",
                             "upper",
                             "subtype",
                             "lower",
@@ -334,6 +336,8 @@ export function UsageHistory() {
                                       ? "Outfit style photo"
                                       : asset === "fabric"
                                       ? "Fabric photo"
+                                      : asset === "lower-fabric"
+                                      ? "Lower fabric photo"
                                       : "Generated men's try-on result"
                                   }
                                   loading="lazy"
@@ -345,6 +349,8 @@ export function UsageHistory() {
                                     ? "Outfit photo"
                                     : asset === "fabric"
                                     ? "Fabric"
+                                    : asset === "lower-fabric"
+                                    ? "Lower fabric"
                                     : asset === "upper"
                                     ? "Upper blueprint"
                                     : asset === "lower"

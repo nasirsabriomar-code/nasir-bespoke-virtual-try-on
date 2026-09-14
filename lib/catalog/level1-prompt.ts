@@ -1,15 +1,24 @@
 import type { ResolvedLevel1Design } from "@/lib/catalog/level1-types";
 
-export type FabricRegion = "upper" | "lower" | "both";
+export type FabricRegion = "upper" | "lower" | "both" | "custom";
 
 export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricRegion: FabricRegion = "both") {
   const detailReferenceCount = resolved.detailAssets.length;
   const roleLines = [
     "IMAGE ROLE MAPPING (critical):",
     "Image 1 — male customer/person photograph and the complete source scene.",
-    "Image 2 — physical showroom fabric photograph.",
-    "Image 3 — NASIR BESPOKE approved curated garment construction reference.",
-    ...Array.from({ length: detailReferenceCount }, (_, index) => `Image ${index + 4} — NASIR BESPOKE approved curated garment detail reference.`),
+    ...(fabricRegion === "custom"
+      ? [
+          "Image 2 — physical showroom upper-garment fabric photograph.",
+          "Image 3 — physical showroom lower-garment fabric photograph.",
+          "Image 4 — NASIR BESPOKE approved curated garment construction reference.",
+          ...Array.from({ length: detailReferenceCount }, (_, index) => `Image ${index + 5} — NASIR BESPOKE approved curated garment detail reference.`),
+        ]
+      : [
+          "Image 2 — physical showroom fabric photograph.",
+          "Image 3 — NASIR BESPOKE approved curated garment construction reference.",
+          ...Array.from({ length: detailReferenceCount }, (_, index) => `Image ${index + 4} — NASIR BESPOKE approved curated garment detail reference.`),
+        ]),
   ];
   const construction = Object.entries(resolved.design.blueprint.construction)
     .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
@@ -18,6 +27,8 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
   const { upper: upperPieces, lower: lowerPieces } = resolved.design.blueprint.fabricRegions;
   const fabricAuthorityLine = fabricRegion === "both"
     ? "FABRIC PHOTO AUTHORITY — CRITICAL: Image 2 is authoritative only for base colour, shade, texture, weave, pattern, pattern scale, sheen, finish, motif, checks, stripes, and material appearance. Apply these fabric characteristics faithfully to the selected garment pieces. Ignore every person, garment construction, scene, styling, pose, and background that might be visible in Image 2."
+    : fabricRegion === "custom"
+      ? `FABRIC PHOTO AUTHORITY — CRITICAL: Image 2 is authoritative only for base colour, shade, texture, weave, pattern, pattern scale, sheen, finish, motif, checks, stripes, and material appearance of the upper garment group. Apply Image 2's fabric characteristics only to the upper garment piece(s): ${upperPieces.join(", ")}. Image 3 is authoritative only for the same fabric characteristics of the lower garment group. Apply Image 3's fabric characteristics only to the lower garment piece(s): ${lowerPieces.join(", ")}. Apply every visible portion of the named lower garment pieces, including portions visible below a long upper garment. Never transfer, blend, average, or partially apply Image 2's fabric to lower pieces or Image 3's fabric to upper pieces. Ignore every person, garment construction, scene, styling, pose, and background that might be visible in either fabric photograph.`
     : fabricRegion === "upper"
       ? `FABRIC PHOTO AUTHORITY — CRITICAL: Image 2 is authoritative only for base colour, shade, texture, weave, pattern, pattern scale, sheen, finish, motif, checks, stripes, and material appearance. Apply these fabric characteristics only to the upper garment piece(s): ${upperPieces.join(", ")}. Ignore every person, garment construction, scene, styling, pose, and background that might be visible in Image 2.`
       : `FABRIC PHOTO AUTHORITY — CRITICAL: Image 2 is authoritative only for base colour, shade, texture, weave, pattern, pattern scale, sheen, finish, motif, checks, stripes, and material appearance. Apply these fabric characteristics only to the lower garment piece(s): ${lowerPieces.join(", ")}. Ignore every person, garment construction, scene, styling, pose, and background that might be visible in Image 2.`;
@@ -35,7 +46,7 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
     "CUSTOMER PHOTO AUTHORITY — CRITICAL: Image 1 is the sole authority for the customer's identity, face, skin tone, age appearance, hair, facial hair, natural body size, build, body proportions, height, visible physical characteristics, pose, posture, expression, hands, camera perspective, framing, lighting, shadows, and background. Tailor the garment around the customer's actual body. Never slim, enlarge, reshape, lengthen, shorten, beautify, replace, or otherwise alter the customer to fit the garment or the mannequin. Never adopt mannequin or reference-person proportions.",
     fabricAuthorityLine,
     ...(unchangedRegionLine ? [unchangedRegionLine] : []),
-    "CURATED DESIGN AUTHORITY: Image 3 and any following controlled reference images are authoritative only for garment construction, silhouette, layering, included pieces, and visible design architecture. They are not body, identity, pose, scene, lighting, colour, texture, material, footwear, or accessory references. Never copy a reference model, mannequin, person, scene, background, or material.",
+    `${fabricRegion === "custom" ? "CURATED DESIGN AUTHORITY: Image 4 and any following controlled reference images" : "CURATED DESIGN AUTHORITY: Image 3 and any following controlled reference images"} are authoritative only for garment construction, silhouette, layering, included pieces, and visible design architecture. They are not body, identity, pose, scene, lighting, colour, texture, material, footwear, or accessory references. Never copy a reference model, mannequin, person, scene, background, or material.`,
     `SELECTED NASIR BESPOKE CURATED DESIGN: ${resolved.design.customer.name}. ${resolved.design.customer.description}. Internal garment family: ${resolved.design.blueprint.garmentFamily}. Silhouette: ${resolved.design.blueprint.silhouette.join(", ")}. Included pieces: ${resolved.design.blueprint.includedPieces.join(", ")}. Construction: ${construction}.`,
     `DESIGN INSTRUCTIONS: ${resolved.design.generation.promptFragments.join(". ")}.`,
     `NEGATIVE DESIGN CONSTRAINTS: ${resolved.design.generation.negativeConstraints.join(" ")}`,

@@ -190,3 +190,59 @@ test("Level 1 accepts a valid quality override and passes it through to generati
   assert.equal(withoutOverride.status, 200);
   assert.equal(generatedInputNoOverride?.quality, undefined);
 });
+
+test("Level 1 Customization requires a lower fabric and passes both fabric inputs to generation", async () => {
+  let generatedInput: TryOnInput | undefined;
+  const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: level1Form([
+      ["fabricRegion", "custom"],
+      ["lowerFabric", tinyPng("lower-fabric.png")],
+    ]),
+  }), {
+    authenticate: async () => TEST_USER,
+    rateLimit: async () => ({ allowed: true, limit: 5, remaining: 4, resetAt: Date.now() + 60_000 }),
+    resolveLevel1Selection: async () => activeResolvedDesign(),
+    readLevel1Reference: async (asset, role) => ({ role, image: { file: tinyPng(`${asset.id}.png`), mime: "image/png" } }),
+    generate: async (input) => {
+      generatedInput = input;
+      return { bytes: Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), contentType: "image/jpeg", metadata: { provider: "test", model: "gpt-image-2.5-sunburst", quality: "medium", durationMs: 1 } };
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.ok(generatedInput?.lowerFabric);
+  assert.equal(generatedInput?.selection.mode, "level1");
+  assert.match(generatedInput?.prompt ?? "", /upper garment group/i);
+  assert.match(generatedInput?.prompt ?? "", /lower garment group/i);
+});
+
+test("Level 1 Customization rejects a missing lower fabric and lower fabric outside Customization", async () => {
+  const baseDependencies = {
+    authenticate: async () => TEST_USER,
+    rateLimit: async () => ({ allowed: true, limit: 5, remaining: 4, resetAt: Date.now() + 60_000 }),
+    resolveLevel1Selection: async () => activeResolvedDesign(),
+    generate: async () => { throw new Error("must not run"); },
+  };
+  const missingLower = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: level1Form([["fabricRegion", "custom"]]),
+  }), baseDependencies);
+  assert.equal(missingLower.status, 400);
+
+  const outsideCustomization = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: level1Form([["lowerFabric", tinyPng("lower-fabric.png")]]),
+  }), baseDependencies);
+  assert.equal(outsideCustomization.status, 400);
+
+  const malformedOutsideCustomization = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: level1Form([["lowerFabric", "not-a-file"]]),
+  }), baseDependencies);
+  assert.equal(malformedOutsideCustomization.status, 400);
+});

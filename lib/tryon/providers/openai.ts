@@ -40,9 +40,14 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const outfitUpload = input.outfit
       ? await toFile(await input.outfit.file.arrayBuffer(), "outfit-style-reference", { type: input.outfit.mime })
       : null;
+    const lowerFabricUpload = input.lowerFabric
+      ? await toFile(await input.lowerFabric.file.arrayBuffer(), "lower-fabric-reference", { type: input.lowerFabric.mime })
+      : null;
     const imageInputs = outfitUpload
       ? [personUpload, outfitUpload, fabricUpload, ...referenceUploads]
-      : [personUpload, fabricUpload, ...referenceUploads];
+      : lowerFabricUpload
+        ? [personUpload, fabricUpload, lowerFabricUpload, ...referenceUploads]
+        : [personUpload, fabricUpload, ...referenceUploads];
 
     const response = await client.images.edit({
       model: MODEL,
