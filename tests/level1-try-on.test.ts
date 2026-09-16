@@ -46,6 +46,20 @@ function activeResolvedDesign(): ResolvedLevel1Design {
   return { category: catalogue.categories[0], design, primaryAsset, detailAssets: [] };
 }
 
+function activeJacketResolvedDesign(): ResolvedLevel1Design {
+  const catalogue = structuredClone(DEFAULT_LEVEL1_CATALOGUE);
+  const category = catalogue.categories.find((item) => item.id === "jackets");
+  const design = catalogue.designs.find((item) => item.id === "JACKET_01_HUNTER");
+  assert.ok(category);
+  assert.ok(design);
+  const primaryAsset = catalogue.assets.find((asset) => asset.id === design.assetIds.primaryConstruction);
+  assert.ok(primaryAsset);
+  primaryAsset.status = "active";
+  primaryAsset.privatePath = `nasir-bespoke/catalogue/level1/v1/${primaryAsset.id}/approved.png`;
+  primaryAsset.contentType = "image/png";
+  return { category, design, primaryAsset, detailAssets: [] };
+}
+
 beforeEach(() => {
   process.env.AUTH_SESSION_SECRET = "test-session-secret-that-is-at-least-thirty-two-bytes";
   process.env.AUTH_USERS_JSON = JSON.stringify([TEST_USER]);
@@ -245,4 +259,55 @@ test("Level 1 Customization rejects a missing lower fabric and lower fabric outs
     body: level1Form([["lowerFabric", "not-a-file"]]),
   }), baseDependencies);
   assert.equal(malformedOutsideCustomization.status, 400);
+});
+
+test("Jackets use one upper fabric and reject all full-outfit region controls", async () => {
+  let generatedInput: TryOnInput | undefined;
+  const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: (() => {
+      const form = level1Form();
+      form.set("categoryId", "jackets");
+      form.set("designId", "JACKET_01_HUNTER");
+      form.set("fabricRegion", "jacket");
+      return form;
+    })(),
+  }), {
+    authenticate: async () => TEST_USER,
+    rateLimit: async () => ({ allowed: true, limit: 5, remaining: 4, resetAt: Date.now() + 60_000 }),
+    resolveLevel1Selection: async () => activeJacketResolvedDesign(),
+    readLevel1Reference: async (asset, role) => ({ role, image: { file: tinyPng(`${asset.id}.png`), mime: "image/png" } }),
+    generate: async (input) => {
+      generatedInput = input;
+      return { bytes: Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), contentType: "image/jpeg", metadata: { provider: "test", model: "gpt-image-2.5-sunburst", quality: "medium", durationMs: 1 } };
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.ok(generatedInput);
+  assert.equal(generatedInput?.lowerFabric, undefined);
+  assert.match(generatedInput?.prompt ?? "", /jacket-only selection/i);
+  assert.match(generatedInput?.prompt ?? "", /No lower garment fabric input is accepted/i);
+
+  for (const region of ["upper", "lower", "both", "custom"] as const) {
+    const invalid = new FormData();
+    invalid.set("selectionMode", "level1");
+    invalid.set("categoryId", "jackets");
+    invalid.set("designId", "JACKET_01_HUNTER");
+    invalid.set("person", tinyPng("customer.png"));
+    invalid.set("fabric", tinyPng("fabric.png"));
+    invalid.set("fabricRegion", region);
+    const invalidResponse = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+      method: "POST",
+      headers: headers(),
+      body: invalid,
+    }), {
+      authenticate: async () => TEST_USER,
+      rateLimit: async () => ({ allowed: true, limit: 5, remaining: 4, resetAt: Date.now() + 60_000 }),
+      resolveLevel1Selection: async () => { throw new Error("must not resolve invalid jacket mode"); },
+      generate: async () => { throw new Error("must not generate invalid jacket mode"); },
+    });
+    assert.equal(invalidResponse.status, 400, `Jackets must reject ${region}`);
+  }
 });

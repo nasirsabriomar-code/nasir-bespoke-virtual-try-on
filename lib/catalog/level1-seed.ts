@@ -264,6 +264,25 @@ const APPROVED_ACHKAN_ASSETS: Record<string, { privatePath: string; checksum: st
   },
 };
 
+// The two owner-supplied Jacket catalogue images are the trusted v1 card and
+// construction references for Jackets. Their local development copies live in
+// .cache/catalog-assets; production activation also requires the matching
+// private Blob uploads at these canonical paths.
+const APPROVED_JACKET_ASSETS: Record<string, { privatePath: string; checksum: string; provenance: string; contentType: "image/png" }> = {
+  JACKET_01_HUNTER: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/JACKET_01_HUNTER/approved.png",
+    checksum: "d87d2c0a3e6258c81c84c1a0e105f680e6c85d5f634c990d2f299869b20ef29d",
+    provenance: "Hunter Jacket reference image supplied by project owner on 2026-09-16.",
+    contentType: "image/png",
+  },
+  JACKET_02_BOMBER: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/JACKET_02_BOMBER/approved.png",
+    checksum: "8e11e4d7b0bc29bc3dce5857f62a5e67043776fd1500346569df4f0c1164949c",
+    provenance: "Bomber Jacket reference image supplied by project owner on 2026-09-16.",
+    contentType: "image/png",
+  },
+};
+
 const APPROVED_ASSETS: Record<string, { privatePath: string; checksum: string; provenance: string; contentType: "image/png" | "image/jpeg" }> = {
   ...APPROVED_SUIT_ASSETS,
   ...APPROVED_SHERWANI_ASSETS,
@@ -272,6 +291,7 @@ const APPROVED_ASSETS: Record<string, { privatePath: string; checksum: string; p
   ...APPROVED_KURTA_ASSETS,
   ...APPROVED_INDO_WESTERN_ASSETS,
   ...APPROVED_ACHKAN_ASSETS,
+  ...APPROVED_JACKET_ASSETS,
 };
 
 export const LEVEL1_CATEGORIES: CuratedCategory[] = [
@@ -282,6 +302,7 @@ export const LEVEL1_CATEGORIES: CuratedCategory[] = [
   { id: "kurta-set", name: "Kurta Sets", description: "Coordinated traditional looks.", status: "active", sortOrder: 5 },
   { id: "indo-western", name: "Indo-Western", description: "Contemporary ceremonial tailoring.", status: "active", sortOrder: 6 },
   { id: "achkan", name: "Achkans", description: "Long ceremonial tailoring.", status: "active", sortOrder: 7 },
+  { id: "jackets", name: "Jackets", description: "Standalone jackets for refined everyday layering.", status: "active", sortOrder: 8 },
 ];
 
 function assetsFor(designId: CuratedDesignId): CuratedAsset[] {
@@ -1803,6 +1824,102 @@ export const LEVEL1_ACHKAN_DESIGNS: CuratedDesign[] = [
   },
 ];
 
+export const LEVEL1_JACKET_DESIGNS: CuratedDesign[] = [
+  {
+    id: "JACKET_01_HUNTER",
+    version: 1,
+    categoryId: "jackets",
+    status: "active",
+    sortOrder: 1,
+    customer: {
+      name: "Hunter Jacket",
+      description: "Structured utility tailoring with four flap pockets",
+      intent: "Refined everyday layering and smart-casual presentation.",
+    },
+    blueprint: {
+      garmentFamily: "Structured Hunter jacket",
+      silhouette: ["tailored utility jacket", "single-breasted", "hip-length"],
+      includedPieces: ["Hunter jacket"],
+      construction: {
+        collar: "notched lapel collar",
+        closure: "three-button single-breasted front",
+        pockets: "four flap pockets: two chest and two lower",
+        sleeves: "long sleeves with button cuffs",
+        length: "hip-length structured jacket",
+        layering: "worn over the existing shirt or T-shirt; do not recolour the underlayer",
+      },
+      fabricRegions: { upper: ["Hunter jacket"], lower: [] },
+      stylingPolicy: styling,
+      bodyFitPolicy: bodyFit,
+    },
+    assetIds: {
+      card: "JACKET_01_HUNTER_CARD_V1",
+      primaryConstruction: "JACKET_01_HUNTER_PRIMARY_V1",
+      details: [],
+    },
+    generation: {
+      promptFragments: [
+        "structured men's Hunter jacket",
+        "tailored hip-length utility silhouette",
+        "notched lapel collar",
+        "three-button single-breasted front",
+        "four flap pockets with two chest and two lower pockets",
+        "long sleeves with button cuffs",
+      ],
+      negativeConstraints: [
+        "Do not add a lower garment as part of this jacket selection. Do not recolour, replace, or remove the customer's existing underlayer.",
+      ],
+      maximumReferenceImages: 2,
+    },
+  },
+  {
+    id: "JACKET_02_BOMBER",
+    version: 1,
+    categoryId: "jackets",
+    status: "active",
+    sortOrder: 2,
+    customer: {
+      name: "Bomber Jacket",
+      description: "Clean zip-front bomber silhouette with ribbed edges",
+      intent: "Contemporary everyday layering with a polished casual finish.",
+    },
+    blueprint: {
+      garmentFamily: "Contemporary bomber jacket",
+      silhouette: ["hip-length bomber", "relaxed tailored fit", "ribbed hem and cuffs"],
+      includedPieces: ["bomber jacket"],
+      construction: {
+        collar: "shirt-style bomber collar",
+        closure: "center-front metal zip",
+        cuffsAndHem: "ribbed or elastic cuffs and hem",
+        sleeves: "long sleeves",
+        layering: "worn over the existing shirt or high-neck underlayer; do not recolour the underlayer",
+      },
+      fabricRegions: { upper: ["bomber jacket"], lower: [] },
+      stylingPolicy: styling,
+      bodyFitPolicy: bodyFit,
+    },
+    assetIds: {
+      card: "JACKET_02_BOMBER_CARD_V1",
+      primaryConstruction: "JACKET_02_BOMBER_PRIMARY_V1",
+      details: [],
+    },
+    generation: {
+      promptFragments: [
+        "contemporary men's bomber jacket",
+        "clean hip-length relaxed tailored silhouette",
+        "shirt-style bomber collar",
+        "center-front metal zip closure",
+        "long sleeves with ribbed or elastic cuffs",
+        "ribbed or elastic hem",
+      ],
+      negativeConstraints: [
+        "Do not add a lower garment as part of this jacket selection. Do not recolour, replace, or remove the customer's existing underlayer.",
+      ],
+      maximumReferenceImages: 2,
+    },
+  },
+];
+
 export const ALL_LEVEL1_DESIGNS: CuratedDesign[] = [
   ...LEVEL1_SUIT_DESIGNS,
   ...LEVEL1_SHERWANI_DESIGNS,
@@ -1811,6 +1928,7 @@ export const ALL_LEVEL1_DESIGNS: CuratedDesign[] = [
   ...LEVEL1_KURTA_DESIGNS,
   ...LEVEL1_INDO_WESTERN_DESIGNS,
   ...LEVEL1_ACHKAN_DESIGNS,
+  ...LEVEL1_JACKET_DESIGNS,
 ];
 
 export const LEVEL1_ASSETS: CuratedAsset[] = ALL_LEVEL1_DESIGNS.flatMap((design) => assetsFor(design.id));

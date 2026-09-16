@@ -381,10 +381,16 @@ export async function handleTryOnRequest(
     }
 
     const fabricRegionValue = getExactlyOneText(formData, "fabricRegion", false);
-    if (fabricRegionValue === null || (fabricRegionValue && !["upper", "lower", "both", "custom"].includes(fabricRegionValue))) {
-      return jsonError("Please choose a valid fabric application: upper, lower, both, or customization.", 400, rateHeaders);
+    if (fabricRegionValue === null || (fabricRegionValue && !["upper", "lower", "both", "custom", "jacket"].includes(fabricRegionValue))) {
+      return jsonError("Please choose a valid fabric application: upper, lower, both, customization, or jacket.", 400, rateHeaders);
     }
-    const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" || fabricRegionValue === "custom" ? fabricRegionValue : "both";
+    const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" || fabricRegionValue === "custom" || fabricRegionValue === "jacket" ? fabricRegionValue : "both";
+    if (selectionMode === "level1" && categoryId === "jackets" && fabricRegion !== "jacket") {
+      return jsonError("Jackets accept one jacket fabric only; upper, lower, both, and customization are unavailable.", 400, rateHeaders);
+    }
+    if (fabricRegion === "jacket" && (selectionMode !== "level1" || categoryId !== "jackets")) {
+      return jsonError("The jacket-only fabric application is available only for the Jackets category.", 400, rateHeaders);
+    }
     if (fabricRegion === "custom" && selectionMode !== "level1") {
       return jsonError("Customization is only available for Level 1 curated designs.", 400, rateHeaders);
     }

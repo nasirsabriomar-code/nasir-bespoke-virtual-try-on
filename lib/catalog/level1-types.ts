@@ -8,6 +8,7 @@ export const CURATED_CATEGORY_IDS = [
   "kurta-set",
   "indo-western",
   "achkan",
+  "jackets",
 ] as const;
 
 export const SUIT_DESIGN_IDS = [
@@ -68,6 +69,11 @@ export const ACHKAN_DESIGN_IDS = [
   "ACHKAN_05_ROYAL",
 ] as const;
 
+export const JACKET_DESIGN_IDS = [
+  "JACKET_01_HUNTER",
+  "JACKET_02_BOMBER",
+] as const;
+
 export const CURATED_DESIGN_IDS = [
   ...SUIT_DESIGN_IDS,
   ...SHERWANI_DESIGN_IDS,
@@ -76,6 +82,7 @@ export const CURATED_DESIGN_IDS = [
   ...KURTA_DESIGN_IDS,
   ...INDO_WESTERN_DESIGN_IDS,
   ...ACHKAN_DESIGN_IDS,
+  ...JACKET_DESIGN_IDS,
 ] as const;
 
 export type CuratedCategoryId = (typeof CURATED_CATEGORY_IDS)[number];
@@ -86,6 +93,7 @@ export type NehruDesignId = (typeof NEHRU_DESIGN_IDS)[number];
 export type KurtaDesignId = (typeof KURTA_DESIGN_IDS)[number];
 export type IndoWesternDesignId = (typeof INDO_WESTERN_DESIGN_IDS)[number];
 export type AchkanDesignId = (typeof ACHKAN_DESIGN_IDS)[number];
+export type JacketDesignId = (typeof JACKET_DESIGN_IDS)[number];
 export type CuratedDesignId = (typeof CURATED_DESIGN_IDS)[number];
 export type CuratedStatus = "draft" | "active" | "retired";
 export type CuratedAssetStatus = "awaiting-upload" | "active" | "retired";
@@ -131,9 +139,11 @@ export type CuratedDesign = {
     // e.g. SHERWANI_05_ROYAL's includedPieces ends in footwear, not a lower
     // garment). "upper" = the main garment piece worn on top (jacket / coat /
     // sherwani / achkan / kurta / bandhgala / nehru jacket / suit jacket, even if
-    // knee-length or longer — never internally split at the waist). "lower" = the
-    // trouser / churidar / pajama / salwar piece worn under it. Pieces belonging
-    // to neither region (e.g. an underlayer shirt) are simply omitted from both.
+    // knee-length or longer — never internally split at the waist). Jacket-only
+    // designs use an empty "lower" list because they have no lower outfit piece.
+    // "lower" = the trouser / churidar / pajama / salwar piece worn under it.
+    // Pieces belonging to neither region (e.g. an underlayer shirt) are simply
+    // omitted from both.
     fabricRegions: { upper: string[]; lower: string[] };
     stylingPolicy: "preserve-existing-accessories";
     bodyFitPolicy: "adapt-garment-to-customer";

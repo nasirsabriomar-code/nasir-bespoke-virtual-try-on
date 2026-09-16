@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_LEVEL1_CATALOGUE } from "@/lib/catalog/level1-seed";
 
-test("authoritative seed contains all 10 active Suit, 10 active Sherwani, 10 active Bandhgala, 14 active Nehru Jacket, 10 active Kurta Set, 10 active Indo-Western, and 10 active Achkan asset records with valid 64-char SHA-256 hashes", () => {
+test("authoritative seed contains all active catalogue asset records, including 4 Jacket assets, with valid 64-char SHA-256 hashes", () => {
   const targetSuitIds = [
     "SUIT_01_CLASSIC_CARD_V1",
     "SUIT_01_CLASSIC_PRIMARY_V1",
@@ -98,6 +98,13 @@ test("authoritative seed contains all 10 active Suit, 10 active Sherwani, 10 act
     "ACHKAN_05_ROYAL_PRIMARY_V1",
   ];
 
+  const targetJacketIds = [
+    "JACKET_01_HUNTER_CARD_V1",
+    "JACKET_01_HUNTER_PRIMARY_V1",
+    "JACKET_02_BOMBER_CARD_V1",
+    "JACKET_02_BOMBER_PRIMARY_V1",
+  ];
+
   const allTargetIds = [
     ...targetSuitIds,
     ...targetSherwaniIds,
@@ -106,6 +113,7 @@ test("authoritative seed contains all 10 active Suit, 10 active Sherwani, 10 act
     ...targetKurtaIds,
     ...targetIndoIds,
     ...targetAchkanIds,
+    ...targetJacketIds,
   ];
 
   const assetMap = new Map(DEFAULT_LEVEL1_CATALOGUE.assets.map((a) => [a.id, a]));
@@ -184,8 +192,8 @@ test("migration patch correctly transforms awaiting-upload assets to active with
     return asset;
   });
 
-  // Verify all 74 target assets became active with correct paths
-  assert.equal(patched.assets.filter((a) => a.status === "active").length, 74);
+  // Verify all 78 target assets became active with correct paths
+  assert.equal(patched.assets.filter((a) => a.status === "active").length, 78);
   assert.equal(patched.categories.length, prototypeCatalogue.categories.length);
   assert.deepEqual(
     patched.categories.map((c) => c.id),
@@ -194,18 +202,18 @@ test("migration patch correctly transforms awaiting-upload assets to active with
   assert.deepEqual(patched.designs, prototypeCatalogue.designs);
 });
 
-test("all 7 categories are fully active with 74 active assets and 0 remaining draft slots", () => {
+test("all 8 categories are fully active with 78 active assets and 0 remaining draft slots", () => {
   const activeCategories = DEFAULT_LEVEL1_CATALOGUE.categories.filter((c) => c.status === "active");
-  assert.equal(activeCategories.length, 7, "All 7 categories must be active");
+  assert.equal(activeCategories.length, 8, "All 8 categories must be active");
 
   const draftCategories = DEFAULT_LEVEL1_CATALOGUE.categories.filter((c) => c.status === "draft");
   assert.equal(draftCategories.length, 0, "There should be 0 draft categories remaining");
 
   const activeDesigns = DEFAULT_LEVEL1_CATALOGUE.designs.filter((d) => d.status === "active");
-  assert.equal(activeDesigns.length, 37, "All 37 designs must be active");
+  assert.equal(activeDesigns.length, 39, "All 39 designs must be active");
 
   const activeAssets = DEFAULT_LEVEL1_CATALOGUE.assets.filter((a) => a.status === "active");
-  assert.equal(activeAssets.length, 74, "All 74 assets must be active");
+  assert.equal(activeAssets.length, 78, "All 78 assets must be active");
 
   const awaitingAssets = DEFAULT_LEVEL1_CATALOGUE.assets.filter((a) => a.status === "awaiting-upload");
   assert.equal(awaitingAssets.length, 0, "No assets should be awaiting upload");

@@ -13,6 +13,7 @@ import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import { isSplitOutfitEnabled } from "@/lib/split-outfit/config";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
+import type { FabricRegion } from "@/lib/catalog/level1-prompt";
 
 type UploadedImage = {
   file: File;
@@ -163,7 +164,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
   const [designId, setDesignId] = useState<string | null>(null);
-  const [fabricRegion, setFabricRegion] = useState<"upper" | "lower" | "both" | "custom">("both");
+  const [fabricRegion, setFabricRegion] = useState<FabricRegion>("both");
   const [reuseFabricForLower, setReuseFabricForLower] = useState(false);
   const [quality, setQuality] = useState<"low" | "medium" | "high" | "max" | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -227,6 +228,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     () => catalogue?.designs.find((design) => design.id === designId) ?? null,
     [catalogue, designId],
   );
+  const isJacketCategory = categoryId === "jackets";
 
   const changeImage = useCallback(async (role: UploadRole, file: File) => {
     setError(null);
@@ -303,7 +305,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       formData.set("selectionMode", "level1");
       formData.set("categoryId", categoryId);
       formData.set("designId", selectedDesign.id);
-      formData.set("fabricRegion", fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion);
+      formData.set("fabricRegion", isJacketCategory ? "jacket" : fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion);
       if (quality) formData.set("quality", quality);
       formData.set("person", person.file);
       formData.set("fabric", fabric.file);
@@ -351,13 +353,13 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       generationKeyRef.current = null;
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, fabric, fabricRegion, lowerFabric, person, quality, reuseFabricForLower, revokeUrl, selectedDesign]);
+  }, [categoryId, clearResult, fabric, fabricRegion, isJacketCategory, lowerFabric, person, quality, reuseFabricForLower, revokeUrl, selectedDesign]);
 
   const startOver = useCallback(() => {
     setError(null);
     clearResult();
     setDesignId(null);
-    setFabricRegion("both");
+    setFabricRegion(isJacketCategory ? "jacket" : "both");
     setReuseFabricForLower(false);
     setQuality(null);
     setPerson((current) => {
@@ -372,7 +374,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       revokeUrl(current?.previewUrl);
       return null;
     });
-  }, [clearResult, revokeUrl]);
+  }, [clearResult, isJacketCategory, revokeUrl]);
 
   return (
     <main className="atelier-shell">
@@ -432,7 +434,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           />
           <ImageUpload
             id="fabric-photo"
-            label={fabricRegion === "custom" ? "Upper fabric" : UPLOAD_HELP.fabric.label}
+            label={isJacketCategory ? "Jacket fabric" : fabricRegion === "custom" ? "Upper fabric" : UPLOAD_HELP.fabric.label}
             description={UPLOAD_HELP.fabric.description}
             guidance={UPLOAD_HELP.fabric.guidance}
             file={fabric?.file ?? null}
@@ -441,7 +443,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             onRemove={() => removeImage("fabric")}
             disabled={isGenerating}
           />
-          {fabricRegion === "custom" ? (
+          {!isJacketCategory && fabricRegion === "custom" ? (
             <ImageUpload
               id="lower-fabric-photo"
               label={UPLOAD_HELP.lowerFabric.label}
@@ -455,7 +457,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             />
           ) : null}
         </div>
-        <div
+        {!isJacketCategory ? <div
           className="comparison-toggle fabric-region-toggle"
           role="radiogroup"
           aria-label="Apply fabric colour to"
@@ -500,8 +502,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           >
             Customization
           </button>
-        </div>
-        {fabricRegion === "custom" ? (
+        </div> : null}
+        {!isJacketCategory && fabricRegion === "custom" ? (
           <label className="fabric-reuse-toggle">
             <input
               type="checkbox"
@@ -596,6 +598,14 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
                 onCategoryChange={(nextCategoryId) => {
                   setCategoryId(nextCategoryId);
                   setDesignId(null);
+                  setFabricRegion(nextCategoryId === "jackets" ? "jacket" : "both");
+                  setReuseFabricForLower(false);
+                  if (nextCategoryId === "jackets") {
+                    setLowerFabric((current) => {
+                      revokeUrl(current?.previewUrl);
+                      return null;
+                    });
+                  }
                   clearResult();
                   setError(null);
                 }}

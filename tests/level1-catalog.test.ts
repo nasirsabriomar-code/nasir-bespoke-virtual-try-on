@@ -23,11 +23,11 @@ beforeEach(() => {
   resetLevel1CatalogueForTests();
 });
 
-test("Level 1 seeds exactly 7 categories, 37 designs, and 74 asset slots with 7 active categories", async () => {
+test("Level 1 seeds exactly 8 categories, 39 designs, and 78 asset slots with 8 active categories", async () => {
   const catalogue = await getLevel1Catalogue();
 
   // 1. Categories
-  assert.equal(catalogue.categories.length, 7);
+  assert.equal(catalogue.categories.length, 8);
   assert.deepEqual(catalogue.categories.map((c) => c.id), [
     "suit",
     "sherwani",
@@ -36,19 +36,20 @@ test("Level 1 seeds exactly 7 categories, 37 designs, and 74 asset slots with 7 
     "kurta-set",
     "indo-western",
     "achkan",
+    "jackets",
   ]);
 
   // 2. Designs
-  assert.equal(catalogue.designs.length, 37);
+  assert.equal(catalogue.designs.length, 39);
   assert.deepEqual(
     catalogue.designs.map((d) => d.id),
     CURATED_DESIGN_IDS,
   );
 
-  // Each category has exactly 5 designs, except Nehru Jacket which has 7
+  // Each category has exactly 5 designs, except Nehru Jacket (7) and Jackets (2)
   for (const catId of CURATED_CATEGORY_IDS) {
     const catDesigns = catalogue.designs.filter((d) => d.categoryId === catId);
-    const expectedCount = catId === "nehru-jacket" ? 7 : 5;
+    const expectedCount = catId === "nehru-jacket" ? 7 : catId === "jackets" ? 2 : 5;
     assert.equal(catDesigns.length, expectedCount, `Category ${catId} must have exactly ${expectedCount} designs`);
     assert.deepEqual(
       catDesigns.map((d) => d.sortOrder).sort(),
@@ -57,13 +58,13 @@ test("Level 1 seeds exactly 7 categories, 37 designs, and 74 asset slots with 7 
     );
   }
 
-  // 3. Asset Slots (74 total - all 74 active!)
-  assert.equal(catalogue.assets.length, 74);
+  // 3. Asset Slots (78 total - all 78 active!)
+  assert.equal(catalogue.assets.length, 78);
   const activeAssets = catalogue.assets.filter((a) => a.status === "active");
   const pendingAssets = catalogue.assets.filter((a) => a.status === "awaiting-upload");
 
-  // 10 Suit + 10 Sherwani + 10 Bandhgala + 14 Nehru + 10 Kurta + 10 Indo + 10 Achkan = 74 active
-  assert.equal(activeAssets.length, 74);
+  // 10 Suit + 10 Sherwani + 10 Bandhgala + 14 Nehru + 10 Kurta + 10 Indo + 10 Achkan + 4 Jackets = 78 active
+  assert.equal(activeAssets.length, 78);
   assert.ok(activeAssets.every((a) => a.checksum && a.privatePath && a.contentType));
 
   // 0 remaining designs awaiting-upload
@@ -71,12 +72,12 @@ test("Level 1 seeds exactly 7 categories, 37 designs, and 74 asset slots with 7 
 
   // 4. ID Uniqueness
   const designIdSet = new Set(catalogue.designs.map((d) => d.id));
-  assert.equal(designIdSet.size, 37, "All 37 design IDs must be unique");
+  assert.equal(designIdSet.size, 39, "All 39 design IDs must be unique");
 
   const assetIdSet = new Set(catalogue.assets.map((a) => a.id));
-  assert.equal(assetIdSet.size, 74, "All 74 asset IDs must be unique");
+  assert.equal(assetIdSet.size, 78, "All 78 asset IDs must be unique");
 
-  // 5. Invariant: bodyFitPolicy for all 37 designs
+  // 5. Invariant: bodyFitPolicy for all 39 designs
   assert.ok(
     catalogue.designs.every((d) => d.blueprint.bodyFitPolicy === "adapt-garment-to-customer"),
     "Every design must enforce adapt-garment-to-customer body fit policy",
@@ -139,7 +140,7 @@ test("Suit, Sherwani, Bandhgala, Nehru Jacket, Kurta Set, Indo-Western, and Achk
 
 test("sanitized Level 1 catalogue view returns active categories and never leaks blueprints or private metadata", async () => {
   const view = await getLevel1CatalogueView();
-  // Active categories returned in customer view (all 7 categories)
+  // Active categories returned in customer view (all 8 categories)
   assert.deepEqual(view.categories.map((category) => category.id), [
     "suit",
     "sherwani",
@@ -148,8 +149,9 @@ test("sanitized Level 1 catalogue view returns active categories and never leaks
     "kurta-set",
     "indo-western",
     "achkan",
+    "jackets",
   ]);
-  assert.equal(view.designs.length, 37);
+  assert.equal(view.designs.length, 39);
   assert.equal(view.designs.filter((d) => d.categoryId === "suit").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "sherwani").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "bandhgala").length, 5);
@@ -157,6 +159,7 @@ test("sanitized Level 1 catalogue view returns active categories and never leaks
   assert.equal(view.designs.filter((d) => d.categoryId === "kurta-set").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "indo-western").length, 5);
   assert.equal(view.designs.filter((d) => d.categoryId === "achkan").length, 5);
+  assert.equal(view.designs.filter((d) => d.categoryId === "jackets").length, 2);
   assert.ok(view.designs.every((design) => design.cardImage.state === "ready"));
   assert.ok(view.designs.every((design) => design.generation.state === "ready"));
 
@@ -164,10 +167,10 @@ test("sanitized Level 1 catalogue view returns active categories and never leaks
   assert.doesNotMatch(serialized, /promptFragments|negativeConstraints|privatePath|bodyFitPolicy|construction/i);
 });
 
-test("development mode preview exposes all 7 categories and 37 designs, with all designs ready", async () => {
-  // 1. In production / test environment: 7 active categories (37 designs)
+test("development mode preview exposes all 8 categories and 39 designs, with all designs ready", async () => {
+  // 1. In production / test environment: 8 active categories (39 designs)
   const prodView = await getLevel1CatalogueView();
-  assert.equal(prodView.categories.length, 7);
+  assert.equal(prodView.categories.length, 8);
   assert.deepEqual(prodView.categories.map((c) => c.id), [
     "suit",
     "sherwani",
@@ -176,15 +179,16 @@ test("development mode preview exposes all 7 categories and 37 designs, with all
     "kurta-set",
     "indo-western",
     "achkan",
+    "jackets",
   ]);
-  assert.equal(prodView.designs.length, 37);
+  assert.equal(prodView.designs.length, 39);
 
-  // 2. In development preview mode: all 7 categories and 37 designs
+  // 2. In development preview mode: all 8 categories and 39 designs
   const prevEnv = process.env.NODE_ENV;
   try {
     (process.env as Record<string, string | undefined>).NODE_ENV = "development";
     const devView = await getLevel1CatalogueView();
-    assert.equal(devView.categories.length, 7);
+    assert.equal(devView.categories.length, 8);
     assert.deepEqual(devView.categories.map((c) => c.id), [
       "suit",
       "sherwani",
@@ -193,10 +197,11 @@ test("development mode preview exposes all 7 categories and 37 designs, with all
       "kurta-set",
       "indo-western",
       "achkan",
+      "jackets",
     ]);
-    assert.equal(devView.designs.length, 37);
+    assert.equal(devView.designs.length, 39);
 
-    // All 37 designs across all 7 categories are ready
+    // All 39 designs across all 8 categories are ready
     assert.ok(devView.designs.every((d) => d.cardImage.state === "ready" && Boolean(d.cardImage.url)));
     assert.ok(devView.designs.every((d) => d.generation.state === "ready"));
   } finally {
@@ -300,7 +305,19 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
     };
     const resolved = { category, design, primaryAsset, detailAssets: [] };
 
-    // Every design must have non-empty fabricRegions (catches any design missed during tagging).
+    if (category.id === "jackets") {
+      assert.ok(design.blueprint.fabricRegions.upper.length > 0, `${design.id} is missing upper fabricRegions`);
+      assert.equal(design.blueprint.fabricRegions.lower.length, 0, `${design.id} must not define a lower fabric region`);
+      const jacketPrompt = buildLevel1TryOnPrompt(resolved, "jacket");
+      assert.match(jacketPrompt, /Image 2 — physical showroom jacket fabric photograph/);
+      assert.match(jacketPrompt, /jacket-only selection/i);
+      assert.match(jacketPrompt, /No lower garment fabric input is accepted/i);
+      assert.doesNotMatch(jacketPrompt, /Image 3 — physical showroom lower-garment fabric photograph/);
+      assert.doesNotMatch(jacketPrompt, /UNCHANGED REGION/);
+      continue;
+    }
+
+    // Every full-outfit design must have non-empty upper and lower fabricRegions.
     assert.ok(design.blueprint.fabricRegions.upper.length > 0, `${design.id} is missing upper fabricRegions`);
     assert.ok(design.blueprint.fabricRegions.lower.length > 0, `${design.id} is missing lower fabricRegions`);
 
@@ -308,7 +325,7 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
     const noArgPrompt = buildLevel1TryOnPrompt(resolved);
     assert.equal(bothPrompt, noArgPrompt, `${design.id}: default parameter must match explicit "both"`);
     assert.doesNotMatch(bothPrompt, /UNCHANGED REGION/, `${design.id}: "both" must not include an unchanged-region sentence`);
-    assert.match(bothPrompt, /Apply these fabric characteristics faithfully to the selected garment pieces/, `${design.id}: "both" must keep the original unconditioned wording`);
+    assert.match(bothPrompt, /Apply these fabric characteristics faithfully to every selected garment piece/, `${design.id}: "both" must keep the explicit all-pieces wording`);
 
     const upperPrompt = buildLevel1TryOnPrompt(resolved, "upper");
     for (const piece of design.blueprint.fabricRegions.upper) {
@@ -331,7 +348,7 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
     // Every other sentence must stay byte-identical across all 3 region values.
     const stripFabricLines = (text: string) => text
       .split("\n\n")
-      .filter((line) => !line.startsWith("FABRIC PHOTO AUTHORITY") && !line.startsWith("UNCHANGED REGION"))
+      .filter((line) => !line.startsWith("FABRIC PHOTO AUTHORITY") && !line.startsWith("UNCHANGED REGION") && !line.startsWith("FINAL FABRIC APPLICATION OVERRIDE"))
       .join("\n\n");
     assert.equal(stripFabricLines(bothPrompt), stripFabricLines(upperPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "upper"`);
     assert.equal(stripFabricLines(bothPrompt), stripFabricLines(lowerPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "lower"`);
@@ -340,6 +357,9 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
     assert.match(customPrompt, /Image 2 — physical showroom upper-garment fabric photograph/);
     assert.match(customPrompt, /Image 3 — physical showroom lower-garment fabric photograph/);
     assert.match(customPrompt, /Apply every visible portion of the named lower garment pieces/);
+    assert.match(customPrompt, /Customization requires two independently coloured fabric regions/);
+    assert.match(customPrompt, /must never make the upper and lower fabrics identical/);
+    assert.match(customPrompt, /the two uploaded fabric photographs control fabric appearance/);
     assert.doesNotMatch(customPrompt, /UNCHANGED REGION/);
     for (const piece of design.blueprint.fabricRegions.upper) assert.ok(customPrompt.includes(piece), `${design.id}: custom prompt must name upper piece "${piece}"`);
     for (const piece of design.blueprint.fabricRegions.lower) assert.ok(customPrompt.includes(piece), `${design.id}: custom prompt must name lower piece "${piece}"`);
