@@ -3,7 +3,10 @@ import type { NextConfig } from "next";
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
-  `connect-src 'self'${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
+  // Direct-to-Blob uploads are browser fetches, not image loads. Keep this
+  // narrowly scoped to the private store host instead of allowing arbitrary
+  // external connections in production.
+  `connect-src 'self' https://*.private.blob.vercel-storage.com${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
   "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
