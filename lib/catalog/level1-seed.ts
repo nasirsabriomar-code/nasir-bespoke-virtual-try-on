@@ -1,10 +1,11 @@
-import type { CuratedAsset, CuratedCategory, CuratedDesign, CuratedDesignId, Level1Catalogue } from "./level1-types";
+import type { CuratedAsset, CuratedCategory, CuratedDesign, Level1Catalogue } from "./level1-types";
 
 const styling = "preserve-existing-accessories" as const;
 const bodyFit = "adapt-garment-to-customer" as const;
 
-// The five owner-approved Suit catalogue images are the trusted v1 card and
-// construction references for Suits.
+// Owner-approved Suit catalogue images are the trusted v1 card and construction
+// references for Suits. Variant images live under the parent design's namespace
+// so they remain server-controlled assets rather than user-provided paths.
 const APPROVED_SUIT_ASSETS: Record<string, { privatePath: string; checksum: string; provenance: string; contentType: "image/png" | "image/jpeg" }> = {
   SUIT_01_CLASSIC: {
     privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_01_CLASSIC/approved.png",
@@ -34,6 +35,36 @@ const APPROVED_SUIT_ASSETS: Record<string, { privatePath: string; checksum: stri
     privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_05_THREE_PIECE/approved.png",
     checksum: "9bc20a752be80c0095f9cdcbff7058f374564829c5c16c2c4d7b3937b2363142",
     provenance: "Approved Nasir Bespoke Suit catalogue image supplied by project owner on 2026-08-16.",
+    contentType: "image/png",
+  },
+  SUIT_06_THREE_BUTTON: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_06_THREE_BUTTON/approved.png",
+    checksum: "25dd7ef7372e2b70576c1d204158154c38c01956b6f7d54b3dc6d8dedf62cf80",
+    provenance: "Three-button Suit reference image supplied by project owner on 2026-09-16.",
+    contentType: "image/png",
+  },
+  SUIT_01_CLASSIC_THREE_BUTTON_CARD_V1: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_01_CLASSIC/variants/three-button.png",
+    checksum: "23cabf2ca37cc3734abaaaf7af6559710208f9a11ffb25c84bc0da78aab82a27",
+    provenance: "Three-button Classic Suit variant supplied by project owner on 2026-09-16.",
+    contentType: "image/png",
+  },
+  SUIT_01_CLASSIC_THREE_BUTTON_PRIMARY_V1: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_01_CLASSIC/variants/three-button.png",
+    checksum: "23cabf2ca37cc3734abaaaf7af6559710208f9a11ffb25c84bc0da78aab82a27",
+    provenance: "Three-button Classic Suit variant supplied by project owner on 2026-09-16.",
+    contentType: "image/png",
+  },
+  SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR_CARD_V1: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_04_DOUBLE_BREASTED/variants/broad-collar.png",
+    checksum: "6f34662fb556da3a55f3a214955d5d21e0fd4020d5172433bad0e3ee9ddb958d",
+    provenance: "Broad-collar Double-Breasted Suit variant supplied by project owner on 2026-09-16.",
+    contentType: "image/png",
+  },
+  SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR_PRIMARY_V1: {
+    privatePath: "nasir-bespoke/catalogue/level1/v1/SUIT_04_DOUBLE_BREASTED/variants/broad-collar.png",
+    checksum: "6f34662fb556da3a55f3a214955d5d21e0fd4020d5172433bad0e3ee9ddb958d",
+    provenance: "Broad-collar Double-Breasted Suit variant supplied by project owner on 2026-09-16.",
     contentType: "image/png",
   },
 };
@@ -305,15 +336,30 @@ export const LEVEL1_CATEGORIES: CuratedCategory[] = [
   { id: "jackets", name: "Jackets", description: "Standalone jackets for refined everyday layering.", status: "active", sortOrder: 8 },
 ];
 
-function assetsFor(designId: CuratedDesignId): CuratedAsset[] {
+function assetsFor(design: CuratedDesign): CuratedAsset[] {
+  const designId = design.id;
   const approved = APPROVED_ASSETS[designId];
   const approvedFields = approved
     ? { status: "active" as const, privatePath: approved.privatePath, contentType: approved.contentType, checksum: approved.checksum, provenance: approved.provenance }
     : { status: "awaiting-upload" as const };
-  return [
+  const assets: CuratedAsset[] = [
     { id: `${designId}_CARD_V1`, designId, purpose: "card", ...approvedFields, sortOrder: 1 },
     { id: `${designId}_PRIMARY_V1`, designId, purpose: "primary-construction", ...approvedFields, sortOrder: 2 },
   ];
+  for (const variant of design.variants ?? []) {
+    const variantCard = APPROVED_ASSETS[variant.assetIds.card];
+    const variantPrimary = APPROVED_ASSETS[variant.assetIds.primaryConstruction];
+    for (const [assetId, purpose, approvedVariant] of [
+      [variant.assetIds.card, "card", variantCard],
+      [variant.assetIds.primaryConstruction, "primary-construction", variantPrimary],
+    ] as const) {
+      const variantFields = approvedVariant
+        ? { status: "active" as const, privatePath: approvedVariant.privatePath, contentType: approvedVariant.contentType, checksum: approvedVariant.checksum, provenance: approvedVariant.provenance }
+        : { status: "awaiting-upload" as const };
+      assets.push({ id: assetId, designId, purpose, variantId: variant.id, ...variantFields, sortOrder: assets.length + 1 });
+    }
+  }
+  return assets;
 }
 
 export const LEVEL1_SUIT_DESIGNS: CuratedDesign[] = [
@@ -328,6 +374,18 @@ export const LEVEL1_SUIT_DESIGNS: CuratedDesign[] = [
     },
     assetIds: { card: "SUIT_01_CLASSIC_CARD_V1", primaryConstruction: "SUIT_01_CLASSIC_PRIMARY_V1", details: [] },
     generation: { promptFragments: ["modern single-breasted tailored suit", "two-button closure", "notch lapel", "natural structured shoulder", "flap pockets", "matching tailored trousers"], negativeConstraints: ["Do not make this ceremonial or exaggerated fashion styling."], maximumReferenceImages: 2 },
+    variants: [
+      {
+        id: "SUIT_01_CLASSIC_THREE_BUTTON",
+        name: "Three-Button Classic",
+        description: "The classic silhouette with a three-button front.",
+        assetIds: { card: "SUIT_01_CLASSIC_THREE_BUTTON_CARD_V1", primaryConstruction: "SUIT_01_CLASSIC_THREE_BUTTON_PRIMARY_V1", details: [] },
+        construction: { jacketClosure: "single-breasted", buttonClosure: "three-button", lapel: "notch", shoulder: "natural structured", hipPockets: "flap", vent: "double vent preferred", trousers: "matching tailored trousers" },
+        promptFragments: ["modern single-breasted tailored suit", "three-button closure", "notch lapel", "natural structured shoulder", "flap pockets", "matching tailored trousers"],
+        negativeConstraints: ["Do not reduce this to a two-button jacket or make it ceremonial or exaggerated fashion styling."],
+        maximumReferenceImages: 2,
+      },
+    ],
   },
   {
     id: "SUIT_02_TUXEDO", version: 1, categoryId: "suit", status: "active", sortOrder: 2,
@@ -364,6 +422,18 @@ export const LEVEL1_SUIT_DESIGNS: CuratedDesign[] = [
     },
     assetIds: { card: "SUIT_04_DOUBLE_BREASTED_CARD_V1", primaryConstruction: "SUIT_04_DOUBLE_BREASTED_PRIMARY_V1", details: [] },
     generation: { promptFragments: ["structured double-breasted suit", "six-button configuration", "peak lapels", "structured shoulder", "overlapping front panels", "flap pockets", "matching trousers"], negativeConstraints: ["Do not convert the jacket to single-breasted."], maximumReferenceImages: 2 },
+    variants: [
+      {
+        id: "SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR",
+        name: "Broad-Collar Double-Breasted",
+        description: "The double-breasted suit with a broader peak collar and lapel proportion.",
+        assetIds: { card: "SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR_CARD_V1", primaryConstruction: "SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR_PRIMARY_V1", details: [] },
+        construction: { jacketClosure: "double-breasted", buttonConfiguration: "six-button", lapel: "broad peak lapel", shoulder: "structured", front: "overlapping panels", hipPockets: "flap", trousers: "matching tailored trousers" },
+        promptFragments: ["structured double-breasted suit", "six-button configuration", "broad peak lapels with a wider collar proportion", "structured shoulder", "overlapping front panels", "flap pockets", "matching trousers"],
+        negativeConstraints: ["Do not convert the jacket to single-breasted or narrow the broad collar and peak lapels."],
+        maximumReferenceImages: 2,
+      },
+    ],
   },
   {
     id: "SUIT_05_THREE_PIECE", version: 1, categoryId: "suit", status: "active", sortOrder: 5,
@@ -376,6 +446,18 @@ export const LEVEL1_SUIT_DESIGNS: CuratedDesign[] = [
     },
     assetIds: { card: "SUIT_05_THREE_PIECE_CARD_V1", primaryConstruction: "SUIT_05_THREE_PIECE_PRIMARY_V1", details: [] },
     generation: { promptFragments: ["three-piece tailored suit", "single-breasted two-button jacket", "notch lapel", "matching five-button waistcoat visibly layered below the jacket", "matching tailored trousers"], negativeConstraints: ["Do not omit the waistcoat or change it to a two-piece suit."], maximumReferenceImages: 2 },
+  },
+  {
+    id: "SUIT_06_THREE_BUTTON", version: 1, categoryId: "suit", status: "active", sortOrder: 6,
+    customer: { name: "Three-Button Suit", description: "A clean three-button tailored suit", intent: "Business meetings, professional occasions, and polished formal wear." },
+    blueprint: {
+      garmentFamily: "Modern three-button tailored suit", silhouette: ["balanced", "premium tailored"], includedPieces: ["single-breasted three-button jacket", "matching tailored trousers"],
+      construction: { jacketClosure: "single-breasted", buttonClosure: "three-button", lapel: "notch", shoulder: "natural structured", breastPocket: "welted", hipPockets: "lower welted pockets", trousers: "matching tailored trousers" },
+      fabricRegions: { upper: ["single-breasted three-button jacket"], lower: ["matching tailored trousers"] },
+      stylingPolicy: styling, bodyFitPolicy: bodyFit,
+    },
+    assetIds: { card: "SUIT_06_THREE_BUTTON_CARD_V1", primaryConstruction: "SUIT_06_THREE_BUTTON_PRIMARY_V1", details: [] },
+    generation: { promptFragments: ["modern single-breasted three-button tailored suit", "three-button front closure", "notch lapel", "clean welted breast pocket", "lower welted pockets", "matching tailored trousers"], negativeConstraints: ["Do not reduce this to a two-button suit or introduce a waistcoat or tuxedo styling."], maximumReferenceImages: 2 },
   },
 ];
 
@@ -1931,7 +2013,7 @@ export const ALL_LEVEL1_DESIGNS: CuratedDesign[] = [
   ...LEVEL1_JACKET_DESIGNS,
 ];
 
-export const LEVEL1_ASSETS: CuratedAsset[] = ALL_LEVEL1_DESIGNS.flatMap((design) => assetsFor(design.id));
+export const LEVEL1_ASSETS: CuratedAsset[] = ALL_LEVEL1_DESIGNS.flatMap((design) => assetsFor(design));
 
 export const DEFAULT_LEVEL1_CATALOGUE: Level1Catalogue = {
   version: 1,

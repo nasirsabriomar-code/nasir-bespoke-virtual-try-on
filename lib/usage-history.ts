@@ -35,6 +35,8 @@ export type UsageEvent = {
     categoryName?: string;
     curatedDesignId?: string;
     curatedDesignName?: string;
+    curatedVariantId?: string;
+    curatedVariantName?: string;
     curatedDesignVersion?: number;
     curatedAssetStatus?: "ready" | "awaiting-approved-reference";
     fabricRegion?: "upper" | "lower" | "both" | "custom" | "jacket";
@@ -176,6 +178,8 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     ...(isLevel1Mode && optionalString("categoryName") ? { categoryName: optionalString("categoryName") } : {}),
     ...(isLevel1Mode && optionalString("curatedDesignId") ? { curatedDesignId: optionalString("curatedDesignId") } : {}),
     ...(isLevel1Mode && optionalString("curatedDesignName") ? { curatedDesignName: optionalString("curatedDesignName") } : {}),
+    ...(isLevel1Mode && optionalString("curatedVariantId") ? { curatedVariantId: optionalString("curatedVariantId") } : {}),
+    ...(isLevel1Mode && optionalString("curatedVariantName") ? { curatedVariantName: optionalString("curatedVariantName") } : {}),
     ...(isLevel1Mode && curatedDesignVersion ? { curatedDesignVersion } : {}),
     ...(isLevel1Mode && curatedAssetStatus ? { curatedAssetStatus } : {}),
     ...(isLevel1Mode && fabricRegion ? { fabricRegion } : {}),

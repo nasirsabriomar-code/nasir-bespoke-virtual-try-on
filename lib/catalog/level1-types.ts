@@ -17,6 +17,7 @@ export const SUIT_DESIGN_IDS = [
   "SUIT_03_STATEMENT",
   "SUIT_04_DOUBLE_BREASTED",
   "SUIT_05_THREE_PIECE",
+  "SUIT_06_THREE_BUTTON",
 ] as const;
 
 export const SHERWANI_DESIGN_IDS = [
@@ -116,7 +117,23 @@ export type CuratedAsset = {
   contentType?: SupportedImageMime;
   checksum?: string;
   provenance?: string;
+  variantId?: string;
   sortOrder: number;
+};
+
+export type CuratedDesignVariant = {
+  id: string;
+  name: string;
+  description: string;
+  assetIds: {
+    card: string;
+    primaryConstruction: string;
+    details: string[];
+  };
+  construction: Record<string, string | string[]>;
+  promptFragments: string[];
+  negativeConstraints: string[];
+  maximumReferenceImages: 2;
 };
 
 export type CuratedDesign = {
@@ -158,6 +175,7 @@ export type CuratedDesign = {
     negativeConstraints: string[];
     maximumReferenceImages: 2;
   };
+  variants?: CuratedDesignVariant[];
 };
 
 export type Level1Catalogue = {
@@ -178,6 +196,18 @@ export type Level1CatalogueDesignView = {
     state: "ready" | "awaiting-approval";
     url?: string;
   };
+  variants?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    cardImage: {
+      state: "ready" | "awaiting-approval";
+      url?: string;
+    };
+    generation: {
+      state: "ready" | "awaiting-approved-reference";
+    };
+  }>;
   generation: {
     state: "ready" | "awaiting-approved-reference";
   };
@@ -191,6 +221,7 @@ export type Level1CatalogueView = {
 export type ResolvedLevel1Design = {
   category: CuratedCategory;
   design: CuratedDesign;
+  variant?: CuratedDesignVariant;
   primaryAsset: CuratedAsset;
   detailAssets: CuratedAsset[];
 };

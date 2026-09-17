@@ -7,25 +7,28 @@ type Level1CatalogueProps = {
   catalogue: Level1CatalogueView;
   categoryId: string;
   designId: string | null;
+  designVariantId: string | null;
   onCategoryChange: (categoryId: string) => void;
-  onDesignChange: (designId: string) => void;
+  onDesignChange: (designId: string, variantId?: string) => void;
 };
 
 export function Level1Catalogue({
   catalogue,
   categoryId,
   designId,
+  designVariantId,
   onCategoryChange,
   onDesignChange,
 }: Level1CatalogueProps) {
   const activeCategory = catalogue.categories.find((category) => category.id === categoryId) ?? catalogue.categories[0];
   const designs = catalogue.designs.filter((design) => design.categoryId === activeCategory?.id);
   const [inspectingDesign, setInspectingDesign] = useState<Level1CatalogueDesignView | null>(null);
+  const [choosingVariantDesign, setChoosingVariantDesign] = useState<Level1CatalogueDesignView | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Close modal on Escape key & manage body scroll lock
   useEffect(() => {
-    if (!inspectingDesign) return;
+    if (!inspectingDesign && !choosingVariantDesign) return;
 
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -33,6 +36,7 @@ export function Level1Catalogue({
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setInspectingDesign(null);
+        setChoosingVariantDesign(null);
       }
     }
 
@@ -43,7 +47,7 @@ export function Level1Catalogue({
       document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [inspectingDesign]);
+  }, [choosingVariantDesign, inspectingDesign]);
 
   return (
     <div className="level1-catalogue">
@@ -89,11 +93,21 @@ export function Level1Catalogue({
               role="button"
               tabIndex={0}
               aria-pressed={selected}
-              onClick={() => onDesignChange(design.id)}
+              onClick={() => {
+                if (design.variants?.length) {
+                  setChoosingVariantDesign(design);
+                } else {
+                  onDesignChange(design.id);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === " " || e.key === "Enter") {
                   e.preventDefault();
-                  onDesignChange(design.id);
+                  if (design.variants?.length) {
+                    setChoosingVariantDesign(design);
+                  } else {
+                    onDesignChange(design.id);
+                  }
                 }
               }}
             >
@@ -210,6 +224,88 @@ export function Level1Catalogue({
                   {designId === inspectingDesign.id ? "✓ Selected for Try-On" : "Select this Look"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* VARIANT SELECTION POPUP FOR DESIGNS WITH MULTIPLE APPROVED REFERENCES */}
+      {choosingVariantDesign ? (
+        <div className="level1-variant-backdrop">
+          <button
+            type="button"
+            className="level1-viewer-backdrop-dismiss"
+            aria-label="Close design options"
+            tabIndex={-1}
+            onClick={() => setChoosingVariantDesign(null)}
+          />
+          <div
+            className="level1-variant-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="variant-design-name"
+          >
+            <div className="level1-viewer-header">
+              <div className="level1-viewer-title-group">
+                <span className="eyebrow">Nasir Bespoke Catalogue</span>
+                <h3 id="variant-design-name">Choose {choosingVariantDesign.name}</h3>
+                <p className="level1-variant-subtitle">Select the approved construction reference for this silhouette.</p>
+              </div>
+              <button
+                type="button"
+                className="level1-viewer-close-btn"
+                aria-label="Close design options (Esc)"
+                ref={closeButtonRef}
+                onClick={() => setChoosingVariantDesign(null)}
+              >
+                <span aria-hidden="true">✕</span>
+                <span>Close</span>
+              </button>
+            </div>
+
+            <div className="level1-variant-grid">
+              {[
+                {
+                  id: null,
+                  name: choosingVariantDesign.name,
+                  description: choosingVariantDesign.description,
+                  cardImage: choosingVariantDesign.cardImage,
+                  generation: choosingVariantDesign.generation,
+                },
+                ...(choosingVariantDesign.variants ?? []),
+              ].map((option) => {
+                const selected = designId === choosingVariantDesign.id && (option.id === designVariantId || (!option.id && !designVariantId));
+                const ready = option.generation.state === "ready";
+                const hasImage = option.cardImage.state === "ready" && Boolean(option.cardImage.url);
+                return (
+                  <button
+                    type="button"
+                    className={`level1-variant-option${selected ? " is-selected" : ""}`}
+                    key={option.id ?? "base"}
+                    disabled={!ready}
+                    onClick={() => {
+                      onDesignChange(choosingVariantDesign.id, option.id ?? undefined);
+                      setChoosingVariantDesign(null);
+                    }}
+                  >
+                    <span className="level1-variant-image-wrap">
+                      {hasImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={option.cardImage.url} alt={`${option.name} reference`} className="level1-variant-image" />
+                      ) : (
+                        <span className="level1-variant-placeholder">Reference awaiting approval</span>
+                      )}
+                    </span>
+                    <span className="level1-variant-option-body">
+                      <span className="level1-variant-option-title">{option.name}</span>
+                      <span className="level1-variant-option-description">{option.description}</span>
+                      <span className={`level1-variant-option-state${selected ? " is-selected" : ""}`}>
+                        {selected ? "Selected" : ready ? "Use this reference" : "Awaiting approved reference"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

@@ -22,12 +22,12 @@ import { DEFAULT_LEVEL1_CATALOGUE } from "@/lib/catalog/level1-seed";
 
 test("Full Outfit remains the authoritative default catalogue and is untouched", () => {
   assert.equal(DEFAULT_LEVEL1_CATALOGUE.categories.length, 8);
-  assert.equal(DEFAULT_LEVEL1_CATALOGUE.designs.length, 39);
-  assert.equal(DEFAULT_LEVEL1_CATALOGUE.assets.length, 78);
+  assert.equal(DEFAULT_LEVEL1_CATALOGUE.designs.length, 40);
+  assert.equal(DEFAULT_LEVEL1_CATALOGUE.assets.length, 84);
 
   for (const cat of DEFAULT_LEVEL1_CATALOGUE.categories) {
     const designsInCat = DEFAULT_LEVEL1_CATALOGUE.designs.filter((d) => d.categoryId === cat.id);
-    const expectedCount = cat.id === "nehru-jacket" ? 7 : cat.id === "jackets" ? 2 : 5;
+    const expectedCount = cat.id === "suit" ? 6 : cat.id === "nehru-jacket" ? 7 : cat.id === "jackets" ? 2 : 5;
     assert.equal(designsInCat.length, expectedCount, `Category ${cat.id} must have exactly ${expectedCount} designs`);
   }
 });

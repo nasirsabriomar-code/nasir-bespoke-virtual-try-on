@@ -164,6 +164,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
   const [designId, setDesignId] = useState<string | null>(null);
+  const [designVariantId, setDesignVariantId] = useState<string | null>(null);
   const [fabricRegion, setFabricRegion] = useState<FabricRegion>("both");
   const [reuseFabricForLower, setReuseFabricForLower] = useState(false);
   const [quality, setQuality] = useState<"low" | "medium" | "high" | "max" | null>(null);
@@ -228,6 +229,11 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     () => catalogue?.designs.find((design) => design.id === designId) ?? null,
     [catalogue, designId],
   );
+  const selectedVariant = useMemo(
+    () => selectedDesign?.variants?.find((variant) => variant.id === designVariantId) ?? null,
+    [designVariantId, selectedDesign],
+  );
+  const selectedReferenceReady = selectedDesign?.generation.state === "ready" && (!selectedVariant || selectedVariant.generation.state === "ready");
   const isJacketCategory = categoryId === "jackets";
 
   const changeImage = useCallback(async (role: UploadRole, file: File) => {
@@ -284,7 +290,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   }, [clearResult, revokeUrl]);
 
   const generate = useCallback(async () => {
-    if (!person || !fabric || !selectedDesign || selectedDesign.generation.state !== "ready") {
+    if (!person || !fabric || !selectedDesign || !selectedReferenceReady) {
       setError("Add a customer photo and fabric, then choose an approved design to generate.");
       return;
     }
@@ -305,6 +311,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       formData.set("selectionMode", "level1");
       formData.set("categoryId", categoryId);
       formData.set("designId", selectedDesign.id);
+      if (designVariantId) formData.set("variantId", designVariantId);
       formData.set("fabricRegion", isJacketCategory ? "jacket" : fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion);
       if (quality) formData.set("quality", quality);
       formData.set("person", person.file);
@@ -353,12 +360,13 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       generationKeyRef.current = null;
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, fabric, fabricRegion, isJacketCategory, lowerFabric, person, quality, reuseFabricForLower, revokeUrl, selectedDesign]);
+  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, person, quality, reuseFabricForLower, revokeUrl, selectedDesign, selectedReferenceReady]);
 
   const startOver = useCallback(() => {
     setError(null);
     clearResult();
     setDesignId(null);
+    setDesignVariantId(null);
     setFabricRegion(isJacketCategory ? "jacket" : "both");
     setReuseFabricForLower(false);
     setQuality(null);
@@ -595,9 +603,11 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
                 catalogue={catalogue}
                 categoryId={categoryId}
                 designId={designId}
+                designVariantId={designVariantId}
                 onCategoryChange={(nextCategoryId) => {
                   setCategoryId(nextCategoryId);
                   setDesignId(null);
+                  setDesignVariantId(null);
                   setFabricRegion(nextCategoryId === "jackets" ? "jacket" : "both");
                   setReuseFabricForLower(false);
                   if (nextCategoryId === "jackets") {
@@ -609,8 +619,9 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
                   clearResult();
                   setError(null);
                 }}
-                onDesignChange={(nextDesignId) => {
+                onDesignChange={(nextDesignId, nextVariantId) => {
                   setDesignId(nextDesignId);
+                  setDesignVariantId(nextVariantId ?? null);
                   clearResult();
                   setError(null);
                 }}
@@ -624,7 +635,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
               <h2>Your selected look</h2>
               <p className="level1-review-copy">
                 {selectedDesign
-                  ? `${selectedDesign.name} — ${selectedDesign.description}`
+                  ? `${selectedDesign.name}${selectedVariant ? ` — ${selectedVariant.name}` : ""} — ${selectedDesign.description}`
                   : "Choose a curated design to continue."}
               </p>
             </div>
@@ -632,7 +643,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
               className="button button-primary level1-generate"
               type="button"
               onClick={generate}
-              disabled={isGenerating || !person || !fabric || !selectedDesign || selectedDesign.generation.state !== "ready"}
+              disabled={isGenerating || !person || !fabric || !selectedDesign || !selectedReferenceReady}
             >
               {isGenerating ? "Constructing your look…" : "Generate Try-On"}
             </button>

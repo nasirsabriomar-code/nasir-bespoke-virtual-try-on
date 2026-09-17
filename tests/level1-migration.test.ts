@@ -14,6 +14,12 @@ test("authoritative seed contains all active catalogue asset records, including 
     "SUIT_04_DOUBLE_BREASTED_PRIMARY_V1",
     "SUIT_05_THREE_PIECE_CARD_V1",
     "SUIT_05_THREE_PIECE_PRIMARY_V1",
+    "SUIT_06_THREE_BUTTON_CARD_V1",
+    "SUIT_06_THREE_BUTTON_PRIMARY_V1",
+    "SUIT_01_CLASSIC_THREE_BUTTON_CARD_V1",
+    "SUIT_01_CLASSIC_THREE_BUTTON_PRIMARY_V1",
+    "SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR_CARD_V1",
+    "SUIT_04_DOUBLE_BREASTED_BROAD_COLLAR_PRIMARY_V1",
   ];
 
   const targetSherwaniIds = [
@@ -192,8 +198,8 @@ test("migration patch correctly transforms awaiting-upload assets to active with
     return asset;
   });
 
-  // Verify all 78 target assets became active with correct paths
-  assert.equal(patched.assets.filter((a) => a.status === "active").length, 78);
+  // Verify all 84 target assets became active with correct paths
+  assert.equal(patched.assets.filter((a) => a.status === "active").length, 84);
   assert.equal(patched.categories.length, prototypeCatalogue.categories.length);
   assert.deepEqual(
     patched.categories.map((c) => c.id),
@@ -202,7 +208,7 @@ test("migration patch correctly transforms awaiting-upload assets to active with
   assert.deepEqual(patched.designs, prototypeCatalogue.designs);
 });
 
-test("all 8 categories are fully active with 78 active assets and 0 remaining draft slots", () => {
+test("all 8 categories are fully active with 84 active assets and 0 remaining draft slots", () => {
   const activeCategories = DEFAULT_LEVEL1_CATALOGUE.categories.filter((c) => c.status === "active");
   assert.equal(activeCategories.length, 8, "All 8 categories must be active");
 
@@ -210,10 +216,10 @@ test("all 8 categories are fully active with 78 active assets and 0 remaining dr
   assert.equal(draftCategories.length, 0, "There should be 0 draft categories remaining");
 
   const activeDesigns = DEFAULT_LEVEL1_CATALOGUE.designs.filter((d) => d.status === "active");
-  assert.equal(activeDesigns.length, 39, "All 39 designs must be active");
+  assert.equal(activeDesigns.length, 40, "All 40 designs must be active");
 
   const activeAssets = DEFAULT_LEVEL1_CATALOGUE.assets.filter((a) => a.status === "active");
-  assert.equal(activeAssets.length, 78, "All 78 assets must be active");
+  assert.equal(activeAssets.length, 84, "All 84 assets must be active");
 
   const awaitingAssets = DEFAULT_LEVEL1_CATALOGUE.assets.filter((a) => a.status === "awaiting-upload");
   assert.equal(awaitingAssets.length, 0, "No assets should be awaiting upload");

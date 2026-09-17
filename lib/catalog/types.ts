@@ -132,6 +132,7 @@ export type TryOnSelection = {
   mode: "level1";
   categoryId: string;
   designId: string;
+  variantId?: string;
 };
 
 export type CatalogSelection = {

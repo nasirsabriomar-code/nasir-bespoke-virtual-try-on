@@ -137,6 +137,7 @@ function hasUnexpectedFields(formData: FormData) {
       "bespokeConfiguration",
       "categoryId",
       "designId",
+      "variantId",
       "fabricRegion",
       "quality",
     ].includes(name)) return true;
@@ -145,7 +146,7 @@ function hasUnexpectedFields(formData: FormData) {
 }
 
 function hasLevel1ForbiddenFields(formData: FormData) {
-  const level1Fields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "fabricRegion", "quality"]);
+  const level1Fields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "variantId", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!level1Fields.has(name)) return true;
   }
@@ -361,6 +362,7 @@ export async function handleTryOnRequest(
     const bespokeConfigurationText = getExactlyOneText(formData, "bespokeConfiguration", false);
     const categoryId = getExactlyOneText(formData, "categoryId", false);
     const designId = getExactlyOneText(formData, "designId", false);
+    const variantId = getExactlyOneText(formData, "variantId", false);
 
     const invalidCommonInput = !personFile || !fabricFile || bespokeConfigurationText === null || hasUnexpectedFields(formData);
     const invalidModeInput = selectionMode === "outfit"
@@ -417,7 +419,7 @@ export async function handleTryOnRequest(
       : undefined;
 
     const selectionIds: TryOnSelection = selectionMode === "level1"
-      ? { mode: "level1", categoryId: categoryId as string, designId: designId as string }
+      ? { mode: "level1", categoryId: categoryId as string, designId: designId as string, ...(variantId ? { variantId } : {}) }
       : {
         mode: selectionMode,
         ...(upperGarmentId ? { upperGarmentId } : {}),
@@ -486,7 +488,7 @@ export async function handleTryOnRequest(
         bespokeReferenceInputs = await buildBespokeReferenceInputs(selectBespokeReferenceImages(bespokeConfiguration, outfitSpecification.targetView));
       }
     } else if (selectionMode === "level1") {
-      level1Resolved = await (dependencies.resolveLevel1Selection ?? resolveLevel1Design)(categoryId as string, designId as string);
+      level1Resolved = await (dependencies.resolveLevel1Selection ?? resolveLevel1Design)(categoryId as string, designId as string, variantId ?? undefined);
     }
     if (idempotencyKey) {
       const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
@@ -618,7 +620,8 @@ export async function handleTryOnRequest(
         categoryId: level1Resolved.category.id,
         categoryName: level1Resolved.category.name,
         curatedDesignId: level1Resolved.design.id,
-        curatedDesignName: level1Resolved.design.customer.name,
+        curatedDesignName: level1Resolved.variant ? `${level1Resolved.design.customer.name} — ${level1Resolved.variant.name}` : level1Resolved.design.customer.name,
+        ...(level1Resolved.variant ? { curatedVariantId: level1Resolved.variant.id, curatedVariantName: level1Resolved.variant.name } : {}),
         curatedDesignVersion: level1Resolved.design.version,
         curatedAssetStatus: "ready",
         fabricRegion,

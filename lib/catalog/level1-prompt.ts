@@ -27,7 +27,7 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
           ...Array.from({ length: detailReferenceCount }, (_, index) => `Image ${index + 4} — NASIR BESPOKE approved curated garment detail reference.`),
         ]),
   ];
-  const construction = Object.entries(resolved.design.blueprint.construction)
+  const construction = Object.entries(resolved.variant?.construction ?? resolved.design.blueprint.construction)
     .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
     .join("; ");
 
@@ -68,9 +68,9 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
     fabricAuthorityLine,
     ...(unchangedRegionLine ? [unchangedRegionLine] : []),
     `${fabricRegion === "custom" ? "CURATED DESIGN AUTHORITY: Image 4 and any following controlled reference images" : "CURATED DESIGN AUTHORITY: Image 3 and any following controlled reference images"} are authoritative only for garment construction, silhouette, layering, included pieces, and visible design architecture. They are not body, identity, pose, scene, lighting, colour, texture, material, footwear, or accessory references. Never copy a reference model, mannequin, person, scene, background, or material. When design text or a reference appearance conflicts with the uploaded fabric authority, the uploaded fabric authority wins.`,
-    `SELECTED NASIR BESPOKE CURATED DESIGN: ${resolved.design.customer.name}. ${resolved.design.customer.description}. Internal garment family: ${resolved.design.blueprint.garmentFamily}. Silhouette: ${resolved.design.blueprint.silhouette.join(", ")}. Included pieces: ${resolved.design.blueprint.includedPieces.join(", ")}. Construction: ${construction}.`,
-    `DESIGN INSTRUCTIONS: ${resolved.design.generation.promptFragments.join(". ")}.`,
-    `NEGATIVE DESIGN CONSTRAINTS: ${resolved.design.generation.negativeConstraints.join(" ")}`,
+    `SELECTED NASIR BESPOKE CURATED DESIGN: ${resolved.design.customer.name}${resolved.variant ? ` — ${resolved.variant.name}` : ""}. ${resolved.variant?.description ?? resolved.design.customer.description}. Internal garment family: ${resolved.design.blueprint.garmentFamily}. Silhouette: ${resolved.design.blueprint.silhouette.join(", ")}. Included pieces: ${resolved.design.blueprint.includedPieces.join(", ")}. Construction: ${construction}.`,
+    `DESIGN INSTRUCTIONS: ${(resolved.variant?.promptFragments ?? resolved.design.generation.promptFragments).join(". ")}.`,
+    `NEGATIVE DESIGN CONSTRAINTS: ${(resolved.variant?.negativeConstraints ?? resolved.design.generation.negativeConstraints).join(" ")}`,
     finalFabricOverrideLine,
     "LEVEL 1 STYLING POLICY: Preserve the customer's existing footwear where visible. Do not add a tie, bow tie, pocket square, turban, jewellery, watch, or any other accessory. Do not use the construction reference's colour, fabric, pattern, material, person, or setting.",
     "REALISM: Use physically credible bespoke tailoring around the customer's actual frame: natural shoulder placement, sleeves, folds, drape, gravity, compression, tension, closures, waist behavior, trouser break, and hem. Preserve anatomically correct hands and limbs. Do not add duplicate clothing, random accessories, invented embroidery, extra limbs, text, a border, a collage, split screen, or an explanation. Return only one finished photograph.",

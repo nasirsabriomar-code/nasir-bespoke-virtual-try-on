@@ -38,7 +38,7 @@ function isStoredCatalogue(value: unknown): value is Level1Catalogue {
 
 export async function getLevel1Catalogue(): Promise<Level1Catalogue> {
   if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
-    return cloneDefault();
+    return memoryCatalogue ? structuredClone(memoryCatalogue) : cloneDefault();
   }
   const redis = getRedis();
   if (!redis) {
@@ -86,6 +86,25 @@ export async function getLevel1CatalogueView(): Promise<Level1CatalogueView> {
         generation: primary?.status === "active"
           ? { state: "ready" as const }
           : { state: "awaiting-approved-reference" as const },
+        ...(design.variants?.length
+          ? {
+              variants: design.variants.map((variant) => {
+                const variantCard = findAsset(catalogue, variant.assetIds.card);
+                const variantPrimary = findAsset(catalogue, variant.assetIds.primaryConstruction);
+                return {
+                  id: variant.id,
+                  name: variant.name,
+                  description: variant.description,
+                  cardImage: variantCard?.status === "active"
+                    ? { state: "ready" as const, url: `/api/catalog-assets/${encodeURIComponent(variantCard.id)}` }
+                    : { state: "awaiting-approval" as const },
+                  generation: variantPrimary?.status === "active"
+                    ? { state: "ready" as const }
+                    : { state: "awaiting-approved-reference" as const },
+                };
+              }),
+            }
+          : {}),
       };
     });
   return {
@@ -94,7 +113,7 @@ export async function getLevel1CatalogueView(): Promise<Level1CatalogueView> {
   };
 }
 
-export async function resolveLevel1Design(categoryId: string, designId: string): Promise<ResolvedLevel1Design> {
+export async function resolveLevel1Design(categoryId: string, designId: string, variantId?: string): Promise<ResolvedLevel1Design> {
   const catalogue = await getLevel1Catalogue();
   const category = catalogue.categories.find((item) => item.id === categoryId);
   if (!category) throw new Level1CatalogueError("unknown_selection", "Please choose a valid curated category.");
@@ -102,16 +121,19 @@ export async function resolveLevel1Design(categoryId: string, designId: string):
   if (!design) throw new Level1CatalogueError("unknown_selection", "Please choose a valid curated design.");
   if (design.categoryId !== category.id) throw new Level1CatalogueError("category_design_mismatch", "That design does not belong to the selected category.");
   if (category.status !== "active" || design.status !== "active") throw new Level1CatalogueError("inactive_design", "This curated design is not currently available.");
-  const primaryAsset = findAsset(catalogue, design.assetIds.primaryConstruction);
+  const variant = variantId ? design.variants?.find((item) => item.id === variantId) : undefined;
+  if (variantId && !variant) throw new Level1CatalogueError("unknown_selection", "Please choose a valid design variation.");
+  const assetIds = variant?.assetIds ?? design.assetIds;
+  const primaryAsset = findAsset(catalogue, assetIds.primaryConstruction);
   if (!primaryAsset || primaryAsset.status !== "active" || !primaryAsset.privatePath || !primaryAsset.contentType) {
     throw new Level1CatalogueError("asset_pending", "This design is awaiting its approved catalogue reference and cannot be generated yet.");
   }
-  const detailAssets = design.assetIds.details
+  const detailAssets = assetIds.details
     .map((assetId) => findAsset(catalogue, assetId))
     .filter((asset): asset is CuratedAsset => Boolean(asset && asset.status === "active" && asset.privatePath && asset.contentType))
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .slice(0, Math.max(0, design.generation.maximumReferenceImages - 1));
-  return { category, design, primaryAsset, detailAssets };
+    .slice(0, Math.max(0, (variant?.maximumReferenceImages ?? design.generation.maximumReferenceImages) - 1));
+  return { category, design, ...(variant ? { variant } : {}), primaryAsset, detailAssets };
 }
 
 export async function getActiveLevel1Asset(assetId: string) {
