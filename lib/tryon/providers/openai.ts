@@ -1,7 +1,6 @@
-import { toFile } from "openai";
 import { createOpenAIClient } from "@/lib/openai";
 import type { TryOnInput, TryOnOutput, TryOnProvider } from "@/lib/tryon/types";
-import { detectImageDimensions } from "@/lib/validation";
+import { detectImageDimensions, type SupportedImageMime } from "@/lib/validation";
 
 // Precision-first variant of OpenAI's Images 2.5 generation, released 2026-09-08.
 // Rollback pin if the unpinned alias ever regresses: "gpt-image-2.5-sunburst-2026-09-08"
@@ -39,6 +38,19 @@ function isSizeRejection(error: unknown) {
   return /size|dimension|pixel|resolution|width|height/.test(message);
 }
 
+function extensionFor(mime: SupportedImageMime) {
+  return mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+}
+
+function namedUpload(image: { file: File; mime: SupportedImageMime }, stem: string) {
+  // Keep the original bytes exactly as supplied. The wrapper only gives the
+  // multipart part a format-identifying filename and content type.
+  return new File([image.file], `${stem}.${extensionFor(image.mime)}`, {
+    type: image.mime,
+    lastModified: image.file.lastModified,
+  });
+}
+
 export class OpenAITryOnProvider implements TryOnProvider {
   constructor(
     private readonly clientFactory: typeof createOpenAIClient = createOpenAIClient,
@@ -49,18 +61,14 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const quality = DEFAULT_QUALITY;
     const client = this.clientFactory();
 
-    const [personUpload, fabricUpload, ...referenceUploads] = await Promise.all([
-      toFile(await input.person.file.arrayBuffer(), "person-reference", { type: input.person.mime }),
-      toFile(await input.fabric.file.arrayBuffer(), "fabric-reference", { type: input.fabric.mime }),
-      ...input.references.map(async ({ role, image }) => toFile(await image.file.arrayBuffer(), `${role}-blueprint`, {
-        type: image.mime,
-      })),
-    ]);
+    const personUpload = namedUpload(input.person, "person-reference");
+    const fabricUpload = namedUpload(input.fabric, "fabric-reference");
+    const referenceUploads = input.references.map(({ role, image }) => namedUpload(image, `${role}-blueprint`));
     const outfitUpload = input.outfit
-      ? await toFile(await input.outfit.file.arrayBuffer(), "outfit-style-reference", { type: input.outfit.mime })
+      ? namedUpload(input.outfit, "outfit-style-reference")
       : null;
     const lowerFabricUpload = input.lowerFabric
-      ? await toFile(await input.lowerFabric.file.arrayBuffer(), "lower-fabric-reference", { type: input.lowerFabric.mime })
+      ? namedUpload(input.lowerFabric, "lower-fabric-reference")
       : null;
     const imageInputs = outfitUpload
       ? [personUpload, outfitUpload, fabricUpload, ...referenceUploads]
@@ -69,6 +77,11 @@ export class OpenAITryOnProvider implements TryOnProvider {
         : [personUpload, fabricUpload, ...referenceUploads];
 
     const requestedSize = resolveHighResolutionCanvas(input.person.width, input.person.height);
+    console.info("try_on_provider_inputs", {
+      requestId: input.requestId,
+      model: MODEL,
+      images: imageInputs.map((image) => ({ name: image.name, type: image.type, bytes: image.size })),
+    });
     const edit = (size: string) => client.images.edit({
       model: MODEL,
       image: imageInputs,

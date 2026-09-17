@@ -357,10 +357,15 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
   assert.equal(Array.isArray(parameters.image), true);
   const images = parameters.image as File[];
   assert.equal(images.length, 4);
-  assert.equal(images[0]?.name, "person-reference");
-  assert.equal(images[1]?.name, "outfit-style-reference");
-  assert.equal(images[2]?.name, "fabric-reference");
-  assert.equal(images[3]?.name, "upper-blueprint");
+  assert.equal(images[0]?.name, "person-reference.png");
+  assert.equal(images[1]?.name, "outfit-style-reference.png");
+  assert.equal(images[2]?.name, "fabric-reference.png");
+  assert.equal(images[3]?.name, "upper-blueprint.png");
+  assert.equal(images[0]?.type, "image/png");
+  assert.deepEqual(
+    new Uint8Array(await images[0].arrayBuffer()),
+    new Uint8Array(await tinyPng("person.png").arrayBuffer()),
+  );
 });
 
 test("GPT Image provider locks every request to medium quality", async () => {
@@ -414,10 +419,10 @@ test("GPT Image 2.5 provider places separate upper and lower fabrics before cura
   assert.ok(captured);
   const images = (captured as Record<string, unknown>).image as File[];
   assert.deepEqual(images.map((image) => image.name), [
-    "person-reference",
-    "fabric-reference",
-    "lower-fabric-reference",
-    "curated-design-blueprint",
+    "person-reference.png",
+    "fabric-reference.png",
+    "lower-fabric-reference.png",
+    "curated-design-blueprint.png",
   ]);
 });
 

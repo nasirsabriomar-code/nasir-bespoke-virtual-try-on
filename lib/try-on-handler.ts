@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { CatalogCompatibilityError, validateCatalogSelection } from "@/lib/catalog/compatibility";
@@ -59,6 +60,7 @@ import {
 import {
   MAX_REQUEST_BYTES,
   UploadValidationError,
+  detectImageMime,
   validateImageFile,
 } from "@/lib/validation";
 
@@ -244,14 +246,23 @@ async function readLevel1Reference(asset: CuratedAsset, role: "curated-design" |
   if (!privateAsset || !blob || blob.statusCode !== 200 || !blob.stream) {
     throw new Level1CatalogueError("asset_unavailable", "The approved catalogue reference is temporarily unavailable. Please try again shortly.");
   }
-  const bytes = await new Response(blob.stream).arrayBuffer();
+  const bytes = new Uint8Array(await new Response(blob.stream).arrayBuffer());
   const contentType = privateAsset.asset.contentType;
   if (!contentType) throw new Level1CatalogueError("asset_unavailable", "The approved catalogue reference is temporarily unavailable. Please try again shortly.");
+  const detectedMime = detectImageMime(bytes);
+  if (detectedMime !== contentType || (blob.blob.contentType && blob.blob.contentType.split(";", 1)[0]?.toLowerCase() !== contentType)) {
+    throw new Level1CatalogueError("asset_unavailable", "The approved catalogue reference is invalid. Please contact an administrator.");
+  }
+  const file = new File([bytes], `${asset.id}.${contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg"}`, { type: contentType });
+  const validated = await validateImageFile(file, "the approved catalogue reference");
+  if (asset.checksum && createHash("sha256").update(bytes).digest("hex") !== asset.checksum) {
+    throw new Level1CatalogueError("asset_unavailable", "The approved catalogue reference is invalid. Please contact an administrator.");
+  }
   return {
     role,
     image: {
-      file: new File([bytes], `${asset.id}.${contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg"}`, { type: contentType }),
-      mime: contentType,
+      file: validated.file,
+      mime: validated.mime,
     },
   };
 }
@@ -262,7 +273,9 @@ function safeProviderError(error: unknown) {
     errorName: error instanceof Error ? error.name : "UnknownError",
     status: typeof record?.status === "number" ? record.status : undefined,
     code: typeof record?.code === "string" ? record.code : undefined,
-    providerRequestId: typeof record?.request_id === "string" ? record.request_id : undefined,
+    providerRequestId: typeof record?.requestID === "string"
+      ? record.requestID
+      : typeof record?.request_id === "string" ? record.request_id : undefined,
   };
 }
 
