@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { GenerationState } from "@/components/GenerationState";
 import { ImageUpload } from "@/components/ImageUpload";
 import { Level1Catalogue } from "@/components/Level1Catalogue";
@@ -26,11 +27,8 @@ type TryOnAppProps = {
   displayName: string;
 };
 
-const MAX_CLIENT_FILE_SIZE = 15 * 1024 * 1024;
-const MAX_API_FILE_SIZE = 1_250_000;
-const MAX_IMAGE_EDGE = 2400;
+const MAX_CLIENT_FILE_SIZE = 50 * 1024 * 1024;
 const DIRECT_UPLOAD_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const HEIC_TYPES = new Set(["image/heic", "image/heif"]);
 
 const UPLOAD_HELP = {
   person: {
@@ -63,85 +61,35 @@ function isLevel1CatalogueView(value: unknown): value is Level1CatalogueView {
   return Array.isArray(value.categories) && Array.isArray(value.designs);
 }
 
-function hasHeicExtension(file: File) {
-  return /\.(heic|heif)$/i.test(file.name);
-}
-
-function hasSupportedExtension(file: File) {
-  return /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
-}
-
-async function decodeImage(file: File) {
-  try {
-    const bitmap = await createImageBitmap(file);
-    return {
-      width: bitmap.width,
-      height: bitmap.height,
-      draw: (context: CanvasRenderingContext2D, width: number, height: number) => context.drawImage(bitmap, 0, 0, width, height),
-      close: () => bitmap.close(),
-    };
-  } catch {
-    const sourceUrl = URL.createObjectURL(file);
-    const image = new Image();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("Image decode failed"));
-        image.src = sourceUrl;
-      });
-      return {
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-        draw: (context: CanvasRenderingContext2D, width: number, height: number) => context.drawImage(image, 0, 0, width, height),
-        close: () => URL.revokeObjectURL(sourceUrl),
-      };
-    } catch {
-      URL.revokeObjectURL(sourceUrl);
-      throw new Error("We couldn't prepare this photo. Please choose another image.");
-    }
-  }
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
-  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
-}
-
-async function optimizeForUpload(file: File): Promise<File> {
-  if (file.size <= MAX_API_FILE_SIZE && !HEIC_TYPES.has(file.type.toLowerCase()) && !hasHeicExtension(file)) return file;
-
-  const source = await decodeImage(file);
-  try {
-    let scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(source.width, source.height));
-    for (let sizeAttempt = 0; sizeAttempt < 5; sizeAttempt += 1) {
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(source.width * scale));
-      canvas.height = Math.max(1, Math.round(source.height * scale));
-      const context = canvas.getContext("2d");
-      if (!context) break;
-      source.draw(context, canvas.width, canvas.height);
-      for (const quality of [0.9, 0.82, 0.74, 0.66]) {
-        const webp = await canvasToBlob(canvas, "image/webp", quality);
-        const blob = webp?.type === "image/webp" ? webp : await canvasToBlob(canvas, "image/jpeg", quality);
-        if (blob && blob.size <= MAX_API_FILE_SIZE) {
-          const extension = blob.type === "image/webp" ? "webp" : "jpg";
-          return new File([blob], file.name.replace(/\.[^.]+$/, `.${extension}`), { type: blob.type, lastModified: file.lastModified });
-        }
-      }
-      scale *= 0.82;
-    }
-  } finally {
-    source.close();
-  }
-  throw new Error("We couldn't reduce this image safely. Please choose a smaller photo.");
-}
-
 async function prepareImage(file: File): Promise<File> {
-  if (file.size > MAX_CLIENT_FILE_SIZE) throw new Error("This image is too large. Please choose an image under 15 MB.");
-  const isHeic = HEIC_TYPES.has(file.type.toLowerCase()) || hasHeicExtension(file);
-  if (!isHeic && !DIRECT_UPLOAD_TYPES.has(file.type.toLowerCase()) && !hasSupportedExtension(file)) {
-    throw new Error("Please upload a JPG, PNG, WebP, or HEIC image.");
+  if (file.size > MAX_CLIENT_FILE_SIZE) throw new Error("This image is too large. Please choose an image under 50 MB.");
+  if (!DIRECT_UPLOAD_TYPES.has(file.type.toLowerCase())) {
+    throw new Error("Please upload a JPG, PNG, or WebP image. HEIC photos must be exported first to preserve the original model input.");
   }
-  return optimizeForUpload(file);
+  return file;
+}
+
+type UploadSlotResponse = { id: string; pathname: string };
+type GenerationResponse = { generationId: string; resultUrl: string; originalUrl: string; metadata?: { reportedSize?: string; outputWidth?: number; outputHeight?: number } };
+
+async function uploadOriginal(role: UploadRole, file: File, onProgress: (progress: number) => void) {
+  const slotResponse = await fetch("/api/try-on/uploads", {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role, filename: file.name, contentType: file.type, bytes: file.size }),
+  });
+  const slotPayload = await slotResponse.json().catch(() => ({})) as UploadSlotResponse & { error?: string };
+  if (!slotResponse.ok || !slotPayload.id || !slotPayload.pathname) throw new Error(slotPayload.error || "We couldn't prepare this upload.");
+  await upload(slotPayload.pathname, file, {
+    access: "private", handleUploadUrl: `/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}`,
+    multipart: file.size > 5 * 1024 * 1024,
+    onUploadProgress: ({ percentage }) => onProgress(Math.round(percentage)),
+  });
+  const completeResponse = await fetch(`/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}/complete`, {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
+  });
+  const completePayload = await completeResponse.json().catch(() => ({})) as { error?: string };
+  if (!completeResponse.ok) throw new Error(completePayload.error || "We couldn't validate this upload.");
+  return slotPayload.id;
 }
 
 function getClientDeviceHint() {
@@ -167,8 +115,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [designVariantId, setDesignVariantId] = useState<string | null>(null);
   const [fabricRegion, setFabricRegion] = useState<FabricRegion>("both");
   const [reuseFabricForLower, setReuseFabricForLower] = useState(false);
-  const [quality, setQuality] = useState<"low" | "medium" | "high" | "max" | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [originalResultUrl, setOriginalResultUrl] = useState<string | null>(null);
+  const [outputSize, setOutputSize] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const objectUrls = useRef(new Set<string>());
@@ -223,6 +173,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       revokeUrl(current);
       return null;
     });
+    setOriginalResultUrl(null);
+    setOutputSize(null);
   }, [revokeUrl]);
 
   const selectedDesign = useMemo(
@@ -307,26 +259,27 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
 
     let timeout: number | null = null;
     try {
-      const formData = new FormData();
-      formData.set("selectionMode", "level1");
-      formData.set("categoryId", categoryId);
-      formData.set("designId", selectedDesign.id);
-      if (designVariantId) formData.set("variantId", designVariantId);
-      formData.set("fabricRegion", isJacketCategory ? "jacket" : fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion);
-      if (quality) formData.set("quality", quality);
-      formData.set("person", person.file);
-      formData.set("fabric", fabric.file);
-      if (fabricRegion === "custom" && !reuseFabricForLower && lowerFabric) formData.set("lowerFabric", lowerFabric.file);
-
       const idempotencyKey = crypto.randomUUID();
       generationKeyRef.current = idempotencyKey;
       const controller = new AbortController();
-      timeout = window.setTimeout(() => controller.abort(), 165_000);
+      timeout = window.setTimeout(() => controller.abort(), 285_000);
+      setUploadProgress(0);
+      const personUpload = await uploadOriginal("person", person.file, setUploadProgress);
+      const fabricUpload = await uploadOriginal("fabric", fabric.file, setUploadProgress);
+      const lowerFabricUpload = fabricRegion === "custom" && !reuseFabricForLower && lowerFabric
+        ? await uploadOriginal("lowerFabric", lowerFabric.file, setUploadProgress)
+        : undefined;
+      setUploadProgress(100);
       const response = await fetch("/api/try-on", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
-        body: formData,
+        headers: { "Content-Type": "application/json", "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({
+          selectionMode: "level1", categoryId, designId: selectedDesign.id,
+          ...(designVariantId ? { variantId: designVariantId } : {}),
+          fabricRegion: isJacketCategory ? "jacket" : fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion,
+          uploads: { person: personUpload, fabric: fabricUpload, ...(lowerFabricUpload ? { lowerFabric: lowerFabricUpload } : {}) },
+        }),
         signal: controller.signal,
       });
       window.clearTimeout(timeout);
@@ -339,14 +292,16 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         const payload: unknown = await response.json().catch(() => ({}));
         throw new Error(readResponseError(payload, "We couldn't create the try-on. Please try again."));
       }
-      const image = await response.blob();
-      if (!image.type.startsWith("image/")) throw new Error("We couldn't create the try-on. Please try again.");
-      const nextResultUrl = URL.createObjectURL(image);
-      objectUrls.current.add(nextResultUrl);
-      setResultUrl((current) => {
-        revokeUrl(current);
+      const payload = await response.json().catch(() => ({})) as GenerationResponse;
+      if (!payload.resultUrl || !payload.originalUrl) throw new Error("We couldn't create the try-on. Please try again.");
+      const nextResultUrl = payload.resultUrl;
+      setResultUrl(() => {
         return nextResultUrl;
       });
+      setOriginalResultUrl(payload.originalUrl);
+      setOutputSize(payload.metadata?.outputWidth && payload.metadata?.outputHeight
+        ? `${payload.metadata.outputWidth}×${payload.metadata.outputHeight}`
+        : payload.metadata?.reportedSize ?? null);
     } catch (generationError: unknown) {
       setError(
         generationError instanceof DOMException && generationError.name === "AbortError"
@@ -358,9 +313,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     } finally {
       if (timeout !== null) window.clearTimeout(timeout);
       generationKeyRef.current = null;
+      setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, person, quality, reuseFabricForLower, revokeUrl, selectedDesign, selectedReferenceReady]);
+  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, person, reuseFabricForLower, selectedDesign, selectedReferenceReady]);
 
   const startOver = useCallback(() => {
     setError(null);
@@ -369,7 +325,6 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     setDesignVariantId(null);
     setFabricRegion(isJacketCategory ? "jacket" : "both");
     setReuseFabricForLower(false);
-    setQuality(null);
     setPerson((current) => {
       revokeUrl(current?.previewUrl);
       return null;
@@ -522,58 +477,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             <span>Use upper fabric for lower garment too</span>
           </label>
         ) : null}
-        <details className="style-picker">
-          <summary>
-            <span>Advanced</span>
-            <span>{quality ? `${quality[0].toUpperCase()}${quality.slice(1)} quality` : "Default quality"}</span>
-          </summary>
-          <div
-            className="comparison-toggle"
-            role="radiogroup"
-            aria-label="Generation quality"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={quality === "low"}
-              className={quality === "low" ? "is-active" : ""}
-              onClick={() => setQuality("low")}
-              disabled={isGenerating}
-            >
-              Low
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={quality === "medium"}
-              className={quality === "medium" ? "is-active" : ""}
-              onClick={() => setQuality("medium")}
-              disabled={isGenerating}
-            >
-              Medium
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={quality === "high"}
-              className={quality === "high" ? "is-active" : ""}
-              onClick={() => setQuality("high")}
-              disabled={isGenerating}
-            >
-              High
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={quality === "max"}
-              className={quality === "max" ? "is-active" : ""}
-              onClick={() => setQuality("max")}
-              disabled={isGenerating}
-            >
-              Max
-            </button>
-          </div>
-        </details>
+        <p className="privacy-note">Studio quality: medium effort · full-resolution originals · private PNG master.</p>
       </section>
 
       {splitOutfitEnabled ? (
@@ -663,12 +567,15 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       )}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
+      {uploadProgress !== null ? <p className="privacy-note" role="status">Preserving original quality… {uploadProgress}% uploaded.</p> : null}
+
       {isGenerating ? <GenerationState /> : null}
 
-      {resultUrl && person ? (
+      {resultUrl && originalResultUrl ? (
         <TryOnResult
           resultUrl={resultUrl}
-          originalUrl={person.previewUrl}
+          originalUrl={originalResultUrl}
+          outputSize={outputSize ?? undefined}
           summary={{
             garment: selectedDesign?.name ?? "Curated Suit",
             fabric: "Uploaded fabric",

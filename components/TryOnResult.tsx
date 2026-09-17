@@ -5,6 +5,7 @@ import { useState } from "react";
 type TryOnResultProps = {
   resultUrl: string;
   originalUrl: string;
+  outputSize?: string;
   summary: {
     garment: string;
     lower?: string;
@@ -20,6 +21,7 @@ type TryOnResultProps = {
 export function TryOnResult({
   resultUrl,
   originalUrl,
+  outputSize,
   summary,
   onRegenerate,
   onReset,
@@ -27,7 +29,7 @@ export function TryOnResult({
 }: TryOnResultProps) {
   const [view, setView] = useState<"original" | "result">("result");
   const [filename] = useState(
-    () => `nasir-bespoke-try-on-${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`,
+    () => `nasir-bespoke-try-on-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
   );
 
   return (
@@ -72,6 +74,7 @@ export function TryOnResult({
         <div><dt>Fabric</dt><dd>{summary.fabric}</dd></div>
         <div><dt>Turban</dt><dd>{summary.turban}</dd></div>
         <div><dt>Shoes</dt><dd>{summary.shoes}</dd></div>
+        {outputSize ? <div><dt>Master</dt><dd>{outputSize} PNG</dd></div> : null}
       </dl>
 
       <div className="result-actions">

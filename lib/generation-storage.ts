@@ -1,6 +1,8 @@
 import "server-only";
 
-import { del, get, put } from "@vercel/blob";
+import { createHash } from "node:crypto";
+import { del, get, issueSignedToken, presignUrl, put } from "@vercel/blob";
+import { detectImageDimensions } from "@/lib/validation";
 
 const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
@@ -9,6 +11,10 @@ export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric"
 export type GenerationAssetRefs = Partial<Record<GenerationAssetKey, {
   pathname: string;
   contentType: string;
+  bytes?: number;
+  checksum?: string;
+  width?: number;
+  height?: number;
 }>>;
 
 export type GenerationAssetInput = {
@@ -39,12 +45,18 @@ function getBlobToken() {
   return token;
 }
 
-function pathname(generationId: string, asset: GenerationAssetKey) {
-  return `nasir-bespoke/generations/${generationId}/${asset}.jpg`;
+function extensionFor(contentType: string) {
+  return contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
 }
 
-export function isGenerationAssetPath(path: string, generationId: string, asset: GenerationAssetKey) {
-  return path === pathname(generationId, asset);
+function pathname(generationId: string, asset: GenerationAssetKey, contentType = "image/jpeg") {
+  return `nasir-bespoke/generations/${generationId}/${asset}.${extensionFor(contentType)}`;
+}
+
+export function isGenerationAssetPath(path: string, generationId: string, asset: GenerationAssetKey, contentType?: string) {
+  return contentType
+    ? path === pathname(generationId, asset, contentType)
+    : /^nasir-bespoke\/generations\/[0-9a-f-]{36}\/[a-z0-9-]+\.(jpg|png|webp)$/i.test(path) && path.startsWith(`nasir-bespoke/generations/${generationId}/${asset}.`);
 }
 
 async function putPrivate(path: string, body: Blob, contentType: string, token: string) {
@@ -56,6 +68,19 @@ async function putPrivate(path: string, body: Blob, contentType: string, token: 
     contentType,
     cacheControlMaxAge: 0,
   });
+}
+
+async function describeAsset(body: Blob, contentType: string) {
+  const bytes = new Uint8Array(await body.arrayBuffer());
+  const mime = contentType === "image/png" || contentType === "image/webp" || contentType === "image/jpeg"
+    ? contentType
+    : undefined;
+  const dimensions = mime ? detectImageDimensions(bytes.subarray(0, 512 * 1024), mime) : null;
+  return {
+    bytes: bytes.byteLength,
+    checksum: createHash("sha256").update(bytes).digest("hex"),
+    ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+  };
 }
 
 export async function storeGenerationAssets(input: GenerationAssetInput): Promise<GenerationAssetRefs | null> {
@@ -74,10 +99,11 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
     ];
     const refs: GenerationAssetRefs = {};
     for (const [asset, body, contentType] of entries) {
-      const path = pathname(input.generationId, asset);
+      const path = pathname(input.generationId, asset, contentType);
+      const metadata = await describeAsset(body, contentType);
       await putPrivate(path, body, contentType, token);
       uploaded.push(path);
-      refs[asset] = { pathname: path, contentType };
+      refs[asset] = { pathname: path, contentType, ...metadata };
     }
     return refs;
   } catch (error) {
@@ -90,4 +116,12 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
 export async function getPrivateGenerationAsset(path: string) {
   const token = getBlobToken();
   return get(path, { access: "private", token });
+}
+
+export async function getPrivateGenerationAssetUrl(path: string) {
+  const token = getBlobToken();
+  const validUntil = Date.now() + 5 * 60_000;
+  const signedToken = await issueSignedToken({ token, pathname: path, operations: ["get"], validUntil });
+  const result = await presignUrl(signedToken, { access: "private", pathname: path, operation: "get", validUntil });
+  return result.presignedUrl;
 }

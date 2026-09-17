@@ -18,7 +18,7 @@ function headers() {
 
 function tinyPng(name: string) {
   return new File(
-    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])],
+    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1])],
     name,
     { type: "image/png" },
   );
@@ -167,7 +167,7 @@ test("Level 1 rejects prompt injection, reference paths, and category/design mis
   assert.equal(mismatch.status, 400);
 });
 
-test("Level 1 accepts a valid quality override and passes it through to generation, and omitting it succeeds with the default", async () => {
+test("Level 1 rejects quality overrides and keeps Studio quality fixed at medium", async () => {
   let generatedInput: TryOnInput | undefined;
   const withOverride = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
     method: "POST",
@@ -183,8 +183,8 @@ test("Level 1 accepts a valid quality override and passes it through to generati
       return { bytes: Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), contentType: "image/jpeg", metadata: { provider: "test", model: "gpt-image-2.5-sunburst", quality: "high", durationMs: 1 } };
     },
   });
-  assert.equal(withOverride.status, 200);
-  assert.equal(generatedInput?.quality, "high");
+  assert.equal(withOverride.status, 400);
+  assert.equal(generatedInput, undefined);
 
   let generatedInputNoOverride: TryOnInput | undefined;
   const withoutOverride = await handleTryOnRequest(new Request("http://localhost/api/try-on", {

@@ -7,7 +7,7 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "img-src 'self' blob: data:",
+  "img-src 'self' blob: data: https://*.private.blob.vercel-storage.com",
   "media-src 'none'",
   "object-src 'none'",
   `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,

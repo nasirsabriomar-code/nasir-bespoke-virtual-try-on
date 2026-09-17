@@ -62,7 +62,7 @@ function sameOriginHeaders(extra: Record<string, string> = {}) {
 
 function tinyPng(name: string) {
   return new File(
-    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])],
+    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1])],
     name,
     { type: "image/png" },
   );
@@ -326,7 +326,7 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
     images: {
       edit: async (parameters: Record<string, unknown>) => {
         captured = parameters;
-        return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64") }] };
+        return { data: [{ b64_json: Buffer.from(await tinyPng("result.png").arrayBuffer()).toString("base64") }] };
       },
     },
   };
@@ -351,9 +351,8 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
   const parameters = captured as Record<string, unknown>;
   assert.equal(parameters.model, "gpt-image-2.5-sunburst");
   assert.equal(parameters.quality, "medium");
-  assert.equal(parameters.size, "auto");
-  assert.equal(parameters.output_format, "jpeg");
-  assert.equal(parameters.output_compression, 90);
+  assert.equal(parameters.output_format, "png");
+  assert.equal(parameters.output_compression, undefined);
   assert.equal("input_fidelity" in parameters, false);
   assert.equal(Array.isArray(parameters.image), true);
   const images = parameters.image as File[];
@@ -364,13 +363,13 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
   assert.equal(images[3]?.name, "upper-blueprint");
 });
 
-test("GPT Image provider honours a per-request quality override", async () => {
+test("GPT Image provider locks every request to medium quality", async () => {
   let captured: Record<string, unknown> | null = null;
   const fakeClient = {
     images: {
       edit: async (parameters: Record<string, unknown>) => {
         captured = parameters;
-        return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64") }] };
+        return { data: [{ b64_json: Buffer.from(await tinyPng("result.png").arrayBuffer()).toString("base64") }] };
       },
     },
   };
@@ -387,8 +386,8 @@ test("GPT Image provider honours a per-request quality override", async () => {
 
   assert.ok(captured);
   const parameters = captured as Record<string, unknown>;
-  assert.equal(parameters.quality, "high");
-  assert.equal(result.metadata.quality, "high");
+  assert.equal(parameters.quality, "medium");
+  assert.equal(result.metadata.quality, "medium");
 });
 
 test("GPT Image 2.5 provider places separate upper and lower fabrics before curated references", async () => {
@@ -397,7 +396,7 @@ test("GPT Image 2.5 provider places separate upper and lower fabrics before cura
     images: {
       edit: async (parameters: Record<string, unknown>) => {
         captured = parameters;
-        return { data: [{ b64_json: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64") }] };
+        return { data: [{ b64_json: Buffer.from(await tinyPng("result.png").arrayBuffer()).toString("base64") }] };
       },
     },
   };

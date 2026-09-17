@@ -319,6 +319,30 @@ export async function getUsageHistory(limit = 100): Promise<UsageHistory> {
   };
 }
 
+// Administrative migration helper. The staff API intentionally pages at 100,
+// while a one-time permanent-history migration must see every retained Redis
+// record.
+export async function getAllUsageHistoryForMigration(): Promise<UsageHistory> {
+  const retained = maxEvents();
+  const redis = getRedis();
+  if (redis) {
+    const [rawEvents, total] = await Promise.all([
+      redis.lrange<string>(HISTORY_KEY, 0, retained - 1),
+      redis.get<number>(HISTORY_TOTAL_KEY),
+    ]);
+    return {
+      events: rawEvents.map(parseEvent).filter((event): event is UsageEvent => Boolean(event)),
+      total: typeof total === "number" ? total : 0,
+      retained,
+    };
+  }
+  return {
+    events: memoryHistory.events.map(parseEvent).filter((event): event is UsageEvent => Boolean(event)),
+    total: memoryHistory.total,
+    retained,
+  };
+}
+
 export async function getUsageEvent(id: string) {
   const history = await getUsageHistory(maxEvents());
   return history.events.find((event) => event.id === id) ?? null;

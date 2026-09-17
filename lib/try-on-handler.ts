@@ -38,6 +38,19 @@ import {
 } from "@/lib/bespoke/engine";
 import { storeGenerationAssets, type GenerationAssetRefs } from "@/lib/generation-storage";
 import {
+  consumeUploadSlots,
+  isPermanentHistoryConfigured,
+  persistPermanentGeneration,
+  type UploadRole,
+} from "@/lib/highres/ledger";
+import {
+  HighResolutionUploadError,
+  assertHighResolutionStorage,
+  removeConsumedUploadObjects,
+  requiredRolesForRequest,
+  uploadSlotToFile,
+} from "@/lib/highres/uploads";
+import {
   getRequestDevice,
   recordUsageEvent,
   type UsageEvent,
@@ -96,6 +109,18 @@ function imageResultResponse(bytes: Uint8Array, contentType: string, extraHeader
   });
 }
 
+function generationResultResponse(generationId: string, metadata?: TryOnOutput["metadata"], extraHeaders?: HeadersInit) {
+  return Response.json({
+    generationId,
+    resultUrl: `/api/history/${encodeURIComponent(generationId)}/asset/result`,
+    originalUrl: `/api/history/${encodeURIComponent(generationId)}/asset/person`,
+    metadata,
+  }, {
+    status: 200,
+    headers: { ...JSON_HEADERS, ...extraHeaders },
+  });
+}
+
 async function replayOrBlockIdempotency(username: string, key: string) {
   const decision = await resolveIdempotencyForRequest(username, key);
   if (decision.kind === "replay") return replayIdempotentResult(decision.record);
@@ -105,8 +130,9 @@ async function replayOrBlockIdempotency(username: string, key: string) {
   return null;
 }
 
-function replayIdempotentResult(record: Extract<IdempotencyRecord, { status: "complete" } | { status: "failed" }>) {
+function replayIdempotentResult(record: Extract<IdempotencyRecord, { status: "complete" } | { status: "complete_generation" } | { status: "failed" }>) {
   if (record.status === "failed") return jsonError(record.error, record.httpStatus);
+  if (record.status === "complete_generation") return generationResultResponse(record.generationId, undefined, { "Idempotency-Replayed": "true" });
   return imageResultResponse(Uint8Array.from(Buffer.from(record.body, "base64")), record.contentType, {
     "Idempotency-Replayed": "true",
   });
@@ -253,7 +279,7 @@ async function recordUsageSafely(
 ) {
   if (!dependencies.recordUsage) return;
   try {
-    await dependencies.recordUsage({
+    const event: UsageEvent = {
       id: requestId,
       occurredAt: new Date().toISOString(),
       username,
@@ -265,7 +291,11 @@ async function recordUsageSafely(
       quality: metadata?.quality ?? "medium",
       generation,
       assets,
-    });
+    };
+    await dependencies.recordUsage(event);
+    // Redis remains the fast guard/rate-limit store. Every completed generation
+    // is also written to the permanent ledger when Neon is configured.
+    await persistPermanentGeneration(event);
   } catch (error) {
     // Usage history must never make a try-on fail after the model has run.
     console.error("try_on_usage_history_failed", {
@@ -275,11 +305,104 @@ async function recordUsageSafely(
   }
 }
 
+const HIGHRES_TEXT_FIELDS = [
+  "selectionMode", "upperGarmentId", "lowerGarmentId", "garmentSubtypeId",
+  "upperStyleId", "lowerStyleId", "turbanStyleId", "shoeStyleId", "turbanId", "shoeId",
+  "bespokeConfiguration", "categoryId", "designId", "variantId", "fabricRegion",
+] as const;
+
+type HighResolutionRequest = {
+  uploads?: Partial<Record<UploadRole, string>>;
+  [key: string]: unknown;
+};
+
+async function handleHighResolutionRequest(
+  request: Request,
+  dependencies: RouteDependencies,
+): Promise<Response> {
+  if (!isSameOriginRequest(request)) return jsonError("This request was blocked. Please refresh and try again.", 403);
+  let user;
+  try {
+    user = await dependencies.authenticate(request);
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) return jsonError("Authentication is not configured.", 503);
+    throw error;
+  }
+  if (!user) return jsonError("Your session has expired. Please sign in again.", 401);
+  try {
+    const existingKey = parseIdempotencyKey(request);
+    if (existingKey === "") return jsonError("Invalid idempotency key.", 400);
+    if (existingKey) {
+      const replay = await replayOrBlockIdempotency(user.username, existingKey);
+      if (replay) return replay;
+    }
+    assertHighResolutionStorage();
+    if (process.env.NODE_ENV === "production" && !isPermanentHistoryConfigured()) {
+      return jsonError("Permanent generation history is not configured.", 503);
+    }
+    const body = await request.json() as HighResolutionRequest;
+    const uploads = body.uploads;
+    if (!uploads || typeof uploads !== "object" || Array.isArray(uploads) || "quality" in body) {
+      return jsonError("Please upload your images again and use the fixed medium-quality studio pipeline.", 400);
+    }
+    const mode = typeof body.selectionMode === "string" ? body.selectionMode : undefined;
+    const ids: Partial<Record<UploadRole, string>> = {};
+    for (const role of ["person", "fabric", "lowerFabric", "outfit"] as const) {
+      const value = uploads[role];
+      if (value !== undefined && (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value))) return jsonError("An uploaded image reference is invalid.", 400);
+      if (typeof value === "string") ids[role] = value;
+    }
+    const required = requiredRolesForRequest(mode, Boolean(ids.outfit), Boolean(ids.lowerFabric));
+    if (required.some((role) => !ids[role])) return jsonError("Please upload the required person, fabric, and outfit images.", 400);
+    const slots = await consumeUploadSlots(user.username, required.map((role) => ids[role] as string));
+    if (!slots) return jsonError("One or more upload sessions expired or were already used. Please upload the images again.", 409);
+    const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
+    if (required.some((role) => !slotByRole.has(role))) return jsonError("Uploaded images did not match the requested roles.", 400);
+    const [person, fabric, outfit, lowerFabric] = await Promise.all([
+      uploadSlotToFile(slotByRole.get("person")!),
+      uploadSlotToFile(slotByRole.get("fabric")!),
+      slotByRole.get("outfit") ? uploadSlotToFile(slotByRole.get("outfit")!) : Promise.resolve(undefined),
+      slotByRole.get("lowerFabric") ? uploadSlotToFile(slotByRole.get("lowerFabric")!) : Promise.resolve(undefined),
+    ]);
+    const formData = new FormData();
+    for (const field of HIGHRES_TEXT_FIELDS) {
+      const value = body[field];
+      if (value !== undefined) {
+        if (typeof value !== "string") return jsonError("The try-on selection is invalid.", 400);
+        formData.set(field, value);
+      }
+    }
+    formData.set("person", person.file);
+    formData.set("fabric", fabric.file);
+    if (outfit) formData.set("outfit", outfit.file);
+    if (lowerFabric) formData.set("lowerFabric", lowerFabric.file);
+    const headers = new Headers(request.headers);
+    headers.delete("content-type");
+    headers.delete("content-length");
+    headers.set("X-Nasir-High-Resolution", "1");
+    const response = await handleTryOnRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies);
+    // The permanent generation copy is written before success is returned. The
+    // short-lived direct-upload object is no longer needed afterwards.
+    if (response.ok) await removeConsumedUploadObjects(slots);
+    return response;
+  } catch (error) {
+    if (error instanceof HighResolutionUploadError) return jsonError(error.message, error.status);
+    if (error instanceof UploadValidationError) return jsonError(error.message, error.code === "file_too_large" ? 413 : 400);
+    if (error instanceof AuthConfigurationError) return jsonError("Authentication is not configured.", 503);
+    console.error("highres_tryon_prepare_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
+    return jsonError("We couldn't prepare the full-resolution images. Please upload them again.", 400);
+  }
+}
+
 export async function handleTryOnRequest(
   request: Request,
   dependencies: RouteDependencies = DEFAULT_DEPENDENCIES,
-) {
+): Promise<Response> {
+  if ((request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) {
+    return handleHighResolutionRequest(request, dependencies);
+  }
   const requestId = crypto.randomUUID();
+  const highResolution = request.headers.get("x-nasir-high-resolution") === "1";
 
   if (!isSameOriginRequest(request)) {
     return jsonError("This request was blocked. Please refresh and try again.", 403);
@@ -404,10 +527,10 @@ export async function handleTryOnRequest(
     }
 
     const qualityValue = getExactlyOneText(formData, "quality", false);
-    if (qualityValue === null || (qualityValue && !["low", "medium", "high", "max"].includes(qualityValue))) {
-      return jsonError("Please choose a valid quality: low, medium, high, or max.", 400, rateHeaders);
+    if (qualityValue === null || (qualityValue && qualityValue !== "medium")) {
+      return jsonError("Studio try-ons use the fixed medium quality setting.", 400, rateHeaders);
     }
-    const quality = (qualityValue ?? undefined) as EffortQuality | undefined;
+    const quality = undefined as EffortQuality | undefined;
 
     const [person, outfit, fabric] = await Promise.all([
       validateImageFile(personFile, "a person photo"),
@@ -607,6 +730,9 @@ export async function handleTryOnRequest(
         errorName: storageError instanceof Error ? storageError.name : "UnknownError",
       });
     }
+    if (highResolution && !assets?.result) {
+      throw new HighResolutionUploadError("We couldn't save the full-resolution master. Please try again.", 503);
+    }
     await recordUsageSafely(
       dependencies,
       request,
@@ -652,11 +778,13 @@ export async function handleTryOnRequest(
 
     if (idempotencyKey) {
       try {
-        await writeIdempotencyRecord(user.username, idempotencyKey, {
-          status: "complete",
-          contentType: result.contentType,
-          body: Buffer.from(result.bytes).toString("base64"),
-        });
+        await writeIdempotencyRecord(user.username, idempotencyKey, highResolution
+          ? { status: "complete_generation", generationId: requestId }
+          : {
+            status: "complete",
+            contentType: result.contentType,
+            body: Buffer.from(result.bytes).toString("base64"),
+          });
       } catch (error) {
         // The paid call already succeeded. Do not turn a store failure into a
         // client retry that would mint a new key and bill again.
@@ -665,7 +793,9 @@ export async function handleTryOnRequest(
       }
     }
 
-    return imageResultResponse(result.bytes, result.contentType, rateHeaders);
+    return highResolution
+      ? generationResultResponse(requestId, result.metadata, rateHeaders)
+      : imageResultResponse(result.bytes, result.contentType, rateHeaders);
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     if (generationAttempted) {

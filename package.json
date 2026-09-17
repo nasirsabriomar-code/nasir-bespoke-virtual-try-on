@@ -20,10 +20,12 @@
     "auth:create-user": "node scripts/hash-password.mjs",
     "db:migrate:catalog:level1": "node --import=tsx scripts/migrate-level1-catalogue.mjs",
     "db:migrate:catalog:full": "node --import=tsx scripts/migrate-level1-full-catalog.mjs",
+    "db:migrate:history": "node --import=tsx scripts/migrate-permanent-history.mts",
     "lint": "eslint app components lib tests scripts",
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",
     "@vercel/blob": "^2.8.0",

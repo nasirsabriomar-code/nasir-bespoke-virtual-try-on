@@ -1,0 +1,75 @@
+import "server-only";
+
+import { createHash } from "node:crypto";
+import { del, get } from "@vercel/blob";
+import { isGenerationStorageConfigured } from "@/lib/generation-storage";
+import { validateImageFile } from "@/lib/validation";
+import {
+  type UploadRole,
+  type UploadSlot,
+  getUploadSlot,
+  markUploadComplete,
+} from "@/lib/highres/ledger";
+
+const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
+
+export class HighResolutionUploadError extends Error {
+  constructor(message: string, public readonly status = 400) {
+    super(message);
+    this.name = "HighResolutionUploadError";
+  }
+}
+
+function blobToken() {
+  const token = process.env[BLOB_TOKEN_ENV]?.trim();
+  if (!token) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
+  return token;
+}
+
+export function assertHighResolutionStorage() {
+  if (!isGenerationStorageConfigured()) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
+}
+
+function extension(type: string) {
+  return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+}
+
+async function readSlotBlob(slot: UploadSlot) {
+  const response = await get(slot.pathname, { access: "private", token: blobToken() });
+  if (!response || response.statusCode !== 200 || !response.stream) throw new HighResolutionUploadError("The uploaded image is unavailable. Please upload it again.", 404);
+  const bytes = new Uint8Array(await new Response(response.stream).arrayBuffer());
+  return { bytes, contentType: response.blob.contentType || slot.contentType };
+}
+
+export async function completeUploadForUser(username: string, id: string) {
+  const slot = await getUploadSlot(id);
+  if (!slot || slot.username !== username) throw new HighResolutionUploadError("Upload not found.", 404);
+  if (slot.status === "consumed") throw new HighResolutionUploadError("This upload has already been used. Please choose the image again.", 409);
+  if (new Date(slot.expiresAt).getTime() < Date.now()) throw new HighResolutionUploadError("This upload session expired. Please choose the image again.", 410);
+  const { bytes, contentType } = await readSlotBlob(slot);
+  if (bytes.byteLength !== slot.bytes) throw new HighResolutionUploadError("The uploaded image size did not match the approved upload.", 400);
+  const file = new File([bytes], `${slot.role}.${extension(contentType)}`, { type: contentType });
+  const validated = await validateImageFile(file, "an uploaded image");
+  if (validated.mime !== slot.contentType) throw new HighResolutionUploadError("The uploaded image type did not match the approved upload.", 400);
+  const checksum = createHash("sha256").update(bytes).digest("hex");
+  const completed = await markUploadComplete(id, { checksum, width: validated.width, height: validated.height });
+  if (!completed) throw new HighResolutionUploadError("Upload not found.", 404);
+  return completed;
+}
+
+export async function uploadSlotToFile(slot: UploadSlot) {
+  const { bytes, contentType } = await readSlotBlob(slot);
+  const file = new File([bytes], `${slot.role}.${extension(contentType)}`, { type: contentType });
+  const validated = await validateImageFile(file, "an uploaded image");
+  const checksum = createHash("sha256").update(bytes).digest("hex");
+  if (slot.checksum && checksum !== slot.checksum) throw new HighResolutionUploadError("The uploaded image changed after validation.", 409);
+  return validated;
+}
+
+export async function removeConsumedUploadObjects(slots: UploadSlot[]) {
+  await Promise.all(slots.map((slot) => del(slot.pathname, { token: blobToken() }).catch(() => undefined)));
+}
+
+export function requiredRolesForRequest(mode: string | undefined, hasOutfit: boolean, hasLowerFabric: boolean): UploadRole[] {
+  return ["person", "fabric", ...(mode === "outfit" || hasOutfit ? ["outfit" as const] : []), ...(hasLowerFabric ? ["lowerFabric" as const] : [])];
+}

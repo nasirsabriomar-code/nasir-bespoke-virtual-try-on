@@ -61,12 +61,13 @@ export type GenerationLease = {
 export type IdempotencyRecord =
   | { status: "pending"; leaseId: string }
   | { status: "complete"; contentType: string; body: string }
+  | { status: "complete_generation"; generationId: string }
   | { status: "failed"; error: string; httpStatus: number };
 
 export type IdempotencyResolution =
   | { kind: "absent" }
   | { kind: "in_progress" }
-  | { kind: "replay"; record: Extract<IdempotencyRecord, { status: "complete" } | { status: "failed" }> };
+  | { kind: "replay"; record: Extract<IdempotencyRecord, { status: "complete" } | { status: "complete_generation" } | { status: "failed" }> };
 
 type MemoryLock = { leaseId: string; expiresAt: number };
 type MemoryIdempotency = { record: IdempotencyRecord; expiresAt: number };
@@ -168,6 +169,9 @@ function parseRecord(value: unknown): IdempotencyRecord | null {
   ) {
     return { status: "complete", contentType: record.contentType, body: record.body };
   }
+  if (record.status === "complete_generation" && typeof record.generationId === "string" && UUID_PATTERN.test(record.generationId)) {
+    return { status: "complete_generation", generationId: record.generationId };
+  }
   if (
     record.status === "failed"
     && typeof record.error === "string"
@@ -260,7 +264,7 @@ export async function resolveIdempotencyForRequest(
 ): Promise<IdempotencyResolution> {
   const existing = await readIdempotencyRecord(username, key);
   if (!existing) return { kind: "absent" };
-  if (existing.status === "complete" || existing.status === "failed") {
+  if (existing.status === "complete" || existing.status === "complete_generation" || existing.status === "failed") {
     return { kind: "replay", record: existing };
   }
 
@@ -269,7 +273,7 @@ export async function resolveIdempotencyForRequest(
   }
 
   const settled = await finalizeStalePendingRecord(username, key);
-  if (settled?.status === "complete" || settled?.status === "failed") {
+  if (settled?.status === "complete" || settled?.status === "complete_generation" || settled?.status === "failed") {
     return { kind: "replay", record: settled };
   }
   return { kind: "in_progress" };

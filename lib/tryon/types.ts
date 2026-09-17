@@ -4,8 +4,12 @@ import type { CatalogSelection, TryOnSelection } from "@/lib/catalog/types";
 export type TryOnImage = {
   file: File;
   mime: SupportedImageMime;
+  width?: number;
+  height?: number;
 };
 
+// Historical/internal request types may still carry an old quality value. The
+// Sunburst provider ignores it and always uses medium in the Studio pipeline.
 export type EffortQuality = "low" | "medium" | "high" | "max";
 
 export type TryOnInput = {
@@ -33,6 +37,10 @@ export type TryOnMetadata = {
   // not an echo of what we requested. Used to verify a quality override actually
   // changed what the provider did, not just what we asked for.
   reportedQuality?: string;
+  requestedSize?: string;
+  reportedSize?: string;
+  outputWidth?: number;
+  outputHeight?: number;
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -42,7 +50,7 @@ export type TryOnMetadata = {
 
 export type TryOnOutput = {
   bytes: Uint8Array;
-  contentType: "image/jpeg";
+  contentType: SupportedImageMime;
   metadata: TryOnMetadata;
 };
 

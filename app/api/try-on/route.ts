@@ -2,7 +2,7 @@ import { handleTryOnRequest } from "@/lib/try-on-handler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   return handleTryOnRequest(request);

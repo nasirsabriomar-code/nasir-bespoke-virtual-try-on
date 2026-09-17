@@ -114,6 +114,7 @@ export function UsageHistory() {
   );
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<HistoryEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +179,29 @@ export function UsageHistory() {
       );
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function loadMoreHistory() {
+    if (!history || isLoadingMore || history.events.length >= history.total) return;
+    setIsLoadingMore(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/history?limit=100&offset=${history.events.length}`, {
+        credentials: "same-origin", cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => ({}))) as Partial<HistoryResponse> & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Usage history is unavailable.");
+      const events = Array.isArray(payload.events) ? payload.events as HistoryEvent[] : [];
+      setHistory((current) => current ? {
+        events: [...current.events, ...events.filter((event) => !current.events.some((existing) => existing.id === event.id))],
+        total: typeof payload.total === "number" ? payload.total : current.total,
+        retained: typeof payload.retained === "number" ? payload.retained : current.retained,
+      } : current);
+    } catch (historyError) {
+      setError(historyError instanceof Error ? historyError.message : "Usage history is unavailable. Please try again.");
+    } finally {
+      setIsLoadingMore(false);
     }
   }
 
@@ -407,12 +431,17 @@ export function UsageHistory() {
                           <a
                             className="generation-details-download"
                             href={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/result`}
-                            download="nasir-bespoke-try-on.jpg"
+                            download="nasir-bespoke-try-on.png"
                           >
                             Download result
                           </a>
                         ) : null}
                       </section>
+                    ) : null}
+                    {history.events.length < history.total ? (
+                      <button type="button" className="history-button" onClick={() => void loadMoreHistory()} disabled={isLoadingMore}>
+                        {isLoadingMore ? "Loading…" : "Load earlier history"}
+                      </button>
                     ) : null}
                   </>
                 ) : null}

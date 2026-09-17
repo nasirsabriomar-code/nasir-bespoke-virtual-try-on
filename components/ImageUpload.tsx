@@ -14,7 +14,7 @@ type ImageUploadProps = {
   disabled?: boolean;
 };
 
-const ACCEPTED_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
+const ACCEPTED_IMAGES = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 
 export function ImageUpload({
   id,
@@ -154,7 +154,7 @@ export function ImageUpload({
                 Use camera
               </button>
             </div>
-            <span>or drag and drop here<br />JPG, PNG, WebP or HEIC · up to 15 MB</span>
+            <span>or drag and drop here<br />JPG, PNG, or WebP · original quality · up to 50 MB</span>
           </div>
         </div>
       )}

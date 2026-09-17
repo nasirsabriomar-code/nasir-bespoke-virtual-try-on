@@ -1,6 +1,7 @@
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { getUsageHistory, redactUsageHistoryForClient } from "@/lib/usage-history";
+import { getPermanentHistory, isPermanentHistoryConfigured } from "@/lib/highres/ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,8 +22,12 @@ export async function GET(request: Request) {
       );
     }
 
-    const rawLimit = Number.parseInt(new URL(request.url).searchParams.get("limit") ?? "100", 10);
-    const history = await getUsageHistory(rawLimit);
+    const url = new URL(request.url);
+    const rawLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+    const offset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
+    const history = isPermanentHistoryConfigured()
+      ? await getPermanentHistory(rawLimit, Number.isFinite(offset) ? Math.max(0, offset) : 0)
+      : await getUsageHistory(rawLimit);
     return Response.json(redactUsageHistoryForClient(history), { status: 200, headers: JSON_HEADERS });
   } catch (error) {
     if (error instanceof AuthConfigurationError) {
