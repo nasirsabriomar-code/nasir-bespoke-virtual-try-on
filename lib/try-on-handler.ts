@@ -878,6 +878,7 @@ export async function handleTryOnRequest(
 
     const errorMetadata = safeProviderError(error);
     const isTimeout = errorMetadata.errorName.toLowerCase().includes("timeout");
+    const isInvalidProviderImage = errorMetadata.code === "invalid_image_file";
     console.error("try_on_generation_failed", {
       requestId,
       username: user.username,
@@ -891,8 +892,10 @@ export async function handleTryOnRequest(
     return jsonError(
       isTimeout
         ? "The generation took too long. Please try again."
+        : isInvalidProviderImage
+          ? "One of the uploaded images could not be accepted by the image provider. Please use a standard JPG, PNG, or WebP image and try again."
         : "We couldn't create the try-on. Please try again.",
-      isTimeout ? 504 : 502,
+      isTimeout ? 504 : isInvalidProviderImage ? 400 : 502,
       rateHeaders,
     );
   } finally {

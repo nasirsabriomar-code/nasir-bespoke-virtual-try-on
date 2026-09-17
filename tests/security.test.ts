@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import bcrypt from "bcryptjs";
+import sharp from "sharp";
 import { POST as login } from "@/app/api/auth/login/route";
 import { POST as logout } from "@/app/api/auth/logout/route";
 import { handleTryOnRequest } from "@/lib/try-on-handler";
@@ -66,6 +67,13 @@ function tinyPng(name: string) {
     name,
     { type: "image/png" },
   );
+}
+
+async function validPng(name: string, width = 64, height = 64) {
+  const bytes = await sharp({
+    create: { width, height, channels: 3, background: { r: 35, g: 60, b: 85 } },
+  }).png().toBuffer();
+  return new File([bytes], name, { type: "image/png" });
 }
 
 test("valid credentials create a verifiable secure session and removed users are revoked", async () => {
@@ -393,6 +401,43 @@ test("GPT Image provider locks every request to medium quality", async () => {
   const parameters = captured as Record<string, unknown>;
   assert.equal(parameters.quality, "medium");
   assert.equal(result.metadata.quality, "medium");
+});
+
+test("GPT Image provider retries an invalid image response with normalized 4K-compatible inputs", async () => {
+  const attempts: Record<string, unknown>[] = [];
+  const fakeClient = {
+    images: {
+      edit: async (parameters: Record<string, unknown>) => {
+        attempts.push(parameters);
+        if (attempts.length === 1) {
+          throw Object.assign(new Error("The image file could not be decoded."), {
+            status: 400,
+            code: "invalid_image_file",
+          });
+        }
+        return { data: [{ b64_json: Buffer.from(await tinyPng("result.png").arrayBuffer()).toString("base64") }] };
+      },
+    },
+  };
+  const provider = new OpenAITryOnProvider(() => fakeClient as never);
+  await provider.generate({
+    person: { file: await validPng("person.png", 4000, 1000), mime: "image/png", width: 4000, height: 1000 },
+    fabric: { file: await validPng("fabric.png"), mime: "image/png" },
+    references: [],
+    selection: { mode: "level1", categoryId: "suit", designId: "SUIT_01_CLASSIC" },
+    prompt: "controlled prompt",
+    requestId: "test-request-image-fallback",
+  });
+
+  assert.equal(attempts.length, 2);
+  const originalImages = attempts[0]?.image as File[];
+  const fallbackImages = attempts[1]?.image as File[];
+  assert.deepEqual(originalImages.map((image) => image.name), ["person-reference.png", "fabric-reference.png"]);
+  assert.deepEqual(fallbackImages.map((image) => image.name), ["person-reference.jpg", "fabric-reference.jpg"]);
+  assert.deepEqual(fallbackImages.map((image) => image.type), ["image/jpeg", "image/jpeg"]);
+  const normalizedPerson = await sharp(Buffer.from(await fallbackImages[0]!.arrayBuffer())).metadata();
+  assert.equal(normalizedPerson.width, 3840);
+  assert.equal(normalizedPerson.height, 960);
 });
 
 test("GPT Image 2.5 provider places separate upper and lower fabrics before curated references", async () => {

@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { createOpenAIClient } from "@/lib/openai";
 import type { TryOnInput, TryOnOutput, TryOnProvider } from "@/lib/tryon/types";
 import { detectImageDimensions, type SupportedImageMime } from "@/lib/validation";
@@ -8,6 +9,12 @@ const MODEL = "gpt-image-2.5-sunburst";
 const DEFAULT_QUALITY = "medium" as const;
 const EXPERIMENTAL_MAX_PIXELS = 3840 * 2160;
 const STABLE_MAX_PIXELS = 2560 * 1440;
+const PROVIDER_COMPATIBILITY_EDGE = 3840;
+
+type ImagePart = {
+  image: TryOnInput["person"];
+  stem: string;
+};
 
 function rounded(value: number) {
   return Math.max(16, Math.floor(value / 16) * 16);
@@ -38,6 +45,13 @@ function isSizeRejection(error: unknown) {
   return /size|dimension|pixel|resolution|width|height/.test(message);
 }
 
+function isInvalidImageFile(error: unknown) {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  if (record.status !== 400 && record.status !== 422) return false;
+  const message = `${record.message ?? ""} ${record.code ?? ""}`.toLowerCase();
+  return /invalid.?image.?file|unsupported.?image|image.?format/.test(message);
+}
+
 function extensionFor(mime: SupportedImageMime) {
   return mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
 }
@@ -51,6 +65,35 @@ function namedUpload(image: { file: File; mime: SupportedImageMime }, stem: stri
   });
 }
 
+function inputParts(input: TryOnInput): ImagePart[] {
+  const parts: ImagePart[] = [{ image: input.person, stem: "person-reference" }];
+  if (input.outfit) parts.push({ image: input.outfit, stem: "outfit-style-reference" });
+  parts.push({ image: input.fabric, stem: "fabric-reference" });
+  if (input.lowerFabric) parts.push({ image: input.lowerFabric, stem: "lower-fabric-reference" });
+  parts.push(...input.references.map(({ role, image }) => ({ image, stem: `${role}-blueprint` })));
+  return parts;
+}
+
+async function providerSafeUpload({ image, stem }: ImagePart) {
+  const source = Buffer.from(await image.file.arrayBuffer());
+  const sourceMetadata = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 }).metadata();
+  const outputMime: SupportedImageMime = sourceMetadata.hasAlpha ? "image/png" : "image/jpeg";
+  const normalized = sharp(source, { failOn: "error", limitInputPixels: 40_000_000 })
+    // Applies EXIF orientation and removes metadata that the image endpoint does not need.
+    .rotate()
+    .resize({
+      width: PROVIDER_COMPATIBILITY_EDGE,
+      height: PROVIDER_COMPATIBILITY_EDGE,
+      fit: "inside",
+      withoutEnlargement: true,
+      kernel: sharp.kernel.lanczos3,
+    });
+  const bytes = outputMime === "image/png"
+    ? await normalized.png({ compressionLevel: 9, adaptiveFiltering: true, palette: false }).toBuffer()
+    : await normalized.jpeg({ quality: 100, chromaSubsampling: "4:4:4", mozjpeg: true }).toBuffer();
+  return new File([bytes], `${stem}.${extensionFor(outputMime)}`, { type: outputMime });
+}
+
 export class OpenAITryOnProvider implements TryOnProvider {
   constructor(
     private readonly clientFactory: typeof createOpenAIClient = createOpenAIClient,
@@ -61,20 +104,8 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const quality = DEFAULT_QUALITY;
     const client = this.clientFactory();
 
-    const personUpload = namedUpload(input.person, "person-reference");
-    const fabricUpload = namedUpload(input.fabric, "fabric-reference");
-    const referenceUploads = input.references.map(({ role, image }) => namedUpload(image, `${role}-blueprint`));
-    const outfitUpload = input.outfit
-      ? namedUpload(input.outfit, "outfit-style-reference")
-      : null;
-    const lowerFabricUpload = input.lowerFabric
-      ? namedUpload(input.lowerFabric, "lower-fabric-reference")
-      : null;
-    const imageInputs = outfitUpload
-      ? [personUpload, outfitUpload, fabricUpload, ...referenceUploads]
-      : lowerFabricUpload
-        ? [personUpload, fabricUpload, lowerFabricUpload, ...referenceUploads]
-        : [personUpload, fabricUpload, ...referenceUploads];
+    const parts = inputParts(input);
+    const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
 
     const requestedSize = resolveHighResolutionCanvas(input.person.width, input.person.height);
     console.info("try_on_provider_inputs", {
@@ -82,9 +113,9 @@ export class OpenAITryOnProvider implements TryOnProvider {
       model: MODEL,
       images: imageInputs.map((image) => ({ name: image.name, type: image.type, bytes: image.size })),
     });
-    const edit = (size: string) => client.images.edit({
+    const edit = (size: string, images: File[]) => client.images.edit({
       model: MODEL,
-      image: imageInputs,
+      image: images,
       prompt: input.prompt,
       quality,
       size,
@@ -92,14 +123,35 @@ export class OpenAITryOnProvider implements TryOnProvider {
       background: "auto",
       n: 1,
     });
+    const editWithSizeFallback = async (images: File[]) => {
+      try {
+        return { response: await edit(requestedSize, images), resolvedSize: requestedSize };
+      } catch (error) {
+        if (!isSizeRejection(error)) throw error;
+        const fallbackSize = resolveFallbackCanvas(input.person.width, input.person.height);
+        return { response: await edit(fallbackSize, images), resolvedSize: fallbackSize };
+      }
+    };
+
     let response;
     let resolvedSize = requestedSize;
     try {
-      response = await edit(requestedSize);
+      ({ response, resolvedSize } = await editWithSizeFallback(imageInputs));
     } catch (error) {
-      if (!isSizeRejection(error)) throw error;
-      resolvedSize = resolveFallbackCanvas(input.person.width, input.person.height);
-      response = await edit(resolvedSize);
+      if (!isInvalidImageFile(error)) throw error;
+      const compatibilityInputs = await Promise.all(parts.map(providerSafeUpload));
+      console.warn("try_on_provider_image_fallback", {
+        requestId: input.requestId,
+        model: MODEL,
+        maxEdge: PROVIDER_COMPATIBILITY_EDGE,
+        images: compatibilityInputs.map((image, index) => ({
+          name: image.name,
+          type: image.type,
+          bytes: image.size,
+          sourceBytes: imageInputs[index]?.size,
+        })),
+      });
+      ({ response, resolvedSize } = await editWithSizeFallback(compatibilityInputs));
     }
 
     const encodedImage = response.data?.[0]?.b64_json;
