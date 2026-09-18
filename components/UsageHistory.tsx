@@ -430,7 +430,7 @@ export function UsageHistory() {
                         {selectedEvent.assets?.result ? (
                           <a
                             className="generation-details-download"
-                            href={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/result`}
+                            href={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/result?download=1`}
                             download="nasir-bespoke-try-on.png"
                           >
                             Download result
