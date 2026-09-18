@@ -1,4 +1,5 @@
 import type { OptionRuleSet } from "@/lib/rules/types";
+import type { SupportedImageMime } from "@/lib/validation";
 
 export type VisualTryOnMode = "full" | "split";
 
@@ -95,6 +96,23 @@ export type MaterialRequirement = {
   description: string;
 };
 
+// Only "upper" and "lower" options ever carry a reference photograph — the
+// hybrid-fidelity decision means shirt/waistcoat/footwear/accessory options
+// are always composed from text alone and never have one.
+export type SplitAssetStatus = "awaiting-upload" | "active";
+
+export type SplitOptionReference = {
+  assetId: string;
+  status: SplitAssetStatus;
+  // SERVER-ONLY. privatePath/checksum must never reach the client view —
+  // only `status` does, mirroring how Level 1's CuratedAsset splits into a
+  // server-side record and a client-safe "ready"/"awaiting-approval" state.
+  privatePath?: string;
+  contentType?: SupportedImageMime;
+  checksum?: string;
+  provenance?: string;
+};
+
 export type SplitComponentOption = {
   id: SplitOptionId;
   categoryId: SplitComponentCategory;
@@ -113,6 +131,9 @@ export type SplitComponentOption = {
   rules?: OptionRuleSet;
   compatibilityTags?: string[];
   materialRequirements?: MaterialRequirement[];
+
+  /** SERVER-ONLY (see SplitOptionReference). Present only on upper/lower options. */
+  reference?: SplitOptionReference;
 
   /** SERVER-ONLY. Must never reach the client view. */
   generation: {
@@ -165,6 +186,8 @@ export type SplitComponentOptionView = {
   rules?: OptionRuleSet;
   compatibilityTags?: string[];
   materialRequirements?: MaterialRequirement[];
+  /** Status only — never the private path, checksum, or provenance. */
+  reference?: { status: SplitAssetStatus };
 };
 
 export type SplitCatalogueSlotView = {

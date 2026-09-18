@@ -44,6 +44,28 @@ const frenchCuffShirt: OptionRule[] = [{ groupId: "inner-shirt", optionIds: ["SU
 const bowTieSelected: OptionRule[] = [{ groupId: "accessory", optionIds: ["SUIT_ACC_BOW_TIE"] }];
 const tieSelected: OptionRule[] = [{ groupId: "accessory", optionIds: ["SUIT_ACC_TIE"] }];
 
+// Approval ledger for jacket/trouser reference photographs — the only two
+// categories that ever get one, per the hybrid-fidelity decision. Empty
+// until real photography is approved; every option below resolves to
+// "awaiting-upload" until its entry appears here, mirroring
+// lib/catalog/level1-seed.ts's APPROVED_*_ASSETS pattern exactly.
+const APPROVED_SPLIT_REFERENCES: Record<string, {
+  privatePath: string;
+  checksum: string;
+  provenance: string;
+  contentType: "image/png" | "image/jpeg" | "image/webp";
+}> = {
+  // e.g. SUIT_UPPER_CLASSIC: { privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_CLASSIC/approved.jpg", checksum: "...", provenance: "...", contentType: "image/jpeg" },
+};
+
+function referenceFor(optionId: string): NonNullable<SplitComponentOption["reference"]> {
+  const approved = APPROVED_SPLIT_REFERENCES[optionId];
+  const assetId = `${optionId}_REFERENCE_V1`;
+  return approved
+    ? { assetId, status: "active", ...approved }
+    : { assetId, status: "awaiting-upload" };
+}
+
 // 01 — UPPER GARMENTS (SUIT)
 export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
   {
@@ -66,6 +88,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["formal", "business", "reception", "dinner"],
+    reference: referenceFor("SUIT_UPPER_CLASSIC"),
     generation: {
       constructionFragment: "Single-breasted two-button jacket with notch lapel, structured natural shoulder, and a double back vent.",
     },
@@ -90,6 +113,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["formal", "evening", "statement"],
+    reference: referenceFor("SUIT_UPPER_DOUBLE_BREASTED"),
     generation: {
       constructionFragment: "Double-breasted jacket with wide peak lapels, 6x2 button fastening, roped shoulders, and jetted pockets.",
     },
@@ -114,6 +138,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["black-tie", "gala", "red-carpet"],
+    reference: referenceFor("SUIT_UPPER_TUXEDO"),
     generation: {
       constructionFragment: "Dinner jacket with silk satin peak lapel facing, single covered silk button closure, and an unvented back.",
     },
@@ -138,6 +163,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["ceremony", "wedding", "formal-business"],
+    reference: referenceFor("SUIT_UPPER_THREE_PIECE"),
     generation: {
       constructionFragment: "Jacket cut with a deeper front gorge specifically to reveal a matching or contrast waistcoat beneath.",
     },
@@ -162,6 +188,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["evening", "fashion-forward", "celebration"],
+    reference: referenceFor("SUIT_UPPER_STATEMENT"),
     generation: {
       constructionFragment: "Jacket with exaggerated high peak lapels, angled hacking pockets, one-button closure, and high side vents.",
     },
@@ -190,6 +217,7 @@ export const SUIT_LOWER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["classic", "business", "formal"],
+    reference: referenceFor("SUIT_LOWER_CLASSIC_STRAIGHT"),
     generation: {
       constructionFragment: "Mid-rise flat-front trousers with a straight leg and a slight break over the shoe.",
     },
@@ -214,6 +242,7 @@ export const SUIT_LOWER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["contemporary", "modern", "sharp"],
+    reference: referenceFor("SUIT_LOWER_TAILORED_TAPERED"),
     generation: {
       constructionFragment: "Slim tapered trousers with a flat front and minimal ankle break.",
     },
@@ -238,6 +267,7 @@ export const SUIT_LOWER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["sartorial", "heritage", "formal"],
+    reference: referenceFor("SUIT_LOWER_PLEATED_FORMAL"),
     generation: {
       constructionFragment: "High-rise trousers with double forward pleats, an extended waistband tab, and turn-up cuffs.",
     },
@@ -266,6 +296,7 @@ export const SUIT_LOWER_OPTIONS: SplitComponentOption[] = [
       recommendedWhen: tuxedoUpper,
       reasons: { recommendedWhen: "Recommended with a tuxedo." },
     },
+    reference: referenceFor("SUIT_LOWER_TUXEDO_TROUSER"),
     generation: {
       constructionFragment: "Flat-front evening trousers with a silk satin side stripe braid and no belt loops.",
     },
@@ -290,6 +321,7 @@ export const SUIT_LOWER_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["fashion-forward", "reception"],
+    reference: referenceFor("SUIT_LOWER_CONTEMPORARY"),
     generation: {
       constructionFragment: "Cropped, no-break trousers with a clean seamless waistband and jetted back pockets.",
     },

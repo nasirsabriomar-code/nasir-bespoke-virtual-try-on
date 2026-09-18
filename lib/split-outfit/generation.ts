@@ -1,9 +1,12 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+import { getPrivateSplitAsset } from "./assets";
 import { findSplitOption, validateRecipe } from "./compatibility";
 import { SPLIT_OUTFIT_FAMILIES } from "./types";
 import type { SplitComponentOption, SplitOutfitFamily, SplitOutfitState } from "./types";
 import type { TryOnInput } from "@/lib/tryon/types";
+import { detectImageMime, validateImageFile } from "@/lib/validation";
 
 export class SplitOutfitError extends Error {
   constructor(
@@ -110,24 +113,51 @@ export async function resolveSplitOutfitRecipe(raw: string): Promise<ResolvedSpl
 
 export type SplitReferenceRole = "split-upper" | "split-lower";
 
+function pendingReferenceError(role: SplitReferenceRole, detail?: string) {
+  const piece = role === "split-upper" ? "jacket" : "trouser";
+  return new SplitOutfitError(
+    "asset_pending",
+    detail ?? `This modular outfit's ${piece} reference photograph is not yet available. Please check back soon, or use Full Outfit for now.`,
+  );
+}
+
 /**
  * Reads the approved reference photograph for the jacket or trousers.
  *
  * No component photography has been supplied yet (Phase 5 of the Split
- * Outfit rollout, blocked on the owner) — SplitComponentOption carries no
- * asset fields today. This deliberately always fails closed with
- * "asset_pending", the same state Level 1 uses for a design whose approved
- * image hasn't been uploaded, rather than fabricating or substituting a
- * reference image. Once real photography lands, this becomes a Blob read
- * mirroring readLevel1Reference — the rest of the pipeline does not change.
+ * Outfit rollout, blocked on the owner) — APPROVED_SPLIT_REFERENCES in
+ * lib/split-outfit/catalogue.ts is empty, so every option's `reference`
+ * resolves to status "awaiting-upload" and this always fails closed with
+ * "asset_pending" today, the same state Level 1 uses for a design whose
+ * approved image hasn't been uploaded. The read path itself is real and
+ * mirrors readLevel1Reference exactly (magic-byte MIME check, blob
+ * content-type cross-check, checksum verification) — the moment a real
+ * ledger entry exists, this starts serving it with no further code change.
  */
 export async function readSplitReference(
   option: SplitComponentOption,
   role: SplitReferenceRole,
 ): Promise<TryOnInput["references"][number]> {
-  void option;
-  throw new SplitOutfitError(
-    "asset_pending",
-    `This modular outfit's ${role === "split-upper" ? "jacket" : "trouser"} reference photograph is not yet available. Please check back soon, or use Full Outfit for now.`,
-  );
+  const reference = option.reference;
+  if (!reference || reference.status !== "active") throw pendingReferenceError(role);
+
+  const privateAsset = await getPrivateSplitAsset(reference);
+  const blob = privateAsset?.blob;
+  if (!privateAsset || !blob || blob.statusCode !== 200 || !blob.stream) {
+    throw pendingReferenceError(role, `This modular outfit's ${role === "split-upper" ? "jacket" : "trouser"} reference photograph is temporarily unavailable. Please try again shortly.`);
+  }
+  const contentType = reference.contentType;
+  if (!contentType) throw pendingReferenceError(role);
+
+  const bytes = new Uint8Array(await new Response(blob.stream).arrayBuffer());
+  const detectedMime = detectImageMime(bytes);
+  if (detectedMime !== contentType || (blob.blob.contentType && blob.blob.contentType.split(";", 1)[0]?.toLowerCase() !== contentType)) {
+    throw new SplitOutfitError("asset_pending", "This modular outfit's reference photograph is invalid. Please contact an administrator.");
+  }
+  const file = new File([bytes], `${reference.assetId}.${contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg"}`, { type: contentType });
+  const validated = await validateImageFile(file, "the approved reference photograph");
+  if (reference.checksum && createHash("sha256").update(bytes).digest("hex") !== reference.checksum) {
+    throw new SplitOutfitError("asset_pending", "This modular outfit's reference photograph is invalid. Please contact an administrator.");
+  }
+  return { role, image: { file: validated.file, mime: validated.mime } };
 }

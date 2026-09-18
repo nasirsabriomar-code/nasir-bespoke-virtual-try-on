@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import test, { beforeEach } from "node:test";
 import { handleTryOnRequest } from "@/lib/try-on-handler";
-import { resolveSplitOutfitRecipe, SplitOutfitError, type ResolvedSplitOutfit } from "@/lib/split-outfit/generation";
-import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
+import { readSplitReference, resolveSplitOutfitRecipe, SplitOutfitError, type ResolvedSplitOutfit } from "@/lib/split-outfit/generation";
+import { getSplitCatalogueView } from "@/lib/split-outfit/view";
+import { DEFAULT_SPLIT_OUTFIT_STATE, SUIT_UPPER_OPTIONS } from "@/lib/split-outfit/catalogue";
 import type { SplitOptionId, SplitOutfitState } from "@/lib/split-outfit/types";
 import type { TryOnInput } from "@/lib/tryon/types";
 import { recordUsageEvent, getUsageHistory, resetMemoryUsageHistoryForTests, type UsageEvent } from "@/lib/usage-history";
@@ -193,4 +197,78 @@ test("a completed split generation's usage history survives read-back as mode sp
   assert.equal(stored.generation?.splitUpperName, "Three-Piece");
   assert.equal(stored.generation?.splitFamily, "suit");
   assert.deepEqual(stored.generation?.splitAccessoryNames, ["Pocket Square"]);
+});
+
+test("every upper/lower option defaults to awaiting-upload until the ledger says otherwise", () => {
+  const view = getSplitCatalogueView("suit");
+  for (const slotId of ["upper", "lower"] as const) {
+    const slot = view.slots.find((item) => item.id === slotId);
+    assert.ok(slot);
+    for (const option of slot.options) {
+      assert.equal(option.reference?.status, "awaiting-upload", `${option.id} should be awaiting-upload until real photography is approved`);
+    }
+  }
+  // Shirt/waistcoat/footwear/accessory options never carry a reference at all.
+  for (const slotId of ["inner-shirt", "inner-waistcoat", "footwear", "accessory"] as const) {
+    const slot = view.slots.find((item) => item.id === slotId);
+    assert.ok(slot);
+    for (const option of slot.options) {
+      assert.equal(option.reference, undefined, `${option.id} should never carry a reference`);
+    }
+  }
+});
+
+test("the split catalogue view never leaks a reference's private path or checksum", () => {
+  const view = getSplitCatalogueView("suit");
+  const serialized = JSON.stringify(view);
+  assert.doesNotMatch(serialized, /privatePath|checksum|provenance/i);
+});
+
+test("readSplitReference serves a real active reference through the same read path a real photo would use", async () => {
+  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
+  const checksum = createHash("sha256").update(bytes).digest("hex");
+  const cacheDir = path.join(process.cwd(), ".cache/catalog-assets");
+  const cachePath = path.join(cacheDir, "TEST_SPLIT_UPPER_REFERENCE_V1.png");
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(cachePath, bytes);
+  try {
+    const fakeOption = {
+      ...SUIT_UPPER_OPTIONS[0],
+      reference: {
+        assetId: "TEST_SPLIT_UPPER_REFERENCE_V1",
+        status: "active" as const,
+        privatePath: "nasir-bespoke/catalogue/split/v1/TEST_SPLIT_UPPER_REFERENCE_V1/approved.png",
+        checksum,
+        contentType: "image/png" as const,
+      },
+    };
+    const reference = await readSplitReference(fakeOption, "split-upper");
+    assert.equal(reference.role, "split-upper");
+    assert.equal(reference.image.mime, "image/png");
+  } finally {
+    await rm(cachePath, { force: true });
+  }
+});
+
+test("readSplitReference rejects an active reference whose bytes don't match its recorded checksum", async () => {
+  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
+  const cacheDir = path.join(process.cwd(), ".cache/catalog-assets");
+  const cachePath = path.join(cacheDir, "TEST_SPLIT_UPPER_TAMPERED_V1.png");
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(cachePath, bytes);
+  try {
+    const fakeOption = {
+      ...SUIT_UPPER_OPTIONS[0],
+      reference: {
+        assetId: "TEST_SPLIT_UPPER_TAMPERED_V1",
+        status: "active" as const,
+        privatePath: "nasir-bespoke/catalogue/split/v1/TEST_SPLIT_UPPER_TAMPERED_V1/approved.png",
+        checksum: "0".repeat(64),
+        contentType: "image/png" as const,
+      },
+    };
+    await assert.rejects(() => readSplitReference(fakeOption, "split-upper"), SplitOutfitError);
+  } finally {
+    await rm(cachePath, { force: true });
+  }
 });

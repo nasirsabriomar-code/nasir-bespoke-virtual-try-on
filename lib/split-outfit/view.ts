@@ -17,6 +17,10 @@ function toOptionView(option: SplitComponentOption): SplitComponentOptionView {
     rules: option.rules,
     compatibilityTags: option.compatibilityTags,
     materialRequirements: option.materialRequirements,
+    // privatePath/checksum/provenance are deliberately dropped here — only
+    // the status ever reaches the client, same rule as everything else in
+    // this projection.
+    ...(option.reference ? { reference: { status: option.reference.status } } : {}),
   };
 }
 
