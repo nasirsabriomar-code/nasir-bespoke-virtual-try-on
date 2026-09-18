@@ -24,37 +24,37 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
           {/* 1. UPPER */}
           <div className="split-summary-card">
             <span className="split-summary-kicker">01 · Upper Garment</span>
-            <strong className="split-summary-value">{upper ? upper.name : "Not selected"}</strong>
-            <p className="split-summary-detail">{upper ? upper.subtitle : "Choose a jacket style"}</p>
+            <strong className="split-summary-value">{upper ? upper.customer.name : "Not selected"}</strong>
+            <p className="split-summary-detail">{upper ? upper.customer.subtitle : "Choose a jacket style"}</p>
           </div>
 
           {/* 2. LOWER */}
           <div className="split-summary-card">
             <span className="split-summary-kicker">02 · Lower Garment</span>
-            <strong className="split-summary-value">{lower ? lower.name : "Not selected"}</strong>
-            <p className="split-summary-detail">{lower ? lower.subtitle : "Choose trouser tailoring"}</p>
+            <strong className="split-summary-value">{lower ? lower.customer.name : "Not selected"}</strong>
+            <p className="split-summary-detail">{lower ? lower.customer.subtitle : "Choose trouser tailoring"}</p>
           </div>
 
           {/* 3. INNER */}
           <div className="split-summary-card">
             <span className="split-summary-kicker">03 · Inner & Waistcoat</span>
             <strong className="split-summary-value">
-              {shirt ? shirt.name : "No shirt"}
+              {shirt ? shirt.customer.name : "No shirt"}
               {waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE"
-                ? ` + ${waistcoat.name} Waistcoat`
+                ? ` + ${waistcoat.customer.name} Waistcoat`
                 : ""}
             </strong>
             <p className="split-summary-detail">
-              {shirt ? shirt.subtitle : ""}
-              {waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE" ? ` · ${waistcoat.subtitle}` : ""}
+              {shirt ? shirt.customer.subtitle : ""}
+              {waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE" ? ` · ${waistcoat.customer.subtitle}` : ""}
             </p>
           </div>
 
           {/* 4. FOOTWEAR */}
           <div className="split-summary-card">
             <span className="split-summary-kicker">04 · Footwear</span>
-            <strong className="split-summary-value">{footwear ? footwear.name : "Not selected"}</strong>
-            <p className="split-summary-detail">{footwear ? footwear.subtitle : "Choose shoes"}</p>
+            <strong className="split-summary-value">{footwear ? footwear.customer.name : "Not selected"}</strong>
+            <p className="split-summary-detail">{footwear ? footwear.customer.subtitle : "Choose shoes"}</p>
           </div>
 
           {/* 5. ACCESSORIES */}
@@ -62,7 +62,7 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
             <span className="split-summary-kicker">05 · Accessories ({accessories.length})</span>
             <strong className="split-summary-value">
               {accessories.length > 0
-                ? accessories.map((a) => a.name).join(", ")
+                ? accessories.map((a) => a.customer.name).join(", ")
                 : "None selected"}
             </strong>
             <p className="split-summary-detail">

@@ -1,18 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
-import {
-  SUIT_ACCESSORY_OPTIONS,
-  SUIT_FOOTWEAR_OPTIONS,
-  SUIT_LOWER_OPTIONS,
-  SUIT_SHIRT_OPTIONS,
-  SUIT_UPPER_OPTIONS,
-  SUIT_WAISTCOAT_OPTIONS,
-} from "@/lib/split-outfit/catalogue";
+import { useMemo, useState } from "react";
 import {
   buildSplitOutfitSummary,
-  evaluateOptionCompatibility,
+  optionsFor,
+  reconcile,
 } from "@/lib/split-outfit/compatibility";
+import type { RepairNotice } from "@/lib/rules/types";
 import type { SplitOutfitState } from "@/lib/split-outfit/types";
 import { SplitComponentCard } from "./SplitComponentCard";
 import { SplitMaterialsSection } from "./SplitMaterialsSection";
@@ -25,9 +19,23 @@ type SplitOutfitWorkspaceProps = {
 
 export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspaceProps) {
   const summary = useMemo(() => buildSplitOutfitSummary(state), [state]);
+  const [notices, setNotices] = useState<RepairNotice[]>([]);
+
+  // Every change is followed by a reconcile pass: a change to an upstream
+  // slot (e.g. the jacket) can invalidate a downstream selection (e.g. a
+  // waistcoat that no longer fits a two-piece jacket) that must be dropped
+  // rather than left stale and invisible-but-selected.
+  const applyChange = (mutate: (prev: SplitOutfitState) => SplitOutfitState) => {
+    onChange((prev) => {
+      const proposed = mutate(prev);
+      const { state: reconciled, notices: repairNotices } = reconcile(proposed);
+      setNotices(repairNotices);
+      return reconciled;
+    });
+  };
 
   const toggleAccessory = (id: string) => {
-    onChange((prev) => {
+    applyChange((prev) => {
       const exists = prev.accessoryIds.includes(id);
       const nextAccessories = exists
         ? prev.accessoryIds.filter((accId) => accId !== id)
@@ -49,18 +57,17 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </div>
 
         <div className="split-cards-grid">
-          {SUIT_UPPER_OPTIONS.map((option) => {
-            const status = evaluateOptionCompatibility(option, state);
-            return (
+          {optionsFor(state, "upper")
+            .filter(({ verdict }) => verdict.status !== "incompatible")
+            .map(({ option, verdict }) => (
               <SplitComponentCard
                 key={option.id}
                 option={option}
                 selected={state.upperId === option.id}
-                onSelect={() => onChange((prev) => ({ ...prev, upperId: option.id }))}
-                compatibilityStatus={status}
+                onSelect={() => applyChange((prev) => ({ ...prev, upperId: option.id }))}
+                verdict={verdict}
               />
-            );
-          })}
+            ))}
         </div>
       </section>
 
@@ -75,18 +82,17 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </div>
 
         <div className="split-cards-grid">
-          {SUIT_LOWER_OPTIONS.map((option) => {
-            const status = evaluateOptionCompatibility(option, state);
-            return (
+          {optionsFor(state, "lower")
+            .filter(({ verdict }) => verdict.status !== "incompatible")
+            .map(({ option, verdict }) => (
               <SplitComponentCard
                 key={option.id}
                 option={option}
                 selected={state.lowerId === option.id}
-                onSelect={() => onChange((prev) => ({ ...prev, lowerId: option.id }))}
-                compatibilityStatus={status}
+                onSelect={() => applyChange((prev) => ({ ...prev, lowerId: option.id }))}
+                verdict={verdict}
               />
-            );
-          })}
+            ))}
         </div>
       </section>
 
@@ -105,18 +111,17 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
           <div className="split-subsection">
             <h3 className="split-subsection-title">Dress Shirt</h3>
             <div className="split-cards-grid">
-              {SUIT_SHIRT_OPTIONS.map((option) => {
-                const status = evaluateOptionCompatibility(option, state);
-                return (
+              {optionsFor(state, "inner-shirt")
+                .filter(({ verdict }) => verdict.status !== "incompatible")
+                .map(({ option, verdict }) => (
                   <SplitComponentCard
                     key={option.id}
                     option={option}
                     selected={state.shirtId === option.id}
-                    onSelect={() => onChange((prev) => ({ ...prev, shirtId: option.id }))}
-                    compatibilityStatus={status}
+                    onSelect={() => applyChange((prev) => ({ ...prev, shirtId: option.id }))}
+                    verdict={verdict}
                   />
-                );
-              })}
+                ))}
             </div>
           </div>
 
@@ -124,18 +129,17 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
           <div className="split-subsection">
             <h3 className="split-subsection-title">Waistcoat (Optional Layer)</h3>
             <div className="split-cards-grid">
-              {SUIT_WAISTCOAT_OPTIONS.map((option) => {
-                const status = evaluateOptionCompatibility(option, state);
-                return (
+              {optionsFor(state, "inner-waistcoat")
+                .filter(({ verdict }) => verdict.status !== "incompatible")
+                .map(({ option, verdict }) => (
                   <SplitComponentCard
                     key={option.id}
                     option={option}
                     selected={state.waistcoatId === option.id}
-                    onSelect={() => onChange((prev) => ({ ...prev, waistcoatId: option.id }))}
-                    compatibilityStatus={status}
+                    onSelect={() => applyChange((prev) => ({ ...prev, waistcoatId: option.id }))}
+                    verdict={verdict}
                   />
-                );
-              })}
+                ))}
             </div>
           </div>
         </div>
@@ -152,18 +156,17 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </div>
 
         <div className="split-cards-grid">
-          {SUIT_FOOTWEAR_OPTIONS.map((option) => {
-            const status = evaluateOptionCompatibility(option, state);
-            return (
+          {optionsFor(state, "footwear")
+            .filter(({ verdict }) => verdict.status !== "incompatible")
+            .map(({ option, verdict }) => (
               <SplitComponentCard
                 key={option.id}
                 option={option}
                 selected={state.footwearId === option.id}
-                onSelect={() => onChange((prev) => ({ ...prev, footwearId: option.id }))}
-                compatibilityStatus={status}
+                onSelect={() => applyChange((prev) => ({ ...prev, footwearId: option.id }))}
+                verdict={verdict}
               />
-            );
-          })}
+            ))}
         </div>
       </section>
 
@@ -182,22 +185,30 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
         </p>
 
         <div className="split-cards-grid">
-          {SUIT_ACCESSORY_OPTIONS.map((option) => {
-            const isSelected = state.accessoryIds.includes(option.id);
-            const status = evaluateOptionCompatibility(option, state);
-            return (
+          {optionsFor(state, "accessory")
+            .filter(({ verdict }) => verdict.status !== "incompatible")
+            .map(({ option, verdict }) => (
               <SplitComponentCard
                 key={option.id}
                 option={option}
-                selected={isSelected}
+                selected={state.accessoryIds.includes(option.id)}
                 onSelect={() => toggleAccessory(option.id)}
-                compatibilityStatus={status}
+                verdict={verdict}
                 isMultiSelect={true}
               />
-            );
-          })}
+            ))}
         </div>
       </section>
+
+      {notices.length > 0 ? (
+        <div className="split-repair-notice" role="status">
+          {notices.map((notice, index) => (
+            <p key={`${notice.groupId}-${notice.removedOptionId}-${index}`}>
+              Removed a previous selection — {notice.reason}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {/* 06 — FABRICS & MATERIALS */}
       <SplitMaterialsSection slots={summary.activeMaterialSlots} />

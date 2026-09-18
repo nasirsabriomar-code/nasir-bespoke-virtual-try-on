@@ -1,15 +1,13 @@
 "use client";
 
-import type {
-  CompatibilityStatus,
-  SplitComponentOption,
-} from "@/lib/split-outfit/types";
+import type { Verdict } from "@/lib/rules/types";
+import type { SplitComponentOption } from "@/lib/split-outfit/types";
 
 type SplitComponentCardProps = {
   option: SplitComponentOption;
   selected: boolean;
   onSelect: () => void;
-  compatibilityStatus?: CompatibilityStatus;
+  verdict?: Verdict;
   isMultiSelect?: boolean;
 };
 
@@ -179,44 +177,43 @@ export function SplitComponentCard({
   option,
   selected,
   onSelect,
-  compatibilityStatus,
+  verdict,
   isMultiSelect = false,
 }: SplitComponentCardProps) {
-  const isRecommended = compatibilityStatus === "RECOMMENDED";
-  const isRequired = compatibilityStatus === "REQUIRED";
-  const isDisallowed = compatibilityStatus === "DISALLOWED";
+  const isRecommended = verdict?.status === "recommended";
+  const isDiscouraged = verdict?.status === "discouraged";
+  const reason = verdict?.status === "recommended" || verdict?.status === "discouraged" ? verdict.reason : undefined;
 
   return (
     <button
       type="button"
       role={isMultiSelect ? "checkbox" : "radio"}
       aria-checked={selected}
-      aria-disabled={isDisallowed}
-      disabled={isDisallowed}
-      className={`split-component-card ${selected ? "is-selected" : ""} ${isRecommended ? "is-recommended" : ""} ${isDisallowed ? "is-disallowed" : ""}`}
+      title={reason}
+      className={`split-component-card ${selected ? "is-selected" : ""} ${isRecommended ? "is-recommended" : ""} ${isDiscouraged ? "is-discouraged" : ""}`}
       onClick={onSelect}
     >
       <div className="split-card-media">
         <div className="split-card-silhouette-wrap">
           {renderPlaceholderSilhouette(option.categoryId, option.id)}
         </div>
-        <span className="split-card-badge">{option.imagePlaceholderLabel}</span>
+        <span className="split-card-badge">{option.customer.imagePlaceholderLabel}</span>
       </div>
 
       <div className="split-card-body">
         <div className="split-card-header">
           <div className="split-card-title-group">
-            <strong className="split-card-name">{option.name}</strong>
-            {option.subtitle ? (
-              <span className="split-card-subtitle">{option.subtitle}</span>
+            <strong className="split-card-name">{option.customer.name}</strong>
+            {option.customer.subtitle ? (
+              <span className="split-card-subtitle">{option.customer.subtitle}</span>
             ) : null}
           </div>
 
           <div className="split-card-status-indicators">
             {isRecommended ? (
               <span className="split-tag split-tag-recommended">Recommended</span>
-            ) : isRequired ? (
-              <span className="split-tag split-tag-required">Required</span>
+            ) : isDiscouraged ? (
+              <span className="split-tag split-tag-discouraged">Unusual</span>
             ) : null}
 
             <span className={`split-select-indicator ${isMultiSelect ? "is-checkbox" : "is-radio"}`}>
@@ -225,11 +222,11 @@ export function SplitComponentCard({
           </div>
         </div>
 
-        <p className="split-card-desc">{option.description}</p>
+        <p className="split-card-desc">{option.customer.description}</p>
 
-        {option.details && option.details.length > 0 ? (
+        {option.customer.details && option.customer.details.length > 0 ? (
           <ul className="split-card-details" aria-label="Key specifications">
-            {option.details.map((detail, i) => (
+            {option.customer.details.map((detail, i) => (
               <li key={i}>{detail}</li>
             ))}
           </ul>

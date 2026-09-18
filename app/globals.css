@@ -2298,6 +2298,9 @@ a:focus-visible {
   cursor: not-allowed;
   transform: none;
 }
+.split-component-card.is-discouraged {
+  border-color: rgba(220, 90, 70, 0.35);
+}
 
 .split-card-media {
   background: radial-gradient(circle at 50% 45%, #242823 0%, #121412 100%);
@@ -2396,6 +2399,11 @@ a:focus-visible {
   background: rgba(220, 90, 70, 0.2);
   color: #ff9d88;
   border: 1px solid rgba(220, 90, 70, 0.4);
+}
+.split-tag-discouraged {
+  background: rgba(220, 90, 70, 0.12);
+  color: #ff9d88;
+  border: 1px solid rgba(220, 90, 70, 0.3);
 }
 
 .split-select-indicator {
@@ -2597,6 +2605,23 @@ a:focus-visible {
   color: var(--atelier-muted);
   margin: 0;
   line-height: 1.35;
+}
+
+.split-repair-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(220, 90, 70, 0.08);
+  border-left: 3px solid rgba(220, 90, 70, 0.5);
+  border-radius: 0 3px 3px 0;
+  padding: 12px 18px;
+  margin: 0 0 20px;
+}
+.split-repair-notice p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--atelier-text);
+  line-height: 1.45;
 }
 
 .split-dev-notice {

@@ -1,12 +1,79 @@
-import { SPLIT_CATALOGUE_BY_FAMILY } from "./catalogue";
+import { evaluateOption, isSelectable, reconcileSelections, type ReconcileGroup } from "@/lib/rules/engine";
+import type { RepairNotice, Selections, Verdict } from "@/lib/rules/types";
+import { SPLIT_CATALOGUE_BY_FAMILY, SPLIT_SLOTS } from "./catalogue";
 import type {
-  CompatibilityStatus,
-  MaterialSlotState,
+  SplitComponentCategory,
   SplitComponentOption,
   SplitOutfitFamily,
   SplitOutfitState,
   SplitOutfitSummary,
+  MaterialSlotState,
 } from "./types";
+
+type SplitSlot = (typeof SPLIT_SLOTS)[number];
+
+const MISSING_OPTION_VERDICT: Verdict = {
+  status: "incompatible",
+  reason: "Not available with the current selections.",
+  blockedBy: [],
+};
+
+function verdictReason(verdict: Verdict): string {
+  return verdict.status === "incompatible" ? verdict.reason : "Not available with the current selections.";
+}
+
+function optionsForSlot(family: SplitOutfitFamily, slotId: SplitComponentCategory): SplitComponentOption[] {
+  const catalogue = SPLIT_CATALOGUE_BY_FAMILY[family];
+  if (!catalogue) return [];
+  switch (slotId) {
+    case "upper": return catalogue.uppers;
+    case "lower": return catalogue.lowers;
+    case "inner-shirt": return catalogue.shirts;
+    case "inner-waistcoat": return catalogue.waistcoats;
+    case "footwear": return catalogue.footwear;
+    case "accessory": return catalogue.accessories;
+  }
+}
+
+function getSlotValue(state: SplitOutfitState, slot: SplitSlot): string | string[] | null {
+  switch (slot.stateKey) {
+    case "upperId": return state.upperId;
+    case "lowerId": return state.lowerId;
+    case "shirtId": return state.shirtId;
+    case "waistcoatId": return state.waistcoatId;
+    case "footwearId": return state.footwearId;
+    case "accessoryIds": return state.accessoryIds;
+  }
+}
+
+/** Maps the named-field state onto the generic Selections record the rule engine consumes. */
+export function toSelections(state: SplitOutfitState): Selections {
+  return {
+    upper: state.upperId ?? "",
+    lower: state.lowerId ?? "",
+    "inner-shirt": state.shirtId ?? "",
+    "inner-waistcoat": state.waistcoatId ?? "",
+    footwear: state.footwearId ?? "",
+    accessory: state.accessoryIds,
+  };
+}
+
+const optionIndexCache = new Map<SplitOutfitFamily, Map<string, SplitComponentOption>>();
+
+function optionIndexFor(family: SplitOutfitFamily): Map<string, SplitComponentOption> {
+  let index = optionIndexCache.get(family);
+  if (!index) {
+    index = new Map();
+    const catalogue = SPLIT_CATALOGUE_BY_FAMILY[family];
+    if (catalogue) {
+      for (const list of [catalogue.uppers, catalogue.lowers, catalogue.shirts, catalogue.waistcoats, catalogue.footwear, catalogue.accessories]) {
+        for (const option of list) index.set(option.id, option);
+      }
+    }
+    optionIndexCache.set(family, index);
+  }
+  return index;
+}
 
 /**
  * Resolves a component option by its ID within a given family.
@@ -16,204 +83,122 @@ export function findSplitOption(
   optionId: string | null | undefined,
 ): SplitComponentOption | null {
   if (!optionId) return null;
-  const catalogue = SPLIT_CATALOGUE_BY_FAMILY[family];
-  if (!catalogue) return null;
-
-  const all = [
-    ...catalogue.uppers,
-    ...catalogue.lowers,
-    ...catalogue.shirts,
-    ...catalogue.waistcoats,
-    ...catalogue.footwear,
-    ...catalogue.accessories,
-  ];
-
-  return all.find((item) => item.id === optionId) ?? null;
+  return optionIndexFor(family).get(optionId) ?? null;
 }
 
 /**
- * Evaluates the compatibility status of an option given the current active split outfit state.
- * Returns: "REQUIRED" | "RECOMMENDED" | "ALLOWED" | "OPTIONAL" | "DISALLOWED" | "CONDITIONAL"
+ * Every option for a slot, each carrying its live Verdict given the rest of
+ * the current state. This is what the UI renders.
  */
-export function evaluateOptionCompatibility(
-  option: SplitComponentOption,
-  state: SplitOutfitState,
-): CompatibilityStatus {
-  // If the option has a fixed status in definition, respect it as baseline
-  const isTuxedoJacket = state.upperId === "SUIT_UPPER_TUXEDO";
-  const isThreePieceJacket = state.upperId === "SUIT_UPPER_THREE_PIECE";
-  const isDoubleBreasted = state.upperId === "SUIT_UPPER_DOUBLE_BREASTED";
-
-  // 1. Lower Garment Rules
-  if (option.categoryId === "lower") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_LOWER_TUXEDO_TROUSER") return "RECOMMENDED";
-      if (option.id === "SUIT_LOWER_CLASSIC_STRAIGHT") return "ALLOWED";
-      return "ALLOWED";
-    }
-  }
-
-  // 2. Inner Shirt Rules
-  if (option.categoryId === "inner-shirt") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_SHIRT_TUXEDO_PLEATED") return "RECOMMENDED";
-      return "ALLOWED";
-    }
-  }
-
-  // 3. Inner Waistcoat Rules
-  if (option.categoryId === "inner-waistcoat") {
-    if (isThreePieceJacket) {
-      if (option.id === "SUIT_WAISTCOAT_NONE") return "DISALLOWED";
-      if (option.id === "SUIT_WAISTCOAT_CLASSIC" || option.id === "SUIT_WAISTCOAT_FORMAL") {
-        return "RECOMMENDED";
-      }
-    }
-    if (isDoubleBreasted) {
-      if (option.id !== "SUIT_WAISTCOAT_NONE") return "OPTIONAL";
-    }
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_WAISTCOAT_TUXEDO") return "RECOMMENDED";
-    }
-  }
-
-  // 4. Footwear Rules
-  if (option.categoryId === "footwear") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_SHOE_PATENT_OXFORD") return "RECOMMENDED";
-      if (option.id === "SUIT_SHOE_OXFORD") return "ALLOWED";
-    }
-  }
-
-  // 5. Accessory Rules
-  if (option.categoryId === "accessory") {
-    if (isTuxedoJacket) {
-      if (option.id === "SUIT_ACC_BOW_TIE") return "RECOMMENDED";
-      if (option.id === "SUIT_ACC_TIE") return "ALLOWED";
-    }
-  }
-
-  return option.defaultStatus ?? "ALLOWED";
+export function optionsFor(state: SplitOutfitState, slotId: SplitComponentCategory):
+  Array<{ option: SplitComponentOption; verdict: Verdict }> {
+  const selections = toSelections(state);
+  return optionsForSlot(state.family, slotId).map((option) => ({
+    option,
+    verdict: evaluateOption(option.rules, selections),
+  }));
 }
 
 /**
- * Derives the active material slots dynamically based on the customer's selected components.
+ * Server-authoritative check: is this whole recipe valid? Every selected
+ * option (including each selected accessory) must not be "incompatible"
+ * given the rest of the state, and every required slot must be filled.
+ */
+export function validateRecipe(state: SplitOutfitState):
+  { valid: boolean; violations: Array<{ slotId: string; optionId: string; reason: string }> } {
+  const selections = toSelections(state);
+  const violations: Array<{ slotId: string; optionId: string; reason: string }> = [];
+
+  for (const slot of SPLIT_SLOTS) {
+    const value = getSlotValue(state, slot);
+
+    if (slot.multi) {
+      const ids = Array.isArray(value) ? value : [];
+      for (const id of ids) {
+        const option = findSplitOption(state.family, id);
+        const verdict = option ? evaluateOption(option.rules, selections) : MISSING_OPTION_VERDICT;
+        if (!isSelectable(verdict)) {
+          violations.push({ slotId: slot.id, optionId: id, reason: verdictReason(verdict) });
+        }
+      }
+      continue;
+    }
+
+    const id = typeof value === "string" ? value : null;
+    if (!id) {
+      if (slot.required) violations.push({ slotId: slot.id, optionId: "", reason: "This selection is required." });
+      continue;
+    }
+    const option = findSplitOption(state.family, id);
+    const verdict = option ? evaluateOption(option.rules, selections) : MISSING_OPTION_VERDICT;
+    if (!isSelectable(verdict)) {
+      violations.push({ slotId: slot.id, optionId: id, reason: verdictReason(verdict) });
+    }
+  }
+
+  return { valid: violations.length === 0, violations };
+}
+
+/**
+ * Repairs a state after a change: drops any selection a change invalidated,
+ * walking slots in dependency order. Generalises BespokeConfigurator's
+ * normalize(), but reports what it dropped.
+ */
+export function reconcile(state: SplitOutfitState): { state: SplitOutfitState; notices: RepairNotice[] } {
+  const groups: ReconcileGroup[] = SPLIT_SLOTS.map((slot) => ({
+    groupId: slot.id,
+    multi: slot.multi,
+    options: optionsForSlot(state.family, slot.id).map((option) => ({ id: option.id, rules: option.rules })),
+  }));
+
+  const { selections, notices } = reconcileSelections(groups, toSelections(state));
+
+  const next: SplitOutfitState = {
+    family: state.family,
+    upperId: (selections.upper as string) || null,
+    lowerId: (selections.lower as string) || null,
+    shirtId: (selections["inner-shirt"] as string) || null,
+    waistcoatId: (selections["inner-waistcoat"] as string) || null,
+    footwearId: (selections.footwear as string) || null,
+    accessoryIds: (selections.accessory as string[]) ?? [],
+  };
+
+  return { state: next, notices };
+}
+
+/**
+ * Derives the active material slots from the materialRequirements each
+ * selected option actually declares — rather than re-declaring labels
+ * and fabric sources as separate literals that can drift from the data.
  */
 export function deriveActiveMaterialSlots(state: SplitOutfitState): MaterialSlotState[] {
   const slots: MaterialSlotState[] = [];
   const family = state.family;
 
-  // 1. Upper Garment Slot (always active if upper selected)
-  const upper = findSplitOption(family, state.upperId);
-  if (upper) {
-    slots.push({
-      slotId: "jacket-primary",
-      label: "Jacket Body & Facing",
-      componentName: upper.name,
-      fabricSource: "uploaded-fabric",
-      description: "Primary tailored suit wool / blend assigned from your uploaded fabric reference.",
-    });
+  const pushSlotsFor = (option: SplitComponentOption | null) => {
+    if (!option?.materialRequirements) return;
+    for (const requirement of option.materialRequirements) {
+      slots.push({
+        slotId: requirement.slotId,
+        label: requirement.label,
+        componentName: option.customer.name,
+        fabricSource: requirement.defaultFabricSource,
+        description: requirement.description,
+      });
+    }
+  };
+
+  pushSlotsFor(findSplitOption(family, state.upperId));
+  pushSlotsFor(findSplitOption(family, state.lowerId));
+  pushSlotsFor(findSplitOption(family, state.shirtId));
+  pushSlotsFor(findSplitOption(family, state.waistcoatId));
+
+  const catalogue = SPLIT_CATALOGUE_BY_FAMILY[family];
+  for (const accessoryOption of catalogue?.accessories ?? []) {
+    if (state.accessoryIds.includes(accessoryOption.id)) pushSlotsFor(accessoryOption);
   }
 
-  // 2. Lower Garment Slot (always active if lower selected)
-  const lower = findSplitOption(family, state.lowerId);
-  if (lower) {
-    slots.push({
-      slotId: "trouser-primary",
-      label: "Trouser Fabric",
-      componentName: lower.name,
-      fabricSource: "uploaded-fabric",
-      description: "Matching or coordinated trousers tailored from your uploaded fabric.",
-    });
-  }
-
-  // 3. Shirt Slot (active if shirt selected)
-  const shirt = findSplitOption(family, state.shirtId);
-  if (shirt) {
-    slots.push({
-      slotId: "shirt-material",
-      label: "Shirt Weave",
-      componentName: shirt.name,
-      fabricSource: "atelier-standard",
-      description: "Crisp white Egyptian cotton poplin or pleated Marcella weave.",
-    });
-  }
-
-  // 4. Waistcoat Slot (active ONLY if a waistcoat is selected and not 'None')
-  const waistcoat = findSplitOption(family, state.waistcoatId);
-  if (waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE") {
-    slots.push({
-      slotId: "waistcoat-material",
-      label: "Waistcoat Fabric",
-      componentName: waistcoat.name,
-      fabricSource: "uploaded-fabric",
-      description: "Matching or bespoke contrasting waistcoat fabric.",
-    });
-  }
-
-  // 5. Neckwear Slot (active if Tie or Bow Tie selected)
-  if (state.accessoryIds.includes("SUIT_ACC_TIE")) {
-    slots.push({
-      slotId: "neckwear-material",
-      label: "Necktie Silk",
-      componentName: "Silk Necktie",
-      fabricSource: "atelier-standard",
-      description: "Hand-rolled woven mulberry silk in classic finish.",
-    });
-  } else if (state.accessoryIds.includes("SUIT_ACC_BOW_TIE")) {
-    slots.push({
-      slotId: "neckwear-material",
-      label: "Bow Tie Silk",
-      componentName: "Silk Bow Tie",
-      fabricSource: "atelier-standard",
-      description: "Black or midnight blue woven silk satin/grosgrain.",
-    });
-  }
-
-  // 6. Pocket Square Slot (active if selected)
-  if (state.accessoryIds.includes("SUIT_ACC_POCKET_SQUARE")) {
-    slots.push({
-      slotId: "pocket-square-material",
-      label: "Pocket Square Fabric",
-      componentName: "Pocket Square",
-      fabricSource: "atelier-standard",
-      description: "Hand-rolled pure Irish linen or printed silk twill.",
-    });
-  }
-
-  // 7. Cufflinks Slot (active if selected)
-  if (state.accessoryIds.includes("SUIT_ACC_CUFFLINKS")) {
-    slots.push({
-      slotId: "cufflinks-finish",
-      label: "Cufflinks Metal Finish",
-      componentName: "Bespoke Cufflinks",
-      fabricSource: "atelier-standard",
-      description: "Polished gold or rhodium-plated sterling silver tone.",
-    });
-  }
-
-  // 8. Buttons Slot (active if selected)
-  if (state.accessoryIds.includes("SUIT_ACC_BUTTONS")) {
-    slots.push({
-      slotId: "buttons-finish",
-      label: "Suit Button Finish",
-      componentName: "Custom Buttons",
-      fabricSource: "atelier-standard",
-      description: "Genuine carved natural horn or mother-of-pearl.",
-    });
-  }
-
-  // 9. Footwear Slot (active if footwear selected)
-  const footwear = findSplitOption(family, state.footwearId);
-  if (footwear) {
-    slots.push({
-      slotId: "footwear-leather",
-      label: "Footwear Leather",
-      componentName: footwear.name,
-      fabricSource: "atelier-standard",
-      description: "Full-grain burnished calfskin or patent mirror leather.",
-    });
-  }
+  pushSlotsFor(findSplitOption(family, state.footwearId));
 
   return slots;
 }
@@ -234,8 +219,12 @@ export function buildSplitOutfitSummary(state: SplitOutfitState): SplitOutfitSum
 
   const activeMaterialSlots = deriveActiveMaterialSlots(state);
 
-  // An outfit is considered complete if upper, lower, shirt, and footwear are selected
-  const isComplete = Boolean(upper && lower && shirt && footwear);
+  // Complete means every required slot is filled AND the whole recipe is
+  // valid — a recipe that looks "filled" but contains an incompatible
+  // selection (e.g. a leftover waistcoat after switching to a two-piece
+  // jacket) must never be reported complete.
+  const requiredFilled = Boolean(upper && lower && shirt && footwear);
+  const isComplete = requiredFilled && validateRecipe(state).valid;
 
   return {
     family,
