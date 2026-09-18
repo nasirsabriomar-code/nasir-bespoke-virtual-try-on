@@ -11,7 +11,6 @@ import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
-import { isSplitOutfitEnabled } from "@/lib/split-outfit/config";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
 import type { FabricRegion } from "@/lib/catalog/level1-prompt";
@@ -107,7 +106,9 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
   const [mode, setMode] = useState<VisualTryOnMode>("full");
   const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
-  const [splitOutfitEnabled, setSplitOutfitEnabled] = useState(false);
+  // Split Outfit is now a visible Phase 1 workspace. Its generation action
+  // remains intentionally disabled until the multi-part compiler is ready.
+  const splitOutfitEnabled = true;
   const [catalogue, setCatalogue] = useState<Level1CatalogueView | null>(null);
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("suit");
@@ -123,10 +124,6 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const objectUrls = useRef(new Set<string>());
   const generationKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    setSplitOutfitEnabled(isSplitOutfitEnabled());
-  }, []);
 
   useEffect(() => {
     let active = true;
