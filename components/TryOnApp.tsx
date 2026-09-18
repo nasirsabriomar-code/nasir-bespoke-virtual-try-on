@@ -239,13 +239,20 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   }, [clearResult, revokeUrl]);
 
   const generate = useCallback(async () => {
-    if (!person || !fabric || !selectedDesign || !selectedReferenceReady) {
-      setError("Add a customer photo and fabric, then choose an approved design to generate.");
-      return;
-    }
-    if (fabricRegion === "custom" && !reuseFabricForLower && !lowerFabric) {
-      setError("Add a lower fabric or choose to reuse the upper fabric for both regions.");
-      return;
+    if (mode === "split") {
+      if (!person || !fabric) {
+        setError("Add a customer photo and fabric to generate.");
+        return;
+      }
+    } else {
+      if (!person || !fabric || !selectedDesign || !selectedReferenceReady) {
+        setError("Add a customer photo and fabric, then choose an approved design to generate.");
+        return;
+      }
+      if (fabricRegion === "custom" && !reuseFabricForLower && !lowerFabric) {
+        setError("Add a lower fabric or choose to reuse the upper fabric for both regions.");
+        return;
+      }
     }
 
     if (generationKeyRef.current) return;
@@ -263,20 +270,31 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       setUploadProgress(0);
       const personUpload = await uploadOriginal("person", person.file, setUploadProgress);
       const fabricUpload = await uploadOriginal("fabric", fabric.file, setUploadProgress);
-      const lowerFabricUpload = fabricRegion === "custom" && !reuseFabricForLower && lowerFabric
+      const lowerFabricUpload = mode === "full" && fabricRegion === "custom" && !reuseFabricForLower && lowerFabric
         ? await uploadOriginal("lowerFabric", lowerFabric.file, setUploadProgress)
         : undefined;
       setUploadProgress(100);
+      const requestBody = mode === "split"
+        ? {
+          selectionMode: "split" as const,
+          splitRecipe: JSON.stringify(splitOutfit),
+          fabricRegion,
+          uploads: { person: personUpload, fabric: fabricUpload },
+        }
+        : selectedDesign
+          ? {
+            selectionMode: "level1" as const, categoryId, designId: selectedDesign.id,
+            ...(designVariantId ? { variantId: designVariantId } : {}),
+            fabricRegion: isJacketCategory ? "jacket" : fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion,
+            uploads: { person: personUpload, fabric: fabricUpload, ...(lowerFabricUpload ? { lowerFabric: lowerFabricUpload } : {}) },
+          }
+          : null;
+      if (!requestBody) throw new Error("We couldn't create the try-on. Please try again.");
       const response = await fetch("/api/try-on", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
-        body: JSON.stringify({
-          selectionMode: "level1", categoryId, designId: selectedDesign.id,
-          ...(designVariantId ? { variantId: designVariantId } : {}),
-          fabricRegion: isJacketCategory ? "jacket" : fabricRegion === "custom" && reuseFabricForLower ? "both" : fabricRegion,
-          uploads: { person: personUpload, fabric: fabricUpload, ...(lowerFabricUpload ? { lowerFabric: lowerFabricUpload } : {}) },
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
       window.clearTimeout(timeout);
@@ -313,7 +331,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, person, reuseFabricForLower, selectedDesign, selectedReferenceReady]);
+  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, splitOutfit]);
 
   const startOver = useCallback(() => {
     setError(null);
@@ -403,7 +421,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             onRemove={() => removeImage("fabric")}
             disabled={isGenerating}
           />
-          {!isJacketCategory && fabricRegion === "custom" ? (
+          {!isJacketCategory && mode === "full" && fabricRegion === "custom" ? (
             <ImageUpload
               id="lower-fabric-photo"
               label={UPLOAD_HELP.lowerFabric.label}
@@ -452,16 +470,18 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           >
             Both
           </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={fabricRegion === "custom"}
-            className={fabricRegion === "custom" ? "is-active" : ""}
-            onClick={() => setFabricRegion("custom")}
-            disabled={isGenerating}
-          >
-            Customization
-          </button>
+          {mode === "full" ? (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={fabricRegion === "custom"}
+              className={fabricRegion === "custom" ? "is-active" : ""}
+              onClick={() => setFabricRegion("custom")}
+              disabled={isGenerating}
+            >
+              Customization
+            </button>
+          ) : null}
         </div> : null}
         {!isJacketCategory && fabricRegion === "custom" ? (
           <label className="fabric-reuse-toggle">
@@ -482,6 +502,16 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           mode={mode}
           onModeChange={(nextMode) => {
             setMode(nextMode);
+            if (nextMode === "split") {
+              // "custom" and "jacket" are Full Outfit-only fabric modes; Split
+              // Outfit only ever accepts upper/lower/both.
+              setFabricRegion((current) => (current === "custom" || current === "jacket" ? "both" : current));
+              setReuseFabricForLower(false);
+              setLowerFabric((current) => {
+                revokeUrl(current?.previewUrl);
+                return null;
+              });
+            }
             clearResult();
             setError(null);
           }}
@@ -560,6 +590,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         <SplitOutfitWorkspace
           state={splitOutfit}
           onChange={setSplitOutfit}
+          onGenerate={generate}
+          isGenerating={isGenerating}
         />
       )}
       {error ? <p className="form-error" role="alert">{error}</p> : null}

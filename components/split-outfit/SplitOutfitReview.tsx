@@ -4,9 +4,11 @@ import type { SplitOutfitSummaryView } from "@/lib/split-outfit/types";
 
 type SplitOutfitReviewProps = {
   summary: SplitOutfitSummaryView;
+  onGenerate: () => void;
+  isGenerating: boolean;
 };
 
-export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
+export function SplitOutfitReview({ summary, onGenerate, isGenerating }: SplitOutfitReviewProps) {
   const { upper, lower, shirt, waistcoat, footwear, accessories, activeMaterialSlots, isComplete } = summary;
 
   return (
@@ -82,22 +84,13 @@ export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {
           </div>
         </div>
 
-        {/* Development State Notice */}
-        <div className="split-dev-notice" role="status">
-          <span className="split-dev-badge">Phase 1 Foundation</span>
-          <p>
-            Split Outfit architecture is configured and ready. Generation compiler connection and multi-part visual rendering are scheduled for Phase 2.
-          </p>
-        </div>
-
         <button
-          className="button button-primary level1-generate split-generate-disabled"
+          className="button button-primary level1-generate"
           type="button"
-          disabled={true}
-          aria-disabled="true"
-          title="Split Outfit generation will be enabled in Phase 2"
+          onClick={onGenerate}
+          disabled={!isComplete || isGenerating}
         >
-          {isComplete ? "Generate Split Try-On (Phase 2)" : "Complete Recipe to Continue"}
+          {isGenerating ? "Constructing your look…" : isComplete ? "Generate Split Try-On" : "Complete Recipe to Continue"}
         </button>
       </div>
     </section>

@@ -30,7 +30,7 @@ export type UsageEvent = {
   quality: string;
   assets?: GenerationAssetRefs;
   generation?: {
-    mode: "catalog" | "outfit" | "level1";
+    mode: "catalog" | "outfit" | "level1" | "split";
     categoryId?: string;
     categoryName?: string;
     curatedDesignId?: string;
@@ -59,6 +59,19 @@ export type UsageEvent = {
     shoeId?: string;
     shoeName?: string;
     outfitSpecification?: OutfitSpecification;
+    splitFamily?: string;
+    splitUpperId?: string;
+    splitUpperName?: string;
+    splitLowerId?: string;
+    splitLowerName?: string;
+    splitShirtId?: string;
+    splitShirtName?: string;
+    splitWaistcoatId?: string;
+    splitWaistcoatName?: string;
+    splitFootwearId?: string;
+    splitFootwearName?: string;
+    splitAccessoryIds?: string[];
+    splitAccessoryNames?: string[];
   };
 };
 
@@ -121,7 +134,7 @@ function parseAssetRefs(value: unknown): GenerationAssetRefs | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const result: GenerationAssetRefs = {};
-  for (const asset of ["person", "outfit", "fabric", "lower-fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail"] as const) {
+  for (const asset of ["person", "outfit", "fabric", "lower-fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail", "split-upper", "split-lower"] as const) {
     const item = record[asset];
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;
@@ -152,7 +165,8 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
   const record = value as Record<string, unknown>;
   const isOutfitMode = record.mode === "outfit";
   const isLevel1Mode = record.mode === "level1";
-  if (!isOutfitMode && !isLevel1Mode && (
+  const isSplitMode = record.mode === "split";
+  if (!isOutfitMode && !isLevel1Mode && !isSplitMode && (
     typeof record.upperGarmentId !== "string" ||
     typeof record.upperGarmentName !== "string" ||
     typeof record.turbanId !== "string" ||
@@ -161,6 +175,10 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     typeof record.shoeName !== "string"
   )) return undefined;
   const optionalString = (key: string) => typeof record[key] === "string" ? record[key] as string : undefined;
+  const optionalStringArray = (key: string) => {
+    const raw = record[key];
+    return Array.isArray(raw) && raw.every((item) => typeof item === "string") ? raw as string[] : undefined;
+  };
   const outfitSpecification = parseOutfitSpecification(record.outfitSpecification);
   const curatedDesignVersion = typeof record.curatedDesignVersion === "number" && Number.isSafeInteger(record.curatedDesignVersion)
     ? record.curatedDesignVersion
@@ -173,7 +191,7 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     : undefined;
   if (isLevel1Mode && (!optionalString("categoryId") || !optionalString("curatedDesignId") || !optionalString("curatedDesignName") || !curatedDesignVersion || !curatedAssetStatus)) return undefined;
   return {
-    mode: isOutfitMode ? "outfit" : isLevel1Mode ? "level1" : "catalog",
+    mode: isOutfitMode ? "outfit" : isLevel1Mode ? "level1" : isSplitMode ? "split" : "catalog",
     ...(isLevel1Mode && optionalString("categoryId") ? { categoryId: optionalString("categoryId") } : {}),
     ...(isLevel1Mode && optionalString("categoryName") ? { categoryName: optionalString("categoryName") } : {}),
     ...(isLevel1Mode && optionalString("curatedDesignId") ? { curatedDesignId: optionalString("curatedDesignId") } : {}),
@@ -202,6 +220,19 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     ...(optionalString("shoeId") ? { shoeId: optionalString("shoeId") } : {}),
     ...(optionalString("shoeName") ? { shoeName: optionalString("shoeName") } : {}),
     ...(outfitSpecification ? { outfitSpecification } : {}),
+    ...(isSplitMode && optionalString("splitFamily") ? { splitFamily: optionalString("splitFamily") } : {}),
+    ...(isSplitMode && optionalString("splitUpperId") ? { splitUpperId: optionalString("splitUpperId") } : {}),
+    ...(isSplitMode && optionalString("splitUpperName") ? { splitUpperName: optionalString("splitUpperName") } : {}),
+    ...(isSplitMode && optionalString("splitLowerId") ? { splitLowerId: optionalString("splitLowerId") } : {}),
+    ...(isSplitMode && optionalString("splitLowerName") ? { splitLowerName: optionalString("splitLowerName") } : {}),
+    ...(isSplitMode && optionalString("splitShirtId") ? { splitShirtId: optionalString("splitShirtId") } : {}),
+    ...(isSplitMode && optionalString("splitShirtName") ? { splitShirtName: optionalString("splitShirtName") } : {}),
+    ...(isSplitMode && optionalString("splitWaistcoatId") ? { splitWaistcoatId: optionalString("splitWaistcoatId") } : {}),
+    ...(isSplitMode && optionalString("splitWaistcoatName") ? { splitWaistcoatName: optionalString("splitWaistcoatName") } : {}),
+    ...(isSplitMode && optionalString("splitFootwearId") ? { splitFootwearId: optionalString("splitFootwearId") } : {}),
+    ...(isSplitMode && optionalString("splitFootwearName") ? { splitFootwearName: optionalString("splitFootwearName") } : {}),
+    ...(isSplitMode && optionalStringArray("splitAccessoryIds") ? { splitAccessoryIds: optionalStringArray("splitAccessoryIds") } : {}),
+    ...(isSplitMode && optionalStringArray("splitAccessoryNames") ? { splitAccessoryNames: optionalStringArray("splitAccessoryNames") } : {}),
   };
 }
 

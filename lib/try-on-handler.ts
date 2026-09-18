@@ -5,12 +5,20 @@ import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { CatalogCompatibilityError, validateCatalogSelection } from "@/lib/catalog/compatibility";
 import { findCatalogSelection } from "@/lib/catalog/store";
-import type { CatalogSelection, ReferenceImage, StyleOption, TryOnSelection } from "@/lib/catalog/types";
+import type { CatalogSelection, ReferenceImage, SelectionMode, StyleOption, TryOnSelection } from "@/lib/catalog/types";
 import { getPrivateLevel1Asset } from "@/lib/catalog/level1-assets";
 import { Level1CatalogueError, type CuratedAsset, type ResolvedLevel1Design } from "@/lib/catalog/level1-types";
 import { buildLevel1TryOnPrompt, type FabricRegion } from "@/lib/catalog/level1-prompt";
 import { resolveLevel1Design } from "@/lib/catalog/level1-store";
 import { MissingApiKeyError } from "@/lib/openai";
+import {
+  SplitOutfitError,
+  resolveSplitOutfitRecipe,
+  readSplitReference,
+  type ResolvedSplitOutfit,
+  type SplitReferenceRole,
+} from "@/lib/split-outfit/generation";
+import { buildSplitOutfitPrompt, type SplitFabricRegion } from "@/lib/split-outfit/prompt";
 import {
   acquireGenerationLock,
   GenerationGuardUnavailableError,
@@ -78,6 +86,8 @@ type RouteDependencies = {
   resolveSelection?: typeof findCatalogSelection;
   resolveLevel1Selection?: typeof resolveLevel1Design;
   readLevel1Reference?: (asset: CuratedAsset, role: "curated-design" | "curated-detail") => Promise<TryOnInput["references"][number]>;
+  resolveSplitSelection?: typeof resolveSplitOutfitRecipe;
+  readSplitReference?: (option: ResolvedSplitOutfit["upper"], role: SplitReferenceRole) => Promise<TryOnInput["references"][number]>;
 };
 
 const DEFAULT_DEPENDENCIES: RouteDependencies = {
@@ -88,6 +98,8 @@ const DEFAULT_DEPENDENCIES: RouteDependencies = {
   resolveSelection: findCatalogSelection,
   resolveLevel1Selection: resolveLevel1Design,
   readLevel1Reference: readLevel1Reference,
+  resolveSplitSelection: resolveSplitOutfitRecipe,
+  readSplitReference: readSplitReference,
 };
 
 function jsonError(error: string, status: number, headers?: HeadersInit) {
@@ -168,6 +180,7 @@ function hasUnexpectedFields(formData: FormData) {
       "variantId",
       "fabricRegion",
       "quality",
+      "splitRecipe",
     ].includes(name)) return true;
   }
   return false;
@@ -177,6 +190,14 @@ function hasLevel1ForbiddenFields(formData: FormData) {
   const level1Fields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "variantId", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!level1Fields.has(name)) return true;
+  }
+  return false;
+}
+
+function hasSplitForbiddenFields(formData: FormData) {
+  const splitFields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
+  for (const [name] of formData.entries()) {
+    if (!splitFields.has(name)) return true;
   }
   return false;
 }
@@ -322,6 +343,7 @@ const HIGHRES_TEXT_FIELDS = [
   "selectionMode", "upperGarmentId", "lowerGarmentId", "garmentSubtypeId",
   "upperStyleId", "lowerStyleId", "turbanStyleId", "shoeStyleId", "turbanId", "shoeId",
   "bespokeConfiguration", "categoryId", "designId", "variantId", "fabricRegion",
+  "splitRecipe",
 ] as const;
 
 type HighResolutionRequest = {
@@ -471,11 +493,13 @@ export async function handleTryOnRequest(
   try {
     const formData = await request.formData();
     const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
-    if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit" && selectionModeValue !== "level1")) {
+    if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit" && selectionModeValue !== "level1" && selectionModeValue !== "split")) {
       return jsonError("Please choose a valid generation mode.", 400, rateHeaders);
     }
-    const selectionMode: "catalog" | "outfit" | "level1" = selectionModeValue === "level1"
+    const selectionMode: SelectionMode = selectionModeValue === "level1"
       ? "level1"
+      : selectionModeValue === "split"
+      ? "split"
       : selectionModeValue === "outfit"
       ? "outfit"
       : selectionModeValue === "catalog"
@@ -499,20 +523,25 @@ export async function handleTryOnRequest(
     const categoryId = getExactlyOneText(formData, "categoryId", false);
     const designId = getExactlyOneText(formData, "designId", false);
     const variantId = getExactlyOneText(formData, "variantId", false);
+    const splitRecipeText = getExactlyOneText(formData, "splitRecipe", false);
 
     const invalidCommonInput = !personFile || !fabricFile || bespokeConfigurationText === null || hasUnexpectedFields(formData);
     const invalidModeInput = selectionMode === "outfit"
       ? !outfitFile
       : selectionMode === "level1"
         ? !categoryId || !designId || hasLevel1ForbiddenFields(formData)
-        : !upperGarmentId || !turbanId || !shoeId;
+        : selectionMode === "split"
+          ? !splitRecipeText || hasSplitForbiddenFields(formData)
+          : !upperGarmentId || !turbanId || !shoeId;
     if (invalidCommonInput || invalidModeInput) {
       return jsonError(
         selectionMode === "outfit"
           ? "Please upload a person photo, outfit photo, and fabric photo."
           : selectionMode === "level1"
             ? "Please upload a person photo and fabric photo, then choose a curated design."
-            : "Please upload a person photo and fabric photo, then choose a men's garment and accessories.",
+            : selectionMode === "split"
+              ? "Please upload a person photo and fabric photo, then complete a modular outfit recipe."
+              : "Please upload a person photo and fabric photo, then choose a men's garment and accessories.",
         400,
         rateHeaders,
       );
@@ -553,22 +582,27 @@ export async function handleTryOnRequest(
       ? await validateImageFile(lowerFabricFile, "a lower fabric photo")
       : undefined;
 
-    const selectionIds: TryOnSelection = selectionMode === "level1"
+    let selectionIds: TryOnSelection = selectionMode === "level1"
       ? { mode: "level1", categoryId: categoryId as string, designId: designId as string, ...(variantId ? { variantId } : {}) }
-      : {
-        mode: selectionMode,
-        ...(upperGarmentId ? { upperGarmentId } : {}),
-        ...(lowerGarmentId ? { lowerGarmentId } : {}),
-        ...(garmentSubtypeId ? { garmentSubtypeId } : {}),
-        ...(upperStyleId ? { upperStyleId } : {}),
-        ...(lowerStyleId ? { lowerStyleId } : {}),
-        ...(turbanStyleId ? { turbanStyleId } : {}),
-        ...(shoeStyleId ? { shoeStyleId } : {}),
-        ...(turbanId ? { turbanId } : {}),
-        ...(shoeId ? { shoeId } : {}),
-      };
+      : selectionMode === "split"
+        // Placeholder — overwritten below once resolveSplitOutfitRecipe validates
+        // the submitted recipe. selectionIds isn't consumed before that point.
+        ? { mode: "split", family: "suit", upperId: null, lowerId: null, shirtId: null, waistcoatId: null, footwearId: null, accessoryIds: [] }
+        : {
+          mode: selectionMode,
+          ...(upperGarmentId ? { upperGarmentId } : {}),
+          ...(lowerGarmentId ? { lowerGarmentId } : {}),
+          ...(garmentSubtypeId ? { garmentSubtypeId } : {}),
+          ...(upperStyleId ? { upperStyleId } : {}),
+          ...(lowerStyleId ? { lowerStyleId } : {}),
+          ...(turbanStyleId ? { turbanStyleId } : {}),
+          ...(shoeStyleId ? { shoeStyleId } : {}),
+          ...(turbanId ? { turbanId } : {}),
+          ...(shoeId ? { shoeId } : {}),
+        };
     let resolved: Awaited<ReturnType<typeof findCatalogSelection>> = null;
     let level1Resolved: ResolvedLevel1Design | undefined;
+    let splitResolved: ResolvedSplitOutfit | undefined;
     let catalogSelection: CatalogSelection | undefined;
     let bespokeConfiguration: ReturnType<typeof resolveBespokeConfiguration> | undefined;
     let outfitSpecification: ReturnType<typeof buildOutfitSpecification> | undefined;
@@ -624,6 +658,9 @@ export async function handleTryOnRequest(
       }
     } else if (selectionMode === "level1") {
       level1Resolved = await (dependencies.resolveLevel1Selection ?? resolveLevel1Design)(categoryId as string, designId as string, variantId ?? undefined);
+    } else if (selectionMode === "split") {
+      splitResolved = await (dependencies.resolveSplitSelection ?? resolveSplitOutfitRecipe)(splitRecipeText as string);
+      selectionIds = { mode: "split", ...splitResolved.state };
     }
     if (idempotencyKey) {
       const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
@@ -694,12 +731,25 @@ export async function handleTryOnRequest(
         ...await Promise.all(level1Resolved.detailAssets.map((asset) => (dependencies.readLevel1Reference ?? readLevel1Reference)(asset, "curated-detail"))),
       ]
       : [];
+    // Image order contract: person, fabric, then split-upper (jacket), then
+    // split-lower (trousers) — see lib/split-outfit/prompt.ts. Order here
+    // must not change without updating that prompt's hand-numbered image map.
+    const splitReferenceInputs = splitResolved
+      ? [
+        await (dependencies.readSplitReference ?? readSplitReference)(splitResolved.upper, "split-upper"),
+        await (dependencies.readSplitReference ?? readSplitReference)(splitResolved.lower, "split-lower"),
+      ]
+      : [];
     const references = level1Resolved
       ? level1ReferenceInputs
-      : [...await buildReferenceInputs(catalogSelection), ...bespokeReferenceInputs];
+      : splitResolved
+        ? splitReferenceInputs
+        : [...await buildReferenceInputs(catalogSelection), ...bespokeReferenceInputs];
     const basePrompt = level1Resolved
       ? buildLevel1TryOnPrompt(level1Resolved, fabricRegion)
-      : buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
+      : splitResolved
+        ? buildSplitOutfitPrompt(splitResolved, fabricRegion as SplitFabricRegion)
+        : buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
     const prompt = outfitSpecification && bespokeConfiguration
       ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
       : basePrompt;
@@ -777,6 +827,21 @@ export async function handleTryOnRequest(
         shoeName: resolved.shoes.name,
         ...(resolved.shoeStyle ? { shoeStyleId: resolved.shoeStyle.id, shoeStyleName: resolved.shoeStyle.name } : {}),
         ...(outfitSpecification ? { outfitSpecification } : {}),
+      } : splitResolved ? {
+        mode: "split",
+        splitFamily: splitResolved.state.family,
+        splitUpperId: splitResolved.upper.id,
+        splitUpperName: splitResolved.upper.customer.name,
+        splitLowerId: splitResolved.lower.id,
+        splitLowerName: splitResolved.lower.customer.name,
+        splitShirtId: splitResolved.shirt.id,
+        splitShirtName: splitResolved.shirt.customer.name,
+        ...(splitResolved.waistcoat ? { splitWaistcoatId: splitResolved.waistcoat.id, splitWaistcoatName: splitResolved.waistcoat.customer.name } : {}),
+        splitFootwearId: splitResolved.footwear.id,
+        splitFootwearName: splitResolved.footwear.customer.name,
+        splitAccessoryIds: splitResolved.accessories.map((accessory) => accessory.id),
+        splitAccessoryNames: splitResolved.accessories.map((accessory) => accessory.customer.name),
+        fabricRegion,
       } : { mode: "outfit" },
       assets,
     );
@@ -855,6 +920,10 @@ export async function handleTryOnRequest(
 
     if (error instanceof Level1CatalogueError) {
       return jsonError(error.message, error.code === "asset_unavailable" ? 503 : 400, rateHeaders);
+    }
+
+    if (error instanceof SplitOutfitError) {
+      return jsonError(error.message, error.code === "asset_pending" ? 503 : 400, rateHeaders);
     }
 
     if (!generationAttempted && (error instanceof GenerationGuardUnavailableError || error instanceof RateLimitConfigurationError)) {

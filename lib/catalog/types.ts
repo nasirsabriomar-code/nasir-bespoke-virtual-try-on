@@ -1,4 +1,5 @@
 import type { OptionRule } from "@/lib/rules/types";
+import type { SplitOutfitState } from "@/lib/split-outfit/types";
 
 export type GarmentCategory =
   | "suit"
@@ -116,6 +117,8 @@ export type Catalog = {
   configurationProfiles?: ConfigurationProfile[];
 };
 
+export type SelectionMode = "catalog" | "outfit" | "level1" | "split";
+
 export type TryOnSelection = {
   mode: "catalog" | "outfit";
   upperGarmentId?: string;
@@ -132,7 +135,9 @@ export type TryOnSelection = {
   categoryId: string;
   designId: string;
   variantId?: string;
-};
+} | ({
+  mode: "split";
+} & SplitOutfitState);
 
 export type CatalogSelection = {
   upper: GarmentBlueprint;

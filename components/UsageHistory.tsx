@@ -22,7 +22,7 @@ type HistoryEvent = {
   model: string;
   quality: string;
   generation?: {
-    mode: "catalog" | "outfit" | "level1";
+    mode: "catalog" | "outfit" | "level1" | "split";
     categoryId?: string;
     categoryName?: string;
     curatedDesignId?: string;
@@ -38,6 +38,13 @@ type HistoryEvent = {
     shoeStyleName?: string;
     turbanName?: string;
     shoeName?: string;
+    splitFamily?: string;
+    splitUpperName?: string;
+    splitLowerName?: string;
+    splitShirtName?: string;
+    splitWaistcoatName?: string;
+    splitFootwearName?: string;
+    splitAccessoryNames?: string[];
     outfitSpecification?: {
       garment: { name: string; subtypeName?: string };
       configuration: { selectedOptions: Array<{ groupId: string; groupName: string; section: string; optionId: string; optionName: string }> };
@@ -62,6 +69,8 @@ type HistoryEvent = {
     "bespoke-detail-2"?: { contentType: string };
     "curated-design"?: { contentType: string };
     "curated-detail"?: { contentType: string };
+    "split-upper"?: { contentType: string };
+    "split-lower"?: { contentType: string };
   };
 };
 
@@ -91,6 +100,17 @@ function formatLook(event: HistoryEvent) {
   if (event.generation.mode === "level1") {
     const version = event.generation.curatedDesignVersion ? ` · Catalogue v${event.generation.curatedDesignVersion}` : "";
     return `${event.generation.categoryName ?? "Curated"} · ${event.generation.curatedDesignName ?? "Design"}${version}`;
+  }
+  if (event.generation.mode === "split") {
+    const pieces = [
+      event.generation.splitUpperName,
+      event.generation.splitLowerName,
+      event.generation.splitShirtName,
+      event.generation.splitWaistcoatName,
+      ...(event.generation.splitAccessoryNames ?? []),
+    ].filter(Boolean);
+    const familyLabel = event.generation.splitFamily ? `${event.generation.splitFamily} · ` : "";
+    return `${familyLabel}${pieces.join(" · ") || "Modular outfit"}`;
   }
   if (event.generation.outfitSpecification) return `${event.generation.outfitSpecification.garment.subtypeName ?? event.generation.outfitSpecification.garment.name} · Bespoke configuration`;
   return [
@@ -347,6 +367,8 @@ export function UsageHistory() {
                             "bespoke-detail-2",
                             "curated-design",
                             "curated-detail",
+                            "split-upper",
+                            "split-lower",
                             "result",
                           ].map((asset) =>
                             selectedEvent.assets?.[asset as keyof NonNullable<HistoryEvent["assets"]>] ? (
@@ -397,6 +419,10 @@ export function UsageHistory() {
                                     ? "Curated construction reference"
                                     : asset === "curated-detail"
                                     ? "Curated detail reference"
+                                    : asset === "split-upper"
+                                    ? "Jacket reference"
+                                    : asset === "split-lower"
+                                    ? "Trouser reference"
                                     : asset.startsWith("bespoke-detail")
                                     ? "Bespoke visual reference"
                                     : "Final result"}

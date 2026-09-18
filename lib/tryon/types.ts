@@ -18,7 +18,7 @@ export type TryOnInput = {
   fabric: TryOnImage;
   lowerFabric?: TryOnImage;
   references: Array<{
-    role: "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail";
+    role: "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower";
     image: TryOnImage;
   }>;
   selection: TryOnSelection;

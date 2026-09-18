@@ -31,6 +31,8 @@ const ASSET_KEYS = new Set<GenerationAssetKey>([
   "bespoke-detail-2",
   "curated-design",
   "curated-detail",
+  "split-upper",
+  "split-lower",
 ]);
 
 function downloadFilename(contentType: string) {

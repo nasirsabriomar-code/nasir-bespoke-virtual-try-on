@@ -16,6 +16,8 @@ import { SplitOutfitReview } from "./SplitOutfitReview";
 type SplitOutfitWorkspaceProps = {
   state: SplitOutfitState;
   onChange: (updater: (prev: SplitOutfitState) => SplitOutfitState) => void;
+  onGenerate: () => void;
+  isGenerating: boolean;
 };
 
 const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
@@ -28,7 +30,7 @@ const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
   achkan: "Achkan",
 };
 
-export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspaceProps) {
+export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating }: SplitOutfitWorkspaceProps) {
   const [view, setView] = useState<SplitCatalogueView | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [notices, setNotices] = useState<RepairNotice[]>([]);
@@ -314,7 +316,7 @@ export function SplitOutfitWorkspace({ state, onChange }: SplitOutfitWorkspacePr
       <SplitMaterialsSection slots={summary.activeMaterialSlots} />
 
       {/* 07 — YOUR OUTFIT */}
-      <SplitOutfitReview summary={summary} />
+      <SplitOutfitReview summary={summary} onGenerate={onGenerate} isGenerating={isGenerating} />
     </div>
   );
 }
