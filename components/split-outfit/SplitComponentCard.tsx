@@ -1,10 +1,10 @@
 "use client";
 
 import type { Verdict } from "@/lib/rules/types";
-import type { SplitComponentOption } from "@/lib/split-outfit/types";
+import type { SplitComponentOptionView } from "@/lib/split-outfit/types";
 
 type SplitComponentCardProps = {
-  option: SplitComponentOption;
+  option: SplitComponentOptionView;
   selected: boolean;
   onSelect: () => void;
   verdict?: Verdict;

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { evaluateOption, isSelectable, reconcileSelections, type ReconcileGroup } from "@/lib/rules/engine";
 import type { RepairNotice, Selections, Verdict } from "@/lib/rules/types";
 import { SPLIT_CATALOGUE_BY_FAMILY, SPLIT_SLOTS } from "./catalogue";
@@ -22,7 +24,7 @@ function verdictReason(verdict: Verdict): string {
   return verdict.status === "incompatible" ? verdict.reason : "Not available with the current selections.";
 }
 
-function optionsForSlot(family: SplitOutfitFamily, slotId: SplitComponentCategory): SplitComponentOption[] {
+export function optionsForSlot(family: SplitOutfitFamily, slotId: SplitComponentCategory): SplitComponentOption[] {
   const catalogue = SPLIT_CATALOGUE_BY_FAMILY[family];
   if (!catalogue) return [];
   switch (slotId) {

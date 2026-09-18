@@ -1,9 +1,9 @@
 "use client";
 
-import type { SplitOutfitSummary } from "@/lib/split-outfit/types";
+import type { SplitOutfitSummaryView } from "@/lib/split-outfit/types";
 
 type SplitOutfitReviewProps = {
-  summary: SplitOutfitSummary;
+  summary: SplitOutfitSummaryView;
 };
 
 export function SplitOutfitReview({ summary }: SplitOutfitReviewProps) {

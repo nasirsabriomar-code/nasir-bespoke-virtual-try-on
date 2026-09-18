@@ -20,6 +20,8 @@ import {
   validateRecipe,
 } from "@/lib/split-outfit/compatibility";
 import { isSplitOutfitEnabled } from "@/lib/split-outfit/config";
+import { getSplitCatalogueView } from "@/lib/split-outfit/view";
+import * as clientEngine from "@/lib/split-outfit/client-engine";
 import { SUIT_UPPER_IDS, SUIT_SHIRT_IDS } from "@/lib/split-outfit/types";
 import type { SplitComponentCategory, SplitComponentOption, SplitOutfitState } from "@/lib/split-outfit/types";
 import { DEFAULT_LEVEL1_CATALOGUE } from "@/lib/catalog/level1-seed";
@@ -325,4 +327,45 @@ test("buildSplitOutfitSummary generates accurate live recipe", () => {
   assert.equal(summary.accessories.length, 1);
   assert.equal(summary.accessories[0].customer.name, "Pocket Square");
   assert.equal(summary.isComplete, true);
+});
+
+
+test("SplitCatalogueView never carries generation/prompt text to the client", () => {
+  const view = getSplitCatalogueView("suit");
+  const serialized = JSON.stringify(view);
+  assert.doesNotMatch(serialized, /constructionFragment|negativeConstraints/i);
+
+  // Every option's rules and presentation copy still made it through.
+  const upperSlot = view.slots.find((slot) => slot.id === "upper");
+  assert.ok(upperSlot);
+  assert.equal(upperSlot.options.length, 5);
+  assert.ok(upperSlot.options.every((option) => typeof option.customer.name === "string"));
+});
+
+test("Client engine reproduces the same verdicts as the server engine from the fetched view", () => {
+  const view = getSplitCatalogueView("suit");
+  const threePieceState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_THREE_PIECE" };
+
+  const serverVerdict = optionsFor(threePieceState, "inner-waistcoat")
+    .find((entry) => entry.option.id === "SUIT_WAISTCOAT_NONE")?.verdict;
+  const clientVerdict = clientEngine.optionsFor(view, threePieceState, "inner-waistcoat")
+    .find((entry) => entry.option.id === "SUIT_WAISTCOAT_NONE")?.verdict;
+
+  assert.deepEqual(clientVerdict, serverVerdict);
+});
+
+test("Client engine reconcile matches the server engine reconcile", () => {
+  const view = getSplitCatalogueView("suit");
+  const threePieceWithWaistcoat: SplitOutfitState = {
+    ...DEFAULT_SPLIT_OUTFIT_STATE,
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
+  };
+  const switchedToTwoPiece: SplitOutfitState = { ...threePieceWithWaistcoat, upperId: "SUIT_UPPER_CLASSIC" };
+
+  const serverResult = reconcile(switchedToTwoPiece);
+  const clientResult = clientEngine.reconcile(view, switchedToTwoPiece);
+
+  assert.deepEqual(clientResult.state, serverResult.state);
+  assert.deepEqual(clientResult.notices, serverResult.notices);
 });

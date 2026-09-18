@@ -2,14 +2,17 @@ import type { OptionRuleSet } from "@/lib/rules/types";
 
 export type VisualTryOnMode = "full" | "split";
 
-export type SplitOutfitFamily =
-  | "suit"
-  | "sherwani"
-  | "bandhgala"
-  | "nehru-jacket"
-  | "kurta-set"
-  | "indo-western"
-  | "achkan";
+export const SPLIT_OUTFIT_FAMILIES = [
+  "suit",
+  "sherwani",
+  "bandhgala",
+  "nehru-jacket",
+  "kurta-set",
+  "indo-western",
+  "achkan",
+] as const;
+
+export type SplitOutfitFamily = (typeof SPLIT_OUTFIT_FAMILIES)[number];
 
 export type SplitComponentCategory =
   | "upper"
@@ -144,6 +147,47 @@ export type SplitOutfitSummary = {
   waistcoat: SplitComponentOption | null;
   footwear: SplitComponentOption | null;
   accessories: SplitComponentOption[];
+  activeMaterialSlots: MaterialSlotState[];
+  isComplete: boolean;
+};
+
+/**
+ * The client-safe projection of a SplitComponentOption. Deliberately omits
+ * `family` (redundant once scoped to a single fetched view) and, most
+ * importantly, the entire `generation` layer — construction/prompt text
+ * must never reach the browser. Mirrors how Level1CatalogueView strips
+ * `blueprint`/`generation` from CuratedDesign.
+ */
+export type SplitComponentOptionView = {
+  id: SplitOptionId;
+  categoryId: SplitComponentCategory;
+  customer: SplitComponentOption["customer"];
+  rules?: OptionRuleSet;
+  compatibilityTags?: string[];
+  materialRequirements?: MaterialRequirement[];
+};
+
+export type SplitCatalogueSlotView = {
+  id: SplitComponentCategory;
+  multi: boolean;
+  required: boolean;
+  options: SplitComponentOptionView[];
+};
+
+export type SplitCatalogueView = {
+  family: SplitOutfitFamily;
+  slots: SplitCatalogueSlotView[];
+};
+
+/** Same shape as SplitOutfitSummary, but built from client-safe option views. */
+export type SplitOutfitSummaryView = {
+  family: SplitOutfitFamily;
+  upper: SplitComponentOptionView | null;
+  lower: SplitComponentOptionView | null;
+  shirt: SplitComponentOptionView | null;
+  waistcoat: SplitComponentOptionView | null;
+  footwear: SplitComponentOptionView | null;
+  accessories: SplitComponentOptionView[];
   activeMaterialSlots: MaterialSlotState[];
   isComplete: boolean;
 };
