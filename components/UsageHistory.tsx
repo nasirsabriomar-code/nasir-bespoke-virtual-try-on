@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { restoreLookFromGeneration, type RestoredLook } from "@/lib/history/restore-look";
 
 const emptySubscribe = () => () => {};
 
@@ -27,8 +28,10 @@ type HistoryEvent = {
     categoryName?: string;
     curatedDesignId?: string;
     curatedDesignName?: string;
+    curatedVariantId?: string;
     curatedDesignVersion?: number;
     curatedAssetStatus?: "ready" | "awaiting-approved-reference";
+    fabricRegion?: "upper" | "lower" | "both" | "custom" | "jacket";
     upperGarmentName?: string;
     lowerGarmentName?: string;
     garmentSubtypeName?: string;
@@ -39,11 +42,17 @@ type HistoryEvent = {
     turbanName?: string;
     shoeName?: string;
     splitFamily?: string;
+    splitUpperId?: string;
     splitUpperName?: string;
+    splitLowerId?: string;
     splitLowerName?: string;
+    splitShirtId?: string;
     splitShirtName?: string;
+    splitWaistcoatId?: string;
     splitWaistcoatName?: string;
+    splitFootwearId?: string;
     splitFootwearName?: string;
+    splitAccessoryIds?: string[];
     splitAccessoryNames?: string[];
     outfitSpecification?: {
       garment: { name: string; subtypeName?: string };
@@ -126,7 +135,11 @@ function formatLook(event: HistoryEvent) {
   ].filter(Boolean).join(" · ");
 }
 
-export function UsageHistory() {
+type UsageHistoryProps = {
+  onRestoreLook?: (look: RestoredLook) => void;
+};
+
+export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
   const mounted = useSyncExternalStore(
     emptySubscribe,
     () => true,
@@ -453,6 +466,23 @@ export function UsageHistory() {
                           {formatDate(selectedEvent.occurredAt)} · {formatDevice(selectedEvent)} ·{" "}
                           {selectedEvent.durationMs > 0 ? `${Math.round(selectedEvent.durationMs / 1000)}s` : "—"}
                         </p>
+                        {(() => {
+                          const restored = restoreLookFromGeneration(selectedEvent.generation);
+                          if (restored.kind === "unsupported" || !onRestoreLook) return null;
+                          return (
+                            <button
+                              type="button"
+                              className="history-button"
+                              onClick={() => {
+                                onRestoreLook(restored);
+                                setSelectedEvent(null);
+                                setIsOpen(false);
+                              }}
+                            >
+                              Use this look
+                            </button>
+                          );
+                        })()}
                         {selectedEvent.assets?.result ? (
                           <a
                             className="generation-details-download"

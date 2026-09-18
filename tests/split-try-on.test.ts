@@ -6,6 +6,7 @@ import path from "node:path";
 import test, { beforeEach } from "node:test";
 import { handleTryOnRequest } from "@/lib/try-on-handler";
 import { readSplitReference, resolveSplitOutfitRecipe, SplitOutfitError, type ResolvedSplitOutfit } from "@/lib/split-outfit/generation";
+import { buildSplitOutfitPrompt } from "@/lib/split-outfit/prompt";
 import { getSplitCatalogueView } from "@/lib/split-outfit/view";
 import { DEFAULT_SPLIT_OUTFIT_STATE, SUIT_UPPER_OPTIONS } from "@/lib/split-outfit/catalogue";
 import type { SplitOptionId, SplitOutfitState } from "@/lib/split-outfit/types";
@@ -90,6 +91,23 @@ test("a valid split recipe reaches generate() with the correct references, order
   assert.equal(generatedInput.selection.mode, "split");
   assert.match(generatedInput.prompt, /Tailor every garment around the customer's actual body/i);
   assert.match(generatedInput.prompt, /SELECTED MODULAR OUTFIT/i);
+  assert.match(generatedInput.prompt, /FINAL FABRIC APPLICATION OVERRIDE/i);
+});
+
+test("split prompt fabric override matches Level 1's closing authority and does not recolour text-composed pieces", async () => {
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
+  const both = buildSplitOutfitPrompt(resolved, "both");
+  const upper = buildSplitOutfitPrompt(resolved, "upper");
+  const lower = buildSplitOutfitPrompt(resolved, "lower");
+
+  assert.match(both, /FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image 2 is the sole authority for the fabric appearance of the jacket and the trousers/);
+  assert.match(both, /Shirt, waistcoat, footwear, and accessories are not coloured from Image 2/);
+  assert.doesNotMatch(both, /every selected garment piece/);
+
+  assert.match(upper, /Image 2 is the sole authority for the fabric appearance of the jacket/);
+  assert.match(upper, /The trousers must keep their original appearance from Image 4/);
+  assert.match(lower, /Image 2 is the sole authority for the fabric appearance of the trousers/);
+  assert.match(lower, /The jacket must keep its original appearance from Image 3/);
 });
 
 test("an invalid split recipe is rejected server-side by the real resolver, even though the UI would never produce it", async () => {

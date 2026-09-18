@@ -14,6 +14,7 @@ import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
 import type { FabricRegion } from "@/lib/catalog/level1-prompt";
+import type { RestoredLook } from "@/lib/history/restore-look";
 
 type UploadedImage = {
   file: File;
@@ -106,8 +107,6 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
   const [mode, setMode] = useState<VisualTryOnMode>("full");
   const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
-  // Split Outfit is now a visible Phase 1 workspace. Its generation action
-  // remains intentionally disabled until the multi-part compiler is ready.
   const splitOutfitEnabled = true;
   const [catalogue, setCatalogue] = useState<Level1CatalogueView | null>(null);
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
@@ -333,6 +332,28 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     }
   }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, splitOutfit]);
 
+  const restoreLook = useCallback((look: RestoredLook) => {
+    if (look.kind === "unsupported") return;
+    setError(null);
+    clearResult();
+    setReuseFabricForLower(false);
+    setLowerFabric((current) => {
+      revokeUrl(current?.previewUrl);
+      return null;
+    });
+    if (look.kind === "split") {
+      setMode("split");
+      setSplitOutfit(look.state);
+      setFabricRegion(look.fabricRegion);
+      return;
+    }
+    setMode("full");
+    setCategoryId(look.categoryId);
+    setDesignId(look.designId);
+    setDesignVariantId(look.variantId);
+    setFabricRegion(look.fabricRegion);
+  }, [clearResult, revokeUrl]);
+
   const startOver = useCallback(() => {
     setError(null);
     clearResult();
@@ -362,7 +383,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           <span><strong>NASIR BESPOKE</strong><small>Private atelier</small></span>
         </div>
         <div className="atelier-mobile-actions">
-          <UsageHistory />
+          <UsageHistory onRestoreLook={restoreLook} />
           <LogoutButton />
         </div>
       </header>
@@ -373,7 +394,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         </div>
         <nav className="atelier-nav" aria-label="Primary navigation">
           <span className="atelier-nav-link is-active"><span aria-hidden="true">✦</span>New Creation</span>
-          <UsageHistory />
+          <UsageHistory onRestoreLook={restoreLook} />
         </nav>
         <div className="atelier-sidebar-footer">
           <div className="atelier-user">
