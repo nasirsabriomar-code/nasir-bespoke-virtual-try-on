@@ -27,7 +27,7 @@ import {
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { generateTryOn } from "@/lib/tryon";
-import type { EffortQuality, TryOnInput, TryOnOutput } from "@/lib/tryon/types";
+import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
 import { buildTryOnPrompt } from "@/lib/tryon/prompt";
 import {
   BespokeConfigurationError,
@@ -543,7 +543,6 @@ export async function handleTryOnRequest(
     if (qualityValue === null || (qualityValue && qualityValue !== "medium")) {
       return jsonError("Studio try-ons use the fixed medium quality setting.", 400, rateHeaders);
     }
-    const quality = undefined as EffortQuality | undefined;
 
     const [person, outfit, fabric] = await Promise.all([
       validateImageFile(personFile, "a person photo"),
@@ -721,7 +720,6 @@ export async function handleTryOnRequest(
       references,
       selection: selectionIds,
       catalogSelection,
-      ...(quality ? { quality } : {}),
       prompt,
       requestId,
     });

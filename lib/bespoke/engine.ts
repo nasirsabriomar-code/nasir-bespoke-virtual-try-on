@@ -7,6 +7,7 @@ import type {
   VisualizationPriority,
   VisualizationView,
 } from "@/lib/catalog/types";
+import { isGroupVisible, matchesRules } from "@/lib/rules/engine";
 
 export type SubmittedBespokeConfiguration = {
   profileId: string;
@@ -76,12 +77,8 @@ export function parseSubmittedBespokeConfiguration(value: string): SubmittedBesp
   return { profileId: record.profileId, selections: record.selections as Record<string, string> };
 }
 
-function matchesRules(selections: Record<string, string>, rules: NonNullable<ConfigurationOption["requires"]>) {
-  return rules.every((rule) => rule.optionIds.includes(selections[rule.groupId] ?? ""));
-}
-
 function groupIsVisible(group: ConfigurationGroup, selections: Record<string, string>) {
-  return !group.visibleWhen || matchesRules(selections, group.visibleWhen);
+  return isGroupVisible(group.visibleWhen, selections);
 }
 
 /** Resolves only controlled option IDs; any unknown data is rejected before compilation. */

@@ -1,3 +1,5 @@
+import type { OptionRule } from "@/lib/rules/types";
+
 export type GarmentCategory =
   | "suit"
   | "coat-blazer"
@@ -26,10 +28,7 @@ export type ReferenceImage = {
 export type VisualizationPriority = "critical" | "high" | "medium" | "low" | "non-visual";
 export type VisualizationView = "full-body-front" | "front" | "back" | "three-quarter" | "detail";
 
-export type OptionRule = {
-  groupId: string;
-  optionIds: string[];
-};
+export type { OptionRule } from "@/lib/rules/types";
 
 export type ConfigurationOption = {
   id: string;

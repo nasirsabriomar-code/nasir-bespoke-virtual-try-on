@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { VisualOptionCard } from "@/components/VisualOptionCard";
 import type { ConfigurationGroup, ConfigurationOption, ConfigurationProfile } from "@/lib/catalog/types";
+import { isGroupVisible, matchesRules } from "@/lib/rules/engine";
 
 type Props = {
   profile: ConfigurationProfile;
@@ -16,16 +17,12 @@ const SECTION_LABEL: Record<ConfigurationGroup["section"], string> = {
   composition: "Suit composition", jacket: "Jacket", lapels: "Lapels", pockets: "Pockets", sleeves: "Sleeves", waistcoat: "Waistcoat", trousers: "Trousers", shoes: "Shoes", turban: "Turban",
 };
 
-function rulesMatch(rules: NonNullable<ConfigurationOption["requires"]>, value: Record<string, string>) {
-  return rules.every((rule) => rule.optionIds.includes(value[rule.groupId] ?? ""));
-}
-
 function visible(group: ConfigurationGroup, value: Record<string, string>) {
-  return !group.visibleWhen || rulesMatch(group.visibleWhen, value);
+  return isGroupVisible(group.visibleWhen, value);
 }
 
 function allowed(option: ConfigurationOption, value: Record<string, string>) {
-  return (!option.requires || rulesMatch(option.requires, value)) && !(option.conflictsWith && rulesMatch(option.conflictsWith, value));
+  return (!option.requires || matchesRules(value, option.requires)) && !(option.conflictsWith && matchesRules(value, option.conflictsWith));
 }
 
 function normalize(profile: ConfigurationProfile, current: Record<string, string>) {
