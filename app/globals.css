@@ -2667,6 +2667,21 @@ a:focus-visible {
   border-bottom: 1px solid var(--atelier-line);
 }
 
+.split-inline-fabric {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--atelier-line, rgba(238, 231, 213, 0.13));
+  background: var(--atelier-surface, #121412);
+}
+.split-inline-fabric-copy {
+  color: var(--atelier-muted, #aaa79e);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.split-inline-fabric .history-button {
+  margin-bottom: 12px;
+}
+
 /* FABRICS & MATERIALS SECTION */
 .split-materials-grid {
   display: grid;

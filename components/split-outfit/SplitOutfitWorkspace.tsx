@@ -10,7 +10,7 @@ import type { RepairNotice } from "@/lib/rules/types";
 import { SPLIT_OUTFIT_FAMILIES } from "@/lib/split-outfit/types";
 import type { SplitCatalogueView, SplitOutfitFamily, SplitOutfitState } from "@/lib/split-outfit/types";
 import { SplitComponentCard } from "./SplitComponentCard";
-import { SplitMaterialsSection, type SplitPieceFabrics } from "./SplitMaterialsSection";
+import { SplitMaterialsSection, SplitPieceFabricSlot, type SplitPieceFabrics } from "./SplitMaterialsSection";
 import { SplitOutfitReview } from "./SplitOutfitReview";
 
 type SplitOutfitWorkspaceProps = {
@@ -175,6 +175,13 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
               />
             ))}
         </div>
+        <SplitPieceFabricSlot
+          piece="jacket"
+          fabric={fabrics.jacket}
+          onSelect={(file) => onFabricSelect("jacket", file)}
+          onRemove={() => onFabricRemove("jacket")}
+          disabled={isGenerating}
+        />
       </section>
 
       {/* 02 — LOWER GARMENT */}
@@ -200,6 +207,18 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
               />
             ))}
         </div>
+        <SplitPieceFabricSlot
+          piece="trousers"
+          fabric={fabrics.trousers}
+          onSelect={(file) => onFabricSelect("trousers", file)}
+          onRemove={() => onFabricRemove("trousers")}
+          disabled={isGenerating}
+          extra={fabrics.jacket ? (
+            <button type="button" className="history-button" onClick={onReuseJacketOnTrousers} disabled={isGenerating}>
+              Use jacket fabric on trousers
+            </button>
+          ) : null}
+        />
       </section>
 
       {/* 03 — INNER / EXTRA */}
@@ -229,6 +248,13 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
                   />
                 ))}
             </div>
+            <SplitPieceFabricSlot
+              piece="shirt"
+              fabric={fabrics.shirt}
+              onSelect={(file) => onFabricSelect("shirt", file)}
+              onRemove={() => onFabricRemove("shirt")}
+              disabled={isGenerating}
+            />
           </div>
 
           {/* Sub-section: Waistcoat */}
@@ -247,6 +273,15 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
                   />
                 ))}
             </div>
+            {state.waistcoatId && state.waistcoatId !== "SUIT_WAISTCOAT_NONE" ? (
+              <SplitPieceFabricSlot
+                piece="waistcoat"
+                fabric={fabrics.waistcoat}
+                onSelect={(file) => onFabricSelect("waistcoat", file)}
+                onRemove={() => onFabricRemove("waistcoat")}
+                disabled={isGenerating}
+              />
+            ) : null}
           </div>
         </div>
       </section>
@@ -317,14 +352,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       ) : null}
 
       {/* 06 — FABRICS & MATERIALS */}
-      <SplitMaterialsSection
-        slots={summary.activeMaterialSlots}
-        fabrics={fabrics}
-        onFabricSelect={onFabricSelect}
-        onFabricRemove={onFabricRemove}
-        onReuseJacketOnTrousers={onReuseJacketOnTrousers}
-        disabled={isGenerating}
-      />
+      <SplitMaterialsSection slots={summary.activeMaterialSlots} />
 
       {/* 07 — YOUR OUTFIT */}
       <SplitOutfitReview summary={summary} onGenerate={onGenerate} isGenerating={isGenerating} />

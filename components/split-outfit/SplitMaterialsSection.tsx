@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ImageUpload } from "@/components/ImageUpload";
 import type { MaterialSlotState } from "@/lib/split-outfit/types";
 
@@ -17,11 +18,6 @@ export type SplitPieceFabrics = {
 
 type SplitMaterialsSectionProps = {
   slots: MaterialSlotState[];
-  fabrics: SplitPieceFabrics;
-  onFabricSelect: (piece: keyof SplitPieceFabrics, file: File) => void;
-  onFabricRemove: (piece: keyof SplitPieceFabrics) => void;
-  onReuseJacketOnTrousers?: () => void;
-  disabled?: boolean;
 };
 
 const SLOT_TO_PIECE: Partial<Record<string, keyof SplitPieceFabrics>> = {
@@ -38,81 +34,88 @@ const EMPTY_HELP = {
   waistcoat: "Using the look in the waistcoat construction photo until you add a cloth.",
 } as const;
 
-export function SplitMaterialsSection({
-  slots,
-  fabrics,
-  onFabricSelect,
-  onFabricRemove,
-  onReuseJacketOnTrousers,
+const PIECE_LABEL: Record<keyof SplitPieceFabrics, string> = {
+  jacket: "Jacket fabric",
+  trousers: "Trouser fabric",
+  shirt: "Shirt fabric",
+  waistcoat: "Waistcoat fabric",
+};
+
+export function SplitPieceFabricSlot({
+  piece,
+  fabric,
+  onSelect,
+  onRemove,
   disabled = false,
-}: SplitMaterialsSectionProps) {
-  const showReuse = Boolean(fabrics.jacket && onReuseJacketOnTrousers);
+  extra,
+}: {
+  piece: keyof SplitPieceFabrics;
+  fabric: PieceFabric;
+  onSelect: (file: File) => void;
+  onRemove: () => void;
+  disabled?: boolean;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className="split-inline-fabric">
+      <p className="split-inline-fabric-copy">
+        {fabric
+          ? "This piece will be cut from the cloth in the photograph — exact colour, shade, and texture."
+          : EMPTY_HELP[piece]}
+      </p>
+      {extra}
+      <ImageUpload
+        id={`split-fabric-${piece}`}
+        label={PIECE_LABEL[piece]}
+        description="Photograph or upload the cloth for this piece."
+        guidance="Capture the colour, pattern, texture, and finish clearly. Click the image to replace it."
+        file={fabric?.file ?? null}
+        previewUrl={fabric?.previewUrl ?? null}
+        onSelect={onSelect}
+        onRemove={onRemove}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+export function SplitMaterialsSection({ slots }: SplitMaterialsSectionProps) {
+  const remaining = slots.filter((slot) => !SLOT_TO_PIECE[slot.slotId]);
+  if (remaining.length === 0) return null;
 
   return (
-    <section className="level1-flow" aria-label="Fabrics and Materials Configuration">
+    <section className="level1-flow" aria-label="Finishing materials">
       <div className="level1-step-heading">
         <span>06</span>
         <div>
           <p className="eyebrow">Materials & Craft</p>
-          <h2>Fabrics & materials</h2>
+          <h2>Shoes & finishing</h2>
         </div>
       </div>
 
       <p className="split-section-intro">
-        Optionally photograph a cloth for the jacket, trousers, shirt, or waistcoat. If you skip a piece, that piece keeps the colour and texture from its construction photo. Shoes always use the shoe photograph.
+        Shoes keep the cloth in the shoe photograph. Accessories are finishing details only.
       </p>
 
-      {showReuse ? (
-        <button type="button" className="history-button" onClick={onReuseJacketOnTrousers} disabled={disabled}>
-          Use jacket fabric on trousers
-        </button>
-      ) : null}
-
       <div className="split-materials-grid">
-        {slots.map((slot) => {
-          const piece = SLOT_TO_PIECE[slot.slotId];
-          const assigned = piece ? fabrics[piece] : null;
-          const canUpload = Boolean(piece);
-
-          return (
-            <div key={slot.slotId} className="split-material-card">
-              <div className="split-material-header">
-                <div className="split-material-title-group">
-                  <span className="split-material-badge">{slot.componentName}</span>
-                  <h4 className="split-material-label">{slot.label}</h4>
-                </div>
-                <span className={`split-material-source-tag ${assigned || !canUpload ? (assigned ? "is-uploaded" : "is-standard") : "is-standard"}`}>
-                  {canUpload ? (assigned ? "Uploaded Fabric" : "Construction photo") : slot.fabricSource === "uploaded-fabric" ? "Uploaded Fabric" : "Atelier Material"}
-                </span>
+        {remaining.map((slot) => (
+          <div key={slot.slotId} className="split-material-card">
+            <div className="split-material-header">
+              <div className="split-material-title-group">
+                <span className="split-material-badge">{slot.componentName}</span>
+                <h4 className="split-material-label">{slot.label}</h4>
               </div>
-
-              <p className="split-material-desc">
-                {canUpload && piece ? (assigned ? "This piece will be cut from the cloth in the photograph — exact colour, shade, and texture." : EMPTY_HELP[piece]) : slot.description}
-              </p>
-
-              {canUpload && piece ? (
-                <ImageUpload
-                  id={`split-fabric-${piece}`}
-                  label={`${slot.componentName} fabric`}
-                  description="Photograph or upload the cloth for this piece."
-                  guidance="Capture the colour, pattern, texture, and finish clearly. Click the image to replace it."
-                  file={assigned?.file ?? null}
-                  previewUrl={assigned?.previewUrl ?? null}
-                  onSelect={(file) => onFabricSelect(piece, file)}
-                  onRemove={() => onFabricRemove(piece)}
-                  disabled={disabled}
-                />
-              ) : (
-                <div className="split-material-control-row">
-                  <span className="split-material-source-indicator">
-                    <span className="split-material-dot" aria-hidden="true" />
-                    {slot.slotId === "footwear-leather" ? "Cloth from the reference photograph" : "Text detail"}
-                  </span>
-                </div>
-              )}
+              <span className="split-material-source-tag is-standard">Atelier Material</span>
             </div>
-          );
-        })}
+            <p className="split-material-desc">{slot.description}</p>
+            <div className="split-material-control-row">
+              <span className="split-material-source-indicator">
+                <span className="split-material-dot" aria-hidden="true" />
+                {slot.slotId === "footwear-leather" ? "Cloth from the reference photograph" : "Text detail"}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
