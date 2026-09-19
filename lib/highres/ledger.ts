@@ -5,7 +5,7 @@ import type { SupportedImageMime } from "@/lib/validation";
 import type { GenerationAssetRefs } from "@/lib/generation-storage";
 import type { UsageEvent, UsageHistory } from "@/lib/usage-history";
 
-export type UploadRole = "person" | "fabric" | "lowerFabric" | "outfit";
+export type UploadRole = "person" | "fabric" | "lowerFabric" | "shirtFabric" | "waistcoatFabric" | "outfit";
 export type UploadSlot = {
   id: string;
   username: string;

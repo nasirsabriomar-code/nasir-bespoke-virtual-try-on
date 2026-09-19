@@ -84,6 +84,8 @@ type HistoryEvent = {
     "split-shirt"?: { contentType: string };
     "split-waistcoat"?: { contentType: string };
     "split-footwear"?: { contentType: string };
+    "shirt-fabric"?: { contentType: string };
+    "waistcoat-fabric"?: { contentType: string };
   };
 };
 
@@ -371,6 +373,8 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             "outfit",
                             "fabric",
                             "lower-fabric",
+                            "shirt-fabric",
+                            "waistcoat-fabric",
                             "upper",
                             "subtype",
                             "lower",
@@ -404,6 +408,10 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                       ? "Fabric photo"
                                       : asset === "lower-fabric"
                                       ? "Lower fabric photo"
+                                      : asset === "shirt-fabric"
+                                      ? "Shirt fabric photo"
+                                      : asset === "waistcoat-fabric"
+                                      ? "Waistcoat fabric photo"
                                       : "Generated men's try-on result"
                                   }
                                 />
@@ -416,6 +424,10 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                     ? "Fabric"
                                     : asset === "lower-fabric"
                                     ? "Lower fabric"
+                                    : asset === "shirt-fabric"
+                                    ? "Shirt fabric"
+                                    : asset === "waistcoat-fabric"
+                                    ? "Waistcoat fabric"
                                     : asset === "upper"
                                     ? "Upper blueprint"
                                     : asset === "lower"

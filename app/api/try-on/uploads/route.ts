@@ -8,7 +8,7 @@ import { isSameOriginRequest } from "@/lib/request-security";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ROLES = new Set<UploadRole>(["person", "fabric", "lowerFabric", "outfit"]);
+const ROLES = new Set<UploadRole>(["person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "outfit"]);
 const TYPES = new Set<SupportedImageMime>(["image/jpeg", "image/png", "image/webp"]);
 
 export async function POST(request: Request) {

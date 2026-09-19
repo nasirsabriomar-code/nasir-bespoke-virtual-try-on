@@ -70,6 +70,21 @@ export async function removeConsumedUploadObjects(slots: UploadSlot[]) {
   await Promise.all(slots.map((slot) => del(slot.pathname, { token: blobToken() }).catch(() => undefined)));
 }
 
-export function requiredRolesForRequest(mode: string | undefined, hasOutfit: boolean, hasLowerFabric: boolean): UploadRole[] {
-  return ["person", "fabric", ...(mode === "outfit" || hasOutfit ? ["outfit" as const] : []), ...(hasLowerFabric ? ["lowerFabric" as const] : [])];
+export function requiredRolesForRequest(
+  mode: string | undefined,
+  present: Partial<Record<UploadRole, boolean>>,
+): UploadRole[] {
+  if (mode === "split") {
+    const roles: UploadRole[] = ["person"];
+    for (const role of ["fabric", "lowerFabric", "shirtFabric", "waistcoatFabric"] as const) {
+      if (present[role]) roles.push(role);
+    }
+    return roles;
+  }
+  return [
+    "person",
+    "fabric",
+    ...(mode === "outfit" || present.outfit ? ["outfit" as const] : []),
+    ...(present.lowerFabric ? ["lowerFabric" as const] : []),
+  ];
 }

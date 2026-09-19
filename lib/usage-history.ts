@@ -72,6 +72,12 @@ export type UsageEvent = {
     splitFootwearName?: string;
     splitAccessoryIds?: string[];
     splitAccessoryNames?: string[];
+    splitFabricSlots?: {
+      jacket: boolean;
+      trousers: boolean;
+      shirt: boolean;
+      waistcoat: boolean;
+    };
   };
 };
 
@@ -134,7 +140,7 @@ function parseAssetRefs(value: unknown): GenerationAssetRefs | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const result: GenerationAssetRefs = {};
-  for (const asset of ["person", "outfit", "fabric", "lower-fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail", "split-upper", "split-lower", "split-shirt", "split-waistcoat", "split-footwear"] as const) {
+  for (const asset of ["person", "outfit", "fabric", "lower-fabric", "shirt-fabric", "waistcoat-fabric", "result", "upper", "lower", "subtype", "turban", "shoes", "upper-style", "lower-style", "turban-style", "shoe-style", "bespoke-detail-1", "bespoke-detail-2", "curated-design", "curated-detail", "split-upper", "split-lower", "split-shirt", "split-waistcoat", "split-footwear"] as const) {
     const item = record[asset];
     if (!item || typeof item !== "object") continue;
     const entry = item as Record<string, unknown>;

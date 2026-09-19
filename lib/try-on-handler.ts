@@ -18,7 +18,8 @@ import {
   type ResolvedSplitOutfit,
   type SplitReferenceRole,
 } from "@/lib/split-outfit/generation";
-import { buildSplitOutfitPrompt, type SplitFabricRegion } from "@/lib/split-outfit/prompt";
+import { buildSplitOutfitPrompt } from "@/lib/split-outfit/prompt";
+import { hasPhotographedWaistcoat } from "@/lib/split-outfit/image-map";
 import {
   acquireGenerationLock,
   GenerationGuardUnavailableError,
@@ -164,6 +165,8 @@ function hasUnexpectedFields(formData: FormData) {
       "outfit",
       "fabric",
       "lowerFabric",
+      "shirtFabric",
+      "waistcoatFabric",
       "selectionMode",
       "upperGarmentId",
       "lowerGarmentId",
@@ -195,7 +198,7 @@ function hasLevel1ForbiddenFields(formData: FormData) {
 }
 
 function hasSplitForbiddenFields(formData: FormData) {
-  const splitFields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
+  const splitFields = new Set(["person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!splitFields.has(name)) return true;
   }
@@ -382,22 +385,30 @@ async function handleHighResolutionRequest(
     }
     const mode = typeof body.selectionMode === "string" ? body.selectionMode : undefined;
     const ids: Partial<Record<UploadRole, string>> = {};
-    for (const role of ["person", "fabric", "lowerFabric", "outfit"] as const) {
+    for (const role of ["person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "outfit"] as const) {
       const value = uploads[role];
       if (value !== undefined && (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value))) return jsonError("An uploaded image reference is invalid.", 400);
       if (typeof value === "string") ids[role] = value;
     }
-    const required = requiredRolesForRequest(mode, Boolean(ids.outfit), Boolean(ids.lowerFabric));
+    const required = requiredRolesForRequest(mode, {
+      outfit: Boolean(ids.outfit),
+      lowerFabric: Boolean(ids.lowerFabric),
+      fabric: Boolean(ids.fabric),
+      shirtFabric: Boolean(ids.shirtFabric),
+      waistcoatFabric: Boolean(ids.waistcoatFabric),
+    });
     if (required.some((role) => !ids[role])) return jsonError("Please upload the required person, fabric, and outfit images.", 400);
     const slots = await consumeUploadSlots(user.username, required.map((role) => ids[role] as string));
     if (!slots) return jsonError("One or more upload sessions expired or were already used. Please upload the images again.", 409);
     const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
     if (required.some((role) => !slotByRole.has(role))) return jsonError("Uploaded images did not match the requested roles.", 400);
-    const [person, fabric, outfit, lowerFabric] = await Promise.all([
+    const [person, fabric, outfit, lowerFabric, shirtFabric, waistcoatFabric] = await Promise.all([
       uploadSlotToFile(slotByRole.get("person")!),
-      uploadSlotToFile(slotByRole.get("fabric")!),
+      slotByRole.get("fabric") ? uploadSlotToFile(slotByRole.get("fabric")!) : Promise.resolve(undefined),
       slotByRole.get("outfit") ? uploadSlotToFile(slotByRole.get("outfit")!) : Promise.resolve(undefined),
       slotByRole.get("lowerFabric") ? uploadSlotToFile(slotByRole.get("lowerFabric")!) : Promise.resolve(undefined),
+      slotByRole.get("shirtFabric") ? uploadSlotToFile(slotByRole.get("shirtFabric")!) : Promise.resolve(undefined),
+      slotByRole.get("waistcoatFabric") ? uploadSlotToFile(slotByRole.get("waistcoatFabric")!) : Promise.resolve(undefined),
     ]);
     const formData = new FormData();
     for (const field of HIGHRES_TEXT_FIELDS) {
@@ -408,9 +419,11 @@ async function handleHighResolutionRequest(
       }
     }
     formData.set("person", person.file);
-    formData.set("fabric", fabric.file);
+    if (fabric) formData.set("fabric", fabric.file);
     if (outfit) formData.set("outfit", outfit.file);
     if (lowerFabric) formData.set("lowerFabric", lowerFabric.file);
+    if (shirtFabric) formData.set("shirtFabric", shirtFabric.file);
+    if (waistcoatFabric) formData.set("waistcoatFabric", waistcoatFabric.file);
     const headers = new Headers(request.headers);
     headers.delete("content-type");
     headers.delete("content-length");
@@ -509,6 +522,8 @@ export async function handleTryOnRequest(
     const outfitFile = getExactlyOneFile(formData, "outfit");
     const fabricFile = getExactlyOneFile(formData, "fabric");
     const lowerFabricFile = getExactlyOneFile(formData, "lowerFabric");
+    const shirtFabricFile = getExactlyOneFile(formData, "shirtFabric");
+    const waistcoatFabricFile = getExactlyOneFile(formData, "waistcoatFabric");
     const hasLowerFabricField = formData.has("lowerFabric");
     const upperGarmentId = getExactlyOneText(formData, "upperGarmentId", false);
     const lowerGarmentId = getExactlyOneText(formData, "lowerGarmentId", false);
@@ -525,7 +540,7 @@ export async function handleTryOnRequest(
     const variantId = getExactlyOneText(formData, "variantId", false);
     const splitRecipeText = getExactlyOneText(formData, "splitRecipe", false);
 
-    const invalidCommonInput = !personFile || !fabricFile || bespokeConfigurationText === null || hasUnexpectedFields(formData);
+    const invalidCommonInput = !personFile || (selectionMode !== "split" && !fabricFile) || bespokeConfigurationText === null || hasUnexpectedFields(formData);
     const invalidModeInput = selectionMode === "outfit"
       ? !outfitFile
       : selectionMode === "level1"
@@ -540,7 +555,7 @@ export async function handleTryOnRequest(
           : selectionMode === "level1"
             ? "Please upload a person photo and fabric photo, then choose a curated design."
             : selectionMode === "split"
-              ? "Please upload a person photo and fabric photo, then complete a modular outfit recipe."
+              ? "Please upload a person photo, then complete a modular outfit recipe."
               : "Please upload a person photo and fabric photo, then choose a men's garment and accessories.",
         400,
         rateHeaders,
@@ -564,8 +579,11 @@ export async function handleTryOnRequest(
     if (selectionMode === "level1" && fabricRegion === "custom" && (!hasLowerFabricField || !lowerFabricFile)) {
       return jsonError("Please provide a lower fabric or choose to reuse the upper fabric for both regions.", 400, rateHeaders);
     }
-    if (hasLowerFabricField && (selectionMode !== "level1" || fabricRegion !== "custom")) {
-      return jsonError("A lower fabric can only be used with Level 1 Customization.", 400, rateHeaders);
+    if (hasLowerFabricField && selectionMode !== "split" && (selectionMode !== "level1" || fabricRegion !== "custom")) {
+      return jsonError("A lower fabric can only be used with Level 1 Customization or Split Outfit trousers.", 400, rateHeaders);
+    }
+    if ((shirtFabricFile || waistcoatFabricFile) && selectionMode !== "split") {
+      return jsonError("Shirt and waistcoat fabrics are only available in Split Outfit.", 400, rateHeaders);
     }
 
     const qualityValue = getExactlyOneText(formData, "quality", false);
@@ -576,10 +594,19 @@ export async function handleTryOnRequest(
     const [person, outfit, fabric] = await Promise.all([
       validateImageFile(personFile, "a person photo"),
       selectionMode === "outfit" && outfitFile ? validateImageFile(outfitFile, "an outfit photo") : Promise.resolve(undefined),
-      validateImageFile(fabricFile, "a fabric photo"),
+      fabricFile ? validateImageFile(fabricFile, "a fabric photo") : Promise.resolve(undefined),
     ]);
-    const lowerFabric = selectionMode === "level1" && fabricRegion === "custom" && lowerFabricFile
+    if (selectionMode !== "split" && !fabric) {
+      return jsonError("Please upload a person photo and fabric photo.", 400, rateHeaders);
+    }
+    const lowerFabric = ((selectionMode === "level1" && fabricRegion === "custom") || selectionMode === "split") && lowerFabricFile
       ? await validateImageFile(lowerFabricFile, "a lower fabric photo")
+      : undefined;
+    const shirtFabric = selectionMode === "split" && shirtFabricFile
+      ? await validateImageFile(shirtFabricFile, "a shirt fabric photo")
+      : undefined;
+    const waistcoatFabric = selectionMode === "split" && waistcoatFabricFile
+      ? await validateImageFile(waistcoatFabricFile, "a waistcoat fabric photo")
       : undefined;
 
     let selectionIds: TryOnSelection = selectionMode === "level1"
@@ -661,6 +688,9 @@ export async function handleTryOnRequest(
     } else if (selectionMode === "split") {
       splitResolved = await (dependencies.resolveSplitSelection ?? resolveSplitOutfitRecipe)(splitRecipeText as string);
       selectionIds = { mode: "split", ...splitResolved.state };
+      if (waistcoatFabric && !hasPhotographedWaistcoat(splitResolved)) {
+        return jsonError("A waistcoat fabric can only be used when a waistcoat is selected.", 400, rateHeaders);
+      }
     }
     if (idempotencyKey) {
       const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
@@ -753,7 +783,12 @@ export async function handleTryOnRequest(
     const basePrompt = level1Resolved
       ? buildLevel1TryOnPrompt(level1Resolved, fabricRegion)
       : splitResolved
-        ? buildSplitOutfitPrompt(splitResolved, fabricRegion as SplitFabricRegion)
+        ? buildSplitOutfitPrompt(splitResolved, {
+          jacket: Boolean(fabric),
+          trousers: Boolean(lowerFabric),
+          shirt: Boolean(shirtFabric),
+          waistcoat: Boolean(waistcoatFabric) && hasPhotographedWaistcoat(splitResolved),
+        })
         : buildTryOnPrompt(catalogSelection, { outfitProvided: selectionMode === "outfit", bespokeReferenceCount: bespokeReferenceInputs.length });
     const prompt = outfitSpecification && bespokeConfiguration
       ? compileVisualizationPrompt(basePrompt, outfitSpecification, bespokeConfiguration)
@@ -770,8 +805,10 @@ export async function handleTryOnRequest(
     const result = await dependencies.generate({
       person,
       ...(selectionMode === "outfit" && outfit ? { outfit } : {}),
-      fabric,
+      ...(fabric ? { fabric } : {}),
       ...(lowerFabric ? { lowerFabric } : {}),
+      ...(shirtFabric ? { shirtFabric } : {}),
+      ...(waistcoatFabric ? { waistcoatFabric } : {}),
       references,
       selection: selectionIds,
       catalogSelection,
@@ -784,8 +821,10 @@ export async function handleTryOnRequest(
         generationId: requestId,
         person: person.file,
         ...(selectionMode === "outfit" && outfit ? { outfit: outfit.file } : {}),
-        fabric: fabric.file,
+        ...(fabric ? { fabric: fabric.file } : {}),
         ...(lowerFabric ? { lowerFabric: lowerFabric.file } : {}),
+        ...(shirtFabric ? { shirtFabric: shirtFabric.file } : {}),
+        ...(waistcoatFabric ? { waistcoatFabric: waistcoatFabric.file } : {}),
         references: references.map(({ role, image }) => ({ role, file: image.file })),
         resultBytes: result.bytes,
         resultContentType: result.contentType,
@@ -846,6 +885,12 @@ export async function handleTryOnRequest(
         splitFootwearName: splitResolved.footwear.customer.name,
         splitAccessoryIds: splitResolved.accessories.map((accessory) => accessory.id),
         splitAccessoryNames: splitResolved.accessories.map((accessory) => accessory.customer.name),
+        splitFabricSlots: {
+          jacket: Boolean(fabric),
+          trousers: Boolean(lowerFabric),
+          shirt: Boolean(shirtFabric),
+          waistcoat: Boolean(waistcoatFabric) && hasPhotographedWaistcoat(splitResolved),
+        },
         fabricRegion,
       } : { mode: "outfit" },
       assets,

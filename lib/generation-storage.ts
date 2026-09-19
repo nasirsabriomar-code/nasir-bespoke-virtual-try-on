@@ -6,7 +6,7 @@ import { detectImageDimensions } from "@/lib/validation";
 
 const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
-export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
+export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
 
 export type GenerationAssetRefs = Partial<Record<GenerationAssetKey, {
   pathname: string;
@@ -21,9 +21,11 @@ export type GenerationAssetInput = {
   generationId: string;
   person: File;
   outfit?: File;
-  fabric: File;
+  fabric?: File;
   lowerFabric?: File;
-  references: Array<{ role: Exclude<GenerationAssetKey, "person" | "outfit" | "fabric" | "lower-fabric" | "result">; file: File }>;
+  shirtFabric?: File;
+  waistcoatFabric?: File;
+  references: Array<{ role: Exclude<GenerationAssetKey, "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result">; file: File }>;
   resultBytes: Uint8Array;
   resultContentType: string;
 };
@@ -92,8 +94,10 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
     const entries: Array<[GenerationAssetKey, Blob, string]> = [
       ["person", input.person, input.person.type || "image/jpeg"],
       ...(input.outfit ? [["outfit", input.outfit, input.outfit.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
-      ["fabric", input.fabric, input.fabric.type || "image/jpeg"],
+      ...(input.fabric ? [["fabric", input.fabric, input.fabric.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
       ...(input.lowerFabric ? [["lower-fabric", input.lowerFabric, input.lowerFabric.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
+      ...(input.shirtFabric ? [["shirt-fabric", input.shirtFabric, input.shirtFabric.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
+      ...(input.waistcoatFabric ? [["waistcoat-fabric", input.waistcoatFabric, input.waistcoatFabric.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
       ...input.references.map(({ role, file }) => [role, file, file.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]),
       ["result", new Blob([new Uint8Array(input.resultBytes)]), input.resultContentType],
     ];

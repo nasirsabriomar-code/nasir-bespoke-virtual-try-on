@@ -92,62 +92,59 @@ test("a valid split recipe reaches generate() with the correct references, order
   assert.equal(generatedInput.selection.mode, "split");
   assert.match(generatedInput.prompt, /Tailor every garment around the customer's actual body/i);
   assert.match(generatedInput.prompt, /SELECTED MODULAR OUTFIT/i);
-  assert.match(generatedInput.prompt, /FINAL FABRIC APPLICATION OVERRIDE/i);
+  assert.match(generatedInput.prompt, /FINAL FABRIC APPLICATION OVERRIDE — JACKET/);
+  assert.ok(generatedInput.fabric);
 });
 
-test("split prompt fabric override matches Level 1's closing authority and does not recolour text-composed pieces", async () => {
+test("a split recipe can generate with only a person photo and no fabric", async () => {
+  const form = new FormData();
+  form.set("selectionMode", "split");
+  form.set("splitRecipe", JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
+  form.set("person", tinyPng("customer.png"));
+  let generatedInput: TryOnInput | undefined;
+  const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: form,
+  }), {
+    authenticate: async () => TEST_USER,
+    rateLimit: async () => ({ allowed: true, limit: 5, remaining: 4, resetAt: Date.now() + 60_000 }),
+    resolveSplitSelection: async () => fakeResolvedSplitOutfit(DEFAULT_SPLIT_OUTFIT_STATE),
+    readSplitReference: async (option, role) => ({ role, image: { file: tinyPng(`${option.id}.png`), mime: "image/png" } }),
+    generate: async (input) => {
+      generatedInput = input;
+      return { bytes: Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), contentType: "image/jpeg", metadata: { provider: "test", model: "gpt-image-2.5-sunburst", quality: "medium", durationMs: 1 } };
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.ok(generatedInput);
+  assert.equal(generatedInput.fabric, undefined);
+  assert.doesNotMatch(generatedInput.prompt, /FINAL FABRIC APPLICATION OVERRIDE/);
+});
+
+test("a waistcoat fabric is rejected when the recipe has no waistcoat", async () => {
+  const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST",
+    headers: headers(),
+    body: splitForm(DEFAULT_SPLIT_OUTFIT_STATE, [["waistcoatFabric", tinyPng("waistcoat-cloth.png")]]),
+  }), {
+    authenticate: async () => TEST_USER,
+    rateLimit: async () => ({ allowed: true, limit: 5, remaining: 4, resetAt: Date.now() + 60_000 }),
+    resolveSplitSelection: async () => fakeResolvedSplitOutfit(DEFAULT_SPLIT_OUTFIT_STATE),
+    readSplitReference: async (option, role) => ({ role, image: { file: tinyPng(`${option.id}.png`), mime: "image/png" } }),
+    generate: async () => { throw new Error("must not run"); },
+  });
+  assert.equal(response.status, 400);
+});
+
+test("split prompt with no per-piece fabrics uses construction photos for cloth, including a white shirt default", async () => {
   const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
-  const both = buildSplitOutfitPrompt(resolved, "both");
-  const upper = buildSplitOutfitPrompt(resolved, "upper");
-  const lower = buildSplitOutfitPrompt(resolved, "lower");
-
-  assert.match(both, /Image 2 is the sole cloth authority for the jacket and the trousers only/);
-  assert.match(both, /shirt, footwear, accessories are not coloured from Image 2/);
-  assert.match(both, /Image 5 — NASIR BESPOKE approved shirt construction AND cloth appearance/);
-  assert.match(both, /Image 6 — NASIR BESPOKE approved footwear construction AND cloth appearance/);
-  assert.doesNotMatch(both, /Image 6 — NASIR BESPOKE approved waistcoat/);
-  assert.doesNotMatch(both, /every selected garment piece/);
-
-  assert.match(upper, /Image 2 is the sole cloth authority for the jacket only/);
-  assert.match(upper, /The trousers must be rendered as the selected lower garment in Image 4/);
-  assert.match(lower, /Image 2 is the sole cloth authority for the trousers only/);
-  assert.match(lower, /The jacket must keep the cloth, colour, and material shown in Image 3/);
-});
-
-test("denim trousers keep Image 4 jean cloth and are not recoloured by the uploaded suiting fabric", async () => {
-  const denimState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, lowerId: "SUIT_LOWER_DENIM" };
-  const resolved = await resolveSplitOutfitRecipe(JSON.stringify(denimState));
-  const both = buildSplitOutfitPrompt(resolved, "both");
-  const lowerOnly = buildSplitOutfitPrompt(resolved, "lower");
-
-  assert.match(both, /Denim jeans — not tailored suit trousers/);
-  assert.match(both, /Trousers \[Image 4 = cut and cloth; do not apply Image 2\]/);
-  assert.match(both, /Image 2 is the sole cloth authority for the jacket only/);
-  assert.match(both, /If Image 4 shows jeans, the customer wears those jeans/);
-  assert.doesNotMatch(both, /the jacket and the trousers only/);
-  assert.match(lowerOnly, /Image 2 is not applied to any garment/);
-  assert.match(lowerOnly, /do not apply Image 2/);
-});
-
-test("classic waistcoat takes uploaded fabric; tuxedo waistcoat keeps its reference cloth", async () => {
-  const classic = await resolveSplitOutfitRecipe(JSON.stringify({
-    ...DEFAULT_SPLIT_OUTFIT_STATE,
-    upperId: "SUIT_UPPER_THREE_PIECE",
-    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
-  }));
-  const tuxedo = await resolveSplitOutfitRecipe(JSON.stringify({
-    ...DEFAULT_SPLIT_OUTFIT_STATE,
-    upperId: "SUIT_UPPER_TUXEDO",
-    waistcoatId: "SUIT_WAISTCOAT_TUXEDO",
-    shirtId: "SUIT_SHIRT_TUXEDO_PLEATED",
-  }));
-  const classicPrompt = buildSplitOutfitPrompt(classic, "both");
-  const tuxedoPrompt = buildSplitOutfitPrompt(tuxedo, "both");
-
-  assert.match(classicPrompt, /Waistcoat \[Image 6 = cut; Image 2 = cloth\]/);
-  assert.match(classicPrompt, /the jacket and the trousers and the waistcoat/);
-  assert.match(tuxedoPrompt, /Waistcoat \[Image 6 = cut and cloth\]/);
-  assert.doesNotMatch(tuxedoPrompt, /black satin/);
+  const prompt = buildSplitOutfitPrompt(resolved);
+  assert.match(prompt, /Image 2 — NASIR BESPOKE approved jacket construction AND cloth appearance/);
+  assert.match(prompt, /Image 4 — NASIR BESPOKE approved shirt construction AND cloth appearance, including a white shirt/);
+  assert.match(prompt, /Image 5 — NASIR BESPOKE approved footwear construction AND cloth appearance/);
+  assert.doesNotMatch(prompt, /physical showroom fabric for the jacket/);
+  assert.doesNotMatch(prompt, /every selected garment piece/);
 });
 
 test("an invalid split recipe is rejected server-side by the real resolver, even though the UI would never produce it", async () => {

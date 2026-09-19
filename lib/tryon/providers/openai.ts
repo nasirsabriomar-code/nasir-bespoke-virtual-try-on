@@ -68,8 +68,10 @@ function namedUpload(image: { file: File; mime: SupportedImageMime }, stem: stri
 function inputParts(input: TryOnInput): ImagePart[] {
   const parts: ImagePart[] = [{ image: input.person, stem: "person-reference" }];
   if (input.outfit) parts.push({ image: input.outfit, stem: "outfit-style-reference" });
-  parts.push({ image: input.fabric, stem: "fabric-reference" });
+  if (input.fabric) parts.push({ image: input.fabric, stem: "fabric-reference" });
   if (input.lowerFabric) parts.push({ image: input.lowerFabric, stem: "lower-fabric-reference" });
+  if (input.shirtFabric) parts.push({ image: input.shirtFabric, stem: "shirt-fabric-reference" });
+  if (input.waistcoatFabric) parts.push({ image: input.waistcoatFabric, stem: "waistcoat-fabric-reference" });
   parts.push(...input.references.map(({ role, image }) => ({ image, stem: `${role}-blueprint` })));
   return parts;
 }

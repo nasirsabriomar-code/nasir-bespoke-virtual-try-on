@@ -10,6 +10,7 @@ import { TryOnResult } from "@/components/TryOnResult";
 import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
+import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
@@ -21,7 +22,7 @@ type UploadedImage = {
   previewUrl: string;
 };
 
-type UploadRole = "person" | "fabric" | "lowerFabric";
+type UploadRole = "person" | "fabric" | "lowerFabric" | "shirtFabric" | "waistcoatFabric";
 
 type TryOnAppProps = {
   displayName: string;
@@ -105,6 +106,12 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [person, setPerson] = useState<UploadedImage | null>(null);
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
   const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
+  const [splitFabrics, setSplitFabrics] = useState<SplitPieceFabrics>({
+    jacket: null,
+    trousers: null,
+    shirt: null,
+    waistcoat: null,
+  });
   const [mode, setMode] = useState<VisualTryOnMode>("full");
   const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
   const splitOutfitEnabled = true;
@@ -163,6 +170,15 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     URL.revokeObjectURL(url);
     objectUrls.current.delete(url);
   }, []);
+
+  useEffect(() => {
+    if (splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE") return;
+    setSplitFabrics((current) => {
+      if (!current.waistcoat) return current;
+      revokeUrl(current.waistcoat.previewUrl);
+      return { ...current, waistcoat: null };
+    });
+  }, [revokeUrl, splitOutfit.waistcoatId]);
 
   const clearResult = useCallback(() => {
     setResultUrl((current) => {
@@ -239,8 +255,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
 
   const generate = useCallback(async () => {
     if (mode === "split") {
-      if (!person || !fabric) {
-        setError("Add a customer photo and fabric to generate.");
+      if (!person) {
+        setError("Add a customer photo to generate.");
         return;
       }
     } else {
@@ -268,17 +284,32 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       timeout = window.setTimeout(() => controller.abort(), 285_000);
       setUploadProgress(0);
       const personUpload = await uploadOriginal("person", person.file, setUploadProgress);
-      const fabricUpload = await uploadOriginal("fabric", fabric.file, setUploadProgress);
-      const lowerFabricUpload = mode === "full" && fabricRegion === "custom" && !reuseFabricForLower && lowerFabric
-        ? await uploadOriginal("lowerFabric", lowerFabric.file, setUploadProgress)
+      const fabricUpload = mode === "split"
+        ? (splitFabrics.jacket ? await uploadOriginal("fabric", splitFabrics.jacket.file, setUploadProgress) : undefined)
+        : await uploadOriginal("fabric", fabric!.file, setUploadProgress);
+      const lowerFabricUpload = mode === "split"
+        ? (splitFabrics.trousers ? await uploadOriginal("lowerFabric", splitFabrics.trousers.file, setUploadProgress) : undefined)
+        : mode === "full" && fabricRegion === "custom" && !reuseFabricForLower && lowerFabric
+          ? await uploadOriginal("lowerFabric", lowerFabric.file, setUploadProgress)
+          : undefined;
+      const shirtFabricUpload = mode === "split" && splitFabrics.shirt
+        ? await uploadOriginal("shirtFabric", splitFabrics.shirt.file, setUploadProgress)
+        : undefined;
+      const waistcoatFabricUpload = mode === "split" && splitFabrics.waistcoat && splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE"
+        ? await uploadOriginal("waistcoatFabric", splitFabrics.waistcoat.file, setUploadProgress)
         : undefined;
       setUploadProgress(100);
       const requestBody = mode === "split"
         ? {
           selectionMode: "split" as const,
           splitRecipe: JSON.stringify(splitOutfit),
-          fabricRegion,
-          uploads: { person: personUpload, fabric: fabricUpload },
+          uploads: {
+            person: personUpload,
+            ...(fabricUpload ? { fabric: fabricUpload } : {}),
+            ...(lowerFabricUpload ? { lowerFabric: lowerFabricUpload } : {}),
+            ...(shirtFabricUpload ? { shirtFabric: shirtFabricUpload } : {}),
+            ...(waistcoatFabricUpload ? { waistcoatFabric: waistcoatFabricUpload } : {}),
+          },
         }
         : selectedDesign
           ? {
@@ -330,7 +361,45 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, splitOutfit]);
+  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, splitFabrics, splitOutfit]);
+
+  const selectSplitFabric = useCallback(async (piece: keyof SplitPieceFabrics, file: File) => {
+    setError(null);
+    try {
+      const prepared = await prepareImage(file);
+      const previewUrl = URL.createObjectURL(prepared);
+      objectUrls.current.add(previewUrl);
+      setSplitFabrics((current) => {
+        const previous = current[piece];
+        if (previous) revokeUrl(previous.previewUrl);
+        return { ...current, [piece]: { file: prepared, previewUrl } };
+      });
+      clearResult();
+    } catch (selectionError: unknown) {
+      setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
+    }
+  }, [clearResult, revokeUrl]);
+
+  const removeSplitFabric = useCallback((piece: keyof SplitPieceFabrics) => {
+    setSplitFabrics((current) => {
+      const previous = current[piece];
+      if (previous) revokeUrl(previous.previewUrl);
+      return { ...current, [piece]: null };
+    });
+    clearResult();
+  }, [clearResult, revokeUrl]);
+
+  const reuseJacketOnTrousers = useCallback(() => {
+    const jacket = splitFabrics.jacket;
+    if (!jacket) return;
+    const previewUrl = URL.createObjectURL(jacket.file);
+    objectUrls.current.add(previewUrl);
+    setSplitFabrics((current) => {
+      if (current.trousers) revokeUrl(current.trousers.previewUrl);
+      return { ...current, trousers: { file: jacket.file, previewUrl } };
+    });
+    clearResult();
+  }, [clearResult, revokeUrl, splitFabrics.jacket]);
 
   const restoreLook = useCallback((look: RestoredLook) => {
     if (look.kind === "unsupported") return;
@@ -431,17 +500,19 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             onRemove={() => removeImage("person")}
             disabled={isGenerating}
           />
-          <ImageUpload
-            id="fabric-photo"
-            label={isJacketCategory ? "Jacket fabric" : fabricRegion === "custom" ? "Upper fabric" : UPLOAD_HELP.fabric.label}
-            description={UPLOAD_HELP.fabric.description}
-            guidance={UPLOAD_HELP.fabric.guidance}
-            file={fabric?.file ?? null}
-            previewUrl={fabric?.previewUrl ?? null}
-            onSelect={(file) => void changeImage("fabric", file)}
-            onRemove={() => removeImage("fabric")}
-            disabled={isGenerating}
-          />
+          {mode === "full" ? (
+            <ImageUpload
+              id="fabric-photo"
+              label={isJacketCategory ? "Jacket fabric" : fabricRegion === "custom" ? "Upper fabric" : UPLOAD_HELP.fabric.label}
+              description={UPLOAD_HELP.fabric.description}
+              guidance={UPLOAD_HELP.fabric.guidance}
+              file={fabric?.file ?? null}
+              previewUrl={fabric?.previewUrl ?? null}
+              onSelect={(file) => void changeImage("fabric", file)}
+              onRemove={() => removeImage("fabric")}
+              disabled={isGenerating}
+            />
+          ) : null}
           {!isJacketCategory && mode === "full" && fabricRegion === "custom" ? (
             <ImageUpload
               id="lower-fabric-photo"
@@ -456,7 +527,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             />
           ) : null}
         </div>
-        {!isJacketCategory ? <div
+        {mode === "split" ? (
+          <p className="privacy-note">Optional cloth for jacket, trousers, shirt, and waistcoat is assigned in Fabrics &amp; materials below. Shoes keep the shoe photograph.</p>
+        ) : null}
+        {mode === "full" && !isJacketCategory ? <div
           className="comparison-toggle fabric-region-toggle"
           role="radiogroup"
           aria-label="Apply fabric colour to"
@@ -504,7 +578,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             </button>
           ) : null}
         </div> : null}
-        {!isJacketCategory && fabricRegion === "custom" ? (
+        {mode === "full" && !isJacketCategory && fabricRegion === "custom" ? (
           <label className="fabric-reuse-toggle">
             <input
               type="checkbox"
@@ -613,6 +687,10 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           onChange={setSplitOutfit}
           onGenerate={generate}
           isGenerating={isGenerating}
+          fabrics={splitFabrics}
+          onFabricSelect={(piece, file) => void selectSplitFabric(piece, file)}
+          onFabricRemove={removeSplitFabric}
+          onReuseJacketOnTrousers={reuseJacketOnTrousers}
         />
       )}
       {error ? <p className="form-error" role="alert">{error}</p> : null}

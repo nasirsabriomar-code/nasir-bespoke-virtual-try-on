@@ -10,7 +10,7 @@ import type { RepairNotice } from "@/lib/rules/types";
 import { SPLIT_OUTFIT_FAMILIES } from "@/lib/split-outfit/types";
 import type { SplitCatalogueView, SplitOutfitFamily, SplitOutfitState } from "@/lib/split-outfit/types";
 import { SplitComponentCard } from "./SplitComponentCard";
-import { SplitMaterialsSection } from "./SplitMaterialsSection";
+import { SplitMaterialsSection, type SplitPieceFabrics } from "./SplitMaterialsSection";
 import { SplitOutfitReview } from "./SplitOutfitReview";
 
 type SplitOutfitWorkspaceProps = {
@@ -18,6 +18,10 @@ type SplitOutfitWorkspaceProps = {
   onChange: (updater: (prev: SplitOutfitState) => SplitOutfitState) => void;
   onGenerate: () => void;
   isGenerating: boolean;
+  fabrics: SplitPieceFabrics;
+  onFabricSelect: (piece: keyof SplitPieceFabrics, file: File) => void;
+  onFabricRemove: (piece: keyof SplitPieceFabrics) => void;
+  onReuseJacketOnTrousers: () => void;
 };
 
 const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
@@ -30,7 +34,7 @@ const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
   achkan: "Achkan",
 };
 
-export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating }: SplitOutfitWorkspaceProps) {
+export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating, fabrics, onFabricSelect, onFabricRemove, onReuseJacketOnTrousers }: SplitOutfitWorkspaceProps) {
   const [view, setView] = useState<SplitCatalogueView | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [notices, setNotices] = useState<RepairNotice[]>([]);
@@ -313,7 +317,14 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       ) : null}
 
       {/* 06 — FABRICS & MATERIALS */}
-      <SplitMaterialsSection slots={summary.activeMaterialSlots} />
+      <SplitMaterialsSection
+        slots={summary.activeMaterialSlots}
+        fabrics={fabrics}
+        onFabricSelect={onFabricSelect}
+        onFabricRemove={onFabricRemove}
+        onReuseJacketOnTrousers={onReuseJacketOnTrousers}
+        disabled={isGenerating}
+      />
 
       {/* 07 — YOUR OUTFIT */}
       <SplitOutfitReview summary={summary} onGenerate={onGenerate} isGenerating={isGenerating} />
