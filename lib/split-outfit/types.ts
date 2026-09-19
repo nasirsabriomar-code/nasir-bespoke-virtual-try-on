@@ -101,9 +101,8 @@ export type MaterialRequirement = {
   description: string;
 };
 
-// Only "upper" and "lower" options ever carry a reference photograph — the
-// hybrid-fidelity decision means shirt/waistcoat/footwear/accessory options
-// are always composed from text alone and never have one.
+// Jacket, trousers, shirt, waistcoat (except "None"), and footwear carry an
+// approved construction photograph. Accessories remain text-only.
 export type SplitAssetStatus = "awaiting-upload" | "active";
 
 export type SplitOptionReference = {
@@ -137,7 +136,7 @@ export type SplitComponentOption = {
   compatibilityTags?: string[];
   materialRequirements?: MaterialRequirement[];
 
-  /** SERVER-ONLY (see SplitOptionReference). Present only on upper/lower options. */
+  /** SERVER-ONLY (see SplitOptionReference). Present on photographed pieces. */
   reference?: SplitOptionReference;
 
   /** SERVER-ONLY. Must never reach the client view. */

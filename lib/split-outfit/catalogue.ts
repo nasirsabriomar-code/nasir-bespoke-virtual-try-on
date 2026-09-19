@@ -44,9 +44,9 @@ const frenchCuffShirt: OptionRule[] = [{ groupId: "inner-shirt", optionIds: ["SU
 const bowTieSelected: OptionRule[] = [{ groupId: "accessory", optionIds: ["SUIT_ACC_BOW_TIE"] }];
 const tieSelected: OptionRule[] = [{ groupId: "accessory", optionIds: ["SUIT_ACC_TIE"] }];
 
-// Approval ledger for jacket/trouser reference photographs — the only two
-// categories that ever get one, per the hybrid-fidelity decision. Empty
-// until real photography is approved; every option below resolves to
+// Approval ledger for Split Outfit construction photographs: jacket,
+// trousers, shirt, waistcoat (except None), and footwear. Empty until
+// real photography is approved; every option below resolves to
 // "awaiting-upload" until its entry appears here, mirroring
 // lib/catalog/level1-seed.ts's APPROVED_*_ASSETS pattern exactly.
 const APPROVED_SPLIT_REFERENCES: Record<string, {
@@ -55,7 +55,156 @@ const APPROVED_SPLIT_REFERENCES: Record<string, {
   provenance: string;
   contentType: "image/png" | "image/jpeg" | "image/webp";
 }> = {
-  // e.g. SUIT_UPPER_CLASSIC: { privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_CLASSIC/approved.jpg", checksum: "...", provenance: "...", contentType: "image/jpeg" },
+  SUIT_UPPER_CLASSIC: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_CLASSIC_REFERENCE_V1/approved.png",
+    checksum: "7ea7fe6c8231527008bda978756cffc709ee5c5c8d562725025b5381a8253061",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_UPPER_DOUBLE_BREASTED: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_DOUBLE_BREASTED_REFERENCE_V1/approved.png",
+    checksum: "b059ac0ded03ce6bd6b6e2da030485bece53d2462bed04363673f2c7c728ab82",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_UPPER_TUXEDO: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_TUXEDO_REFERENCE_V1/approved.png",
+    checksum: "5433ff015ed21d301addef80db0a1fb96b44ea7e8829d09bb965077261b0c140",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_UPPER_THREE_PIECE: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_THREE_PIECE_REFERENCE_V1/approved.png",
+    checksum: "39ca01388e0766d2f7169dc9d50eb027a39d2a963619578f727124a75c50032b",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_UPPER_STATEMENT: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_UPPER_STATEMENT_REFERENCE_V1/approved.png",
+    checksum: "a3140ee4b5a0cc021c40bde10553f72d3946a22f3a5f6807733c6ccacf8d76ec",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_NON_PLEATED: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_NON_PLEATED_REFERENCE_V1/approved.png",
+    checksum: "82273d2b79839f05778c2721216473520865cc99c81a48fc97b64d2eb6e558d3",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_ONE_PLEAT: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_ONE_PLEAT_REFERENCE_V1/approved.png",
+    checksum: "263d22011b32aeb7989b642757b9b76668b3a797ce2f52e69b733d7dcbd0a69a",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_TWO_PLEAT: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_TWO_PLEAT_REFERENCE_V1/approved.png",
+    checksum: "038e87bc0a35646c0d30f289fa4f8574c79d96fa7b9bbc4f8d2845cb97bfe6ec",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_THREE_PLEAT: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_THREE_PLEAT_REFERENCE_V1/approved.png",
+    checksum: "18b558568e1a29fddfbceb9349e08f304f053625830271d1a0c129777ed8a593",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_CASUAL: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_CASUAL_REFERENCE_V1/approved.png",
+    checksum: "7dc3080ed58bbf6200e484e8c8b88fa8cdd2e40ef191d8f6a463cc22904216f4",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_DENIM: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_DENIM_REFERENCE_V1/approved.png",
+    checksum: "5a773983cababb3ccccaf11cfd47f39188b6ea26720a692f328d28185b25e5d5",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_GORKHA: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_GORKHA_REFERENCE_V1/approved.png",
+    checksum: "3e3a675a6a4eb8f53478511dfe54e9eece01a536413c7950c8b8be32552a8df3",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_PARALLEL: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_PARALLEL_REFERENCE_V1/approved.png",
+    checksum: "5834bec1dc9cd9ba246c92e64d607c84d9cb700a8835d639b7bfddc6aa9e7656",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_BAGGY: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_BAGGY_REFERENCE_V1/approved.png",
+    checksum: "2841f0219bf06959a32478725bebae780d80910d77153353af1db681dd948b9d",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_LOWER_TRENDY: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_LOWER_TRENDY_REFERENCE_V1/approved.png",
+    checksum: "f82b8d3011a52fead9711ae69bbc889ecdf0b83bc248ff2cd1f6fc92ca483c5e",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHIRT_CLASSIC_FORMAL: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHIRT_CLASSIC_FORMAL_REFERENCE_V1/approved.png",
+    checksum: "258e2ac01adb718aaf490390e5229545d1954bfe2afa0f2d80e6dd64f4f0b236",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHIRT_SPREAD_COLLAR: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHIRT_SPREAD_COLLAR_REFERENCE_V1/approved.png",
+    checksum: "ded91dba1db273da616d9e4f5388b2abb06303b16dbcbb09cadf7f4371fc79e1",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHIRT_TUXEDO_PLEATED: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHIRT_TUXEDO_PLEATED_REFERENCE_V1/approved.png",
+    checksum: "44a37bd9ec7326e46edc49fae309e208e43110c2e5c3948d3d750d863e8ff89b",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_WAISTCOAT_CLASSIC: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_WAISTCOAT_CLASSIC_REFERENCE_V1/approved.png",
+    checksum: "d5b5eacf63838866d92b31f1ea536be97af94294476861942efa4d82c1183511",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_WAISTCOAT_FORMAL: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_WAISTCOAT_FORMAL_REFERENCE_V1/approved.png",
+    checksum: "6a72a857936799a0da7778960e8771c85edda6b61e4153a736fd2f96971758bd",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_WAISTCOAT_TUXEDO: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_WAISTCOAT_TUXEDO_REFERENCE_V1/approved.png",
+    checksum: "c5f6e772b97c9319689dedde782b68045dc350f731878d3ce8e77fe6a00e99dc",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHOE_OXFORD: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHOE_OXFORD_REFERENCE_V1/approved.png",
+    checksum: "fb41d06cd57feeec2311584cd6167ccb507b29181a0a092d7cd9693fe4c7d30a",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHOE_DERBY: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHOE_DERBY_REFERENCE_V1/approved.png",
+    checksum: "e6ed6f2f23f76a777c7ac07ecf1b94b6744aafed5e9bae267fbafc1e3f21895c",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHOE_LOAFER: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHOE_LOAFER_REFERENCE_V1/approved.png",
+    checksum: "2371e01732667ba12310007f917620aad6f0d3e086c877d237e040be28c0d37c",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
+  SUIT_SHOE_PATENT_OXFORD: {
+    privatePath: "nasir-bespoke/catalogue/split/v1/SUIT_SHOE_PATENT_OXFORD_REFERENCE_V1/approved.png",
+    checksum: "803726af36633b2fca04cfad1f3c95b8f162e9473bdcef0ab618ee2bf437fae1",
+    provenance: "Approved Nasir Bespoke Split Outfit reference supplied by project owner on 2026-09-19.",
+    contentType: "image/png",
+  },
 };
 
 function referenceFor(optionId: string): NonNullable<SplitComponentOption["reference"]> {
@@ -408,6 +557,7 @@ export const SUIT_SHIRT_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["formal", "business", "versatile", "french-cuffs"],
+    reference: referenceFor("SUIT_SHIRT_CLASSIC_FORMAL"),
     generation: {
       constructionFragment: "Two-ply poplin dress shirt with a semi-spread collar and French double cuffs.",
     },
@@ -432,6 +582,7 @@ export const SUIT_SHIRT_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["modern", "statement-tie"],
+    reference: referenceFor("SUIT_SHIRT_SPREAD_COLLAR"),
     generation: {
       constructionFragment: "Twill dress shirt with a wide cutaway spread collar and convertible rounded barrel cuffs.",
     },
@@ -460,6 +611,7 @@ export const SUIT_SHIRT_OPTIONS: SplitComponentOption[] = [
       recommendedWhen: tuxedoUpper,
       reasons: { recommendedWhen: "Recommended with a tuxedo." },
     },
+    reference: referenceFor("SUIT_SHIRT_TUXEDO_PLEATED"),
     generation: {
       constructionFragment: "Evening dress shirt with a pleated Marcella bib front, stud closures, and French cuffs.",
     },
@@ -511,6 +663,7 @@ export const SUIT_WAISTCOAT_OPTIONS: SplitComponentOption[] = [
       requires: threePieceUpper,
       reasons: { requires: "Requires a three-piece jacket." },
     },
+    reference: referenceFor("SUIT_WAISTCOAT_CLASSIC"),
     generation: {
       constructionFragment: "Single-breasted five-button waistcoat with a notched hemline and dual welt pockets.",
     },
@@ -539,6 +692,7 @@ export const SUIT_WAISTCOAT_OPTIONS: SplitComponentOption[] = [
       requires: threePieceUpper,
       reasons: { requires: "Requires a three-piece jacket." },
     },
+    reference: referenceFor("SUIT_WAISTCOAT_FORMAL"),
     generation: {
       constructionFragment: "Double-breasted shawl-collar waistcoat with a horseshoe opening and a straight-cut hem.",
     },
@@ -573,6 +727,7 @@ export const SUIT_WAISTCOAT_OPTIONS: SplitComponentOption[] = [
         recommendedWhen: "Recommended with a tuxedo.",
       },
     },
+    reference: referenceFor("SUIT_WAISTCOAT_TUXEDO"),
     generation: {
       constructionFragment: "Deep U-cut evening waistcoat in black satin, designed to stay concealed under a buttoned dinner jacket.",
     },
@@ -601,6 +756,7 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
       },
     ],
     compatibilityTags: ["formal", "business", "classic"],
+    reference: referenceFor("SUIT_SHOE_OXFORD"),
     generation: {
       constructionFragment: "Cap-toe Oxford shoes in burnished calfskin with closed lacing and a leather sole.",
     },
@@ -629,6 +785,7 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
       discouragedWhen: tuxedoUpper,
       reasons: { discouragedWhen: "Unconventional with a tuxedo — patent Oxfords are traditional." },
     },
+    reference: referenceFor("SUIT_SHOE_DERBY"),
     generation: {
       constructionFragment: "Plain-toe Derby shoes with open lacing and a hand-finished leather upper.",
     },
@@ -657,6 +814,7 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
       discouragedWhen: tuxedoUpper,
       reasons: { discouragedWhen: "Unconventional with a tuxedo — patent Oxfords are traditional." },
     },
+    reference: referenceFor("SUIT_SHOE_LOAFER"),
     generation: {
       constructionFragment: "Slip-on penny loafers with a hand-sewn apron toe in supple leather.",
     },
@@ -685,6 +843,7 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
       recommendedWhen: tuxedoUpper,
       reasons: { recommendedWhen: "Recommended with a tuxedo." },
     },
+    reference: referenceFor("SUIT_SHOE_PATENT_OXFORD"),
     generation: {
       constructionFragment: "Mirror-finish patent leather Oxford shoes with grosgrain ribbon laces.",
     },

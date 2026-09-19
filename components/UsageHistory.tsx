@@ -80,6 +80,9 @@ type HistoryEvent = {
     "curated-detail"?: { contentType: string };
     "split-upper"?: { contentType: string };
     "split-lower"?: { contentType: string };
+    "split-shirt"?: { contentType: string };
+    "split-waistcoat"?: { contentType: string };
+    "split-footwear"?: { contentType: string };
   };
 };
 
@@ -382,6 +385,9 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             "curated-detail",
                             "split-upper",
                             "split-lower",
+                            "split-shirt",
+                            "split-waistcoat",
+                            "split-footwear",
                             "result",
                           ].map((asset) =>
                             selectedEvent.assets?.[asset as keyof NonNullable<HistoryEvent["assets"]>] ? (
@@ -436,6 +442,12 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                     ? "Jacket reference"
                                     : asset === "split-lower"
                                     ? "Trouser reference"
+                                    : asset === "split-shirt"
+                                    ? "Shirt reference"
+                                    : asset === "split-waistcoat"
+                                    ? "Waistcoat reference"
+                                    : asset === "split-footwear"
+                                    ? "Shoe reference"
                                     : asset.startsWith("bespoke-detail")
                                     ? "Bespoke visual reference"
                                     : "Final result"}

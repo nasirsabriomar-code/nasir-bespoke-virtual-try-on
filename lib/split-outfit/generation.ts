@@ -111,10 +111,18 @@ export async function resolveSplitOutfitRecipe(raw: string): Promise<ResolvedSpl
   return { state, upper, lower, shirt, waistcoat, footwear, accessories };
 }
 
-export type SplitReferenceRole = "split-upper" | "split-lower";
+export type SplitReferenceRole = "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
+
+const PIECE_BY_ROLE: Record<SplitReferenceRole, string> = {
+  "split-upper": "jacket",
+  "split-lower": "trouser",
+  "split-shirt": "shirt",
+  "split-waistcoat": "waistcoat",
+  "split-footwear": "shoe",
+};
 
 function pendingReferenceError(role: SplitReferenceRole, detail?: string) {
-  const piece = role === "split-upper" ? "jacket" : "trouser";
+  const piece = PIECE_BY_ROLE[role];
   return new SplitOutfitError(
     "asset_pending",
     detail ?? `This modular outfit's ${piece} reference photograph is not yet available. Please check back soon, or use Full Outfit for now.`,
@@ -122,17 +130,10 @@ function pendingReferenceError(role: SplitReferenceRole, detail?: string) {
 }
 
 /**
- * Reads the approved reference photograph for the jacket or trousers.
+ * Reads the approved reference photograph for a Split Outfit piece.
  *
- * No component photography has been supplied yet (Phase 5 of the Split
- * Outfit rollout, blocked on the owner) — APPROVED_SPLIT_REFERENCES in
- * lib/split-outfit/catalogue.ts is empty, so every option's `reference`
- * resolves to status "awaiting-upload" and this always fails closed with
- * "asset_pending" today, the same state Level 1 uses for a design whose
- * approved image hasn't been uploaded. The read path itself is real and
- * mirrors readLevel1Reference exactly (magic-byte MIME check, blob
- * content-type cross-check, checksum verification) — the moment a real
- * ledger entry exists, this starts serving it with no further code change.
+ * Fail-closed: awaiting-upload, missing blob, MIME mismatch, or checksum
+ * mismatch all become asset_pending. Accessories never call this.
  */
 export async function readSplitReference(
   option: SplitComponentOption,
@@ -144,7 +145,7 @@ export async function readSplitReference(
   const privateAsset = await getPrivateSplitAsset(reference);
   const blob = privateAsset?.blob;
   if (!privateAsset || !blob || blob.statusCode !== 200 || !blob.stream) {
-    throw pendingReferenceError(role, `This modular outfit's ${role === "split-upper" ? "jacket" : "trouser"} reference photograph is temporarily unavailable. Please try again shortly.`);
+    throw pendingReferenceError(role, `This modular outfit's ${PIECE_BY_ROLE[role]} reference photograph is temporarily unavailable. Please try again shortly.`);
   }
   const contentType = reference.contentType;
   if (!contentType) throw pendingReferenceError(role);

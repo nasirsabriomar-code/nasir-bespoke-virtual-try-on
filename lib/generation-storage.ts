@@ -6,7 +6,7 @@ import { detectImageDimensions } from "@/lib/validation";
 
 const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
-export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower";
+export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
 
 export type GenerationAssetRefs = Partial<Record<GenerationAssetKey, {
   pathname: string;

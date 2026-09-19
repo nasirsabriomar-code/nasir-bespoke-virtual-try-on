@@ -33,6 +33,9 @@ const ASSET_KEYS = new Set<GenerationAssetKey>([
   "curated-detail",
   "split-upper",
   "split-lower",
+  "split-shirt",
+  "split-waistcoat",
+  "split-footwear",
 ]);
 
 function downloadFilename(contentType: string) {

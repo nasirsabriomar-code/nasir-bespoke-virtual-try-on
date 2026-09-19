@@ -87,7 +87,7 @@ test("a valid split recipe reaches generate() with the correct references, order
   });
   assert.equal(response.status, 200);
   assert.ok(generatedInput);
-  assert.deepEqual(generatedInput.references.map((reference) => reference.role), ["split-upper", "split-lower"]);
+  assert.deepEqual(generatedInput.references.map((reference) => reference.role), ["split-upper", "split-lower", "split-shirt", "split-footwear"]);
   assert.equal(generatedInput.selection.mode, "split");
   assert.match(generatedInput.prompt, /Tailor every garment around the customer's actual body/i);
   assert.match(generatedInput.prompt, /SELECTED MODULAR OUTFIT/i);
@@ -102,6 +102,9 @@ test("split prompt fabric override matches Level 1's closing authority and does 
 
   assert.match(both, /FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image 2 is the sole authority for the fabric appearance of the jacket and the trousers/);
   assert.match(both, /Shirt, waistcoat, footwear, and accessories are not coloured from Image 2/);
+  assert.match(both, /Image 5 — NASIR BESPOKE approved shirt construction reference/);
+  assert.match(both, /Image 6 — NASIR BESPOKE approved footwear construction reference/);
+  assert.doesNotMatch(both, /Image 6 — NASIR BESPOKE approved waistcoat/);
   assert.doesNotMatch(both, /every selected garment piece/);
 
   assert.match(upper, /Image 2 is the sole authority for the fabric appearance of the jacket/);
@@ -217,22 +220,28 @@ test("a completed split generation's usage history survives read-back as mode sp
   assert.deepEqual(stored.generation?.splitAccessoryNames, ["Pocket Square"]);
 });
 
-test("every upper/lower option defaults to awaiting-upload until the ledger says otherwise", () => {
+test("photographed split options are active in the client view; accessories and waistcoat None are not", () => {
   const view = getSplitCatalogueView("suit");
-  for (const slotId of ["upper", "lower"] as const) {
+  for (const slotId of ["upper", "lower", "inner-shirt", "footwear"] as const) {
     const slot = view.slots.find((item) => item.id === slotId);
     assert.ok(slot);
     for (const option of slot.options) {
-      assert.equal(option.reference?.status, "awaiting-upload", `${option.id} should be awaiting-upload until real photography is approved`);
+      assert.equal(option.reference?.status, "active", `${option.id} should be active after photography approval`);
     }
   }
-  // Shirt/waistcoat/footwear/accessory options never carry a reference at all.
-  for (const slotId of ["inner-shirt", "inner-waistcoat", "footwear", "accessory"] as const) {
-    const slot = view.slots.find((item) => item.id === slotId);
-    assert.ok(slot);
-    for (const option of slot.options) {
-      assert.equal(option.reference, undefined, `${option.id} should never carry a reference`);
+  const waistcoat = view.slots.find((item) => item.id === "inner-waistcoat");
+  assert.ok(waistcoat);
+  for (const option of waistcoat.options) {
+    if (option.id === "SUIT_WAISTCOAT_NONE") {
+      assert.equal(option.reference, undefined, "waistcoat None has no photograph");
+    } else {
+      assert.equal(option.reference?.status, "active", `${option.id} should be active`);
     }
+  }
+  const accessories = view.slots.find((item) => item.id === "accessory");
+  assert.ok(accessories);
+  for (const option of accessories.options) {
+    assert.equal(option.reference, undefined, `${option.id} stays text-only`);
   }
 });
 

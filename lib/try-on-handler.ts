@@ -731,13 +731,18 @@ export async function handleTryOnRequest(
         ...await Promise.all(level1Resolved.detailAssets.map((asset) => (dependencies.readLevel1Reference ?? readLevel1Reference)(asset, "curated-detail"))),
       ]
       : [];
-    // Image order contract: person, fabric, then split-upper (jacket), then
-    // split-lower (trousers) — see lib/split-outfit/prompt.ts. Order here
-    // must not change without updating that prompt's hand-numbered image map.
+    // Image order contract: person, fabric, jacket, trousers, shirt,
+    // optional waistcoat, footwear — see lib/split-outfit/prompt.ts.
+    const readSplit = dependencies.readSplitReference ?? readSplitReference;
     const splitReferenceInputs = splitResolved
       ? [
-        await (dependencies.readSplitReference ?? readSplitReference)(splitResolved.upper, "split-upper"),
-        await (dependencies.readSplitReference ?? readSplitReference)(splitResolved.lower, "split-lower"),
+        await readSplit(splitResolved.upper, "split-upper"),
+        await readSplit(splitResolved.lower, "split-lower"),
+        await readSplit(splitResolved.shirt, "split-shirt"),
+        ...(splitResolved.waistcoat && splitResolved.waistcoat.id !== "SUIT_WAISTCOAT_NONE"
+          ? [await readSplit(splitResolved.waistcoat, "split-waistcoat")]
+          : []),
+        await readSplit(splitResolved.footwear, "split-footwear"),
       ]
       : [];
     const references = level1Resolved
