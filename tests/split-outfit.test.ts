@@ -66,7 +66,7 @@ test("Feature flag behaves correctly across environments", () => {
 
 test("Split Outfit data model has authoritative Suit options seeded", () => {
   assert.equal(SUIT_UPPER_OPTIONS.length, 5);
-  assert.equal(SUIT_LOWER_OPTIONS.length, 5);
+  assert.equal(SUIT_LOWER_OPTIONS.length, 10);
   assert.equal(SUIT_SHIRT_OPTIONS.length, 3);
   assert.equal(SUIT_WAISTCOAT_OPTIONS.length, 4);
   assert.equal(SUIT_FOOTWEAR_OPTIONS.length, 4);
@@ -83,11 +83,16 @@ test("Split Outfit data model has authoritative Suit options seeded", () => {
 
   const lowerNames = SUIT_LOWER_OPTIONS.map((o) => o.customer.name);
   assert.deepEqual(lowerNames, [
-    "Classic Straight",
-    "Tailored Tapered",
-    "Pleated Formal",
-    "Tuxedo Trouser",
-    "Contemporary",
+    "Non-pleated",
+    "One-pleated",
+    "Two-pleated",
+    "Three-pleated",
+    "Casual",
+    "Denim",
+    "Gorkha",
+    "Parallel",
+    "Baggy",
+    "Trendy",
   ]);
 });
 
@@ -263,7 +268,7 @@ test("Material slots react dynamically to component selections", () => {
   const twoPieceState: SplitOutfitState = {
     family: "suit",
     upperId: "SUIT_UPPER_CLASSIC",
-    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    lowerId: "SUIT_LOWER_NON_PLEATED",
     shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
     waistcoatId: "SUIT_WAISTCOAT_NONE",
     footwearId: "SUIT_SHOE_OXFORD",
@@ -284,7 +289,7 @@ test("Material slots react dynamically to component selections", () => {
   const fullEnsembleState: SplitOutfitState = {
     family: "suit",
     upperId: "SUIT_UPPER_THREE_PIECE",
-    lowerId: "SUIT_LOWER_CLASSIC_STRAIGHT",
+    lowerId: "SUIT_LOWER_NON_PLEATED",
     shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
     waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
     footwearId: "SUIT_SHOE_OXFORD",
@@ -310,7 +315,7 @@ test("buildSplitOutfitSummary generates accurate live recipe", () => {
   const state: SplitOutfitState = {
     family: "suit",
     upperId: "SUIT_UPPER_DOUBLE_BREASTED",
-    lowerId: "SUIT_LOWER_TAILORED_TAPERED",
+    lowerId: "SUIT_LOWER_PARALLEL",
     shirtId: "SUIT_SHIRT_SPREAD_COLLAR",
     waistcoatId: "SUIT_WAISTCOAT_NONE",
     footwearId: "SUIT_SHOE_DERBY",
@@ -320,7 +325,7 @@ test("buildSplitOutfitSummary generates accurate live recipe", () => {
   const summary = buildSplitOutfitSummary(state);
 
   assert.equal(summary.upper?.customer.name, "Double-Breasted");
-  assert.equal(summary.lower?.customer.name, "Tailored Tapered");
+  assert.equal(summary.lower?.customer.name, "Parallel");
   assert.equal(summary.shirt?.customer.name, "Spread Collar");
   assert.equal(summary.waistcoat?.id, "SUIT_WAISTCOAT_NONE");
   assert.equal(summary.footwear?.customer.name, "Derby");
