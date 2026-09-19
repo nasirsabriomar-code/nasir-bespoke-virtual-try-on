@@ -65,6 +65,8 @@ test("denim without trouser fabric keeps jean cloth; with fabric gets a per-piec
   assert.doesNotMatch(without, /FINAL FABRIC APPLICATION OVERRIDE — TROUSERS/);
   assert.match(withFabric, /Trousers \[Image 4 = cut; Image 2 = cloth — exact shade and texture of Image 2/);
   assert.ok(withFabric.includes(fabricFidelityOverride("trousers", 2, 4)));
+  assert.match(withFabric, /CUT TEMPLATE/);
+  assert.match(withFabric, /discard its original colour, wash, and cloth entirely/i);
   assert.match(withFabric, /weave, yarn, nap, pile, slub, pattern, pattern scale, sheen, finish/);
   assert.doesNotMatch(withFabric, /FINAL FABRIC APPLICATION OVERRIDE — SHIRT/);
 });
@@ -76,4 +78,18 @@ test("jacket fabric override names the jacket only and does not recolour shoes",
   assert.match(prompt, /Footwear \[Image 6 = cut and cloth\]/);
   assert.doesNotMatch(prompt, /FINAL FABRIC APPLICATION OVERRIDE — FOOTWEAR/);
   assert.doesNotMatch(prompt, /the jacket and the trousers only/);
+});
+
+test("three-piece jacket prompt isolates jacket buttons from the full-ensemble construction photo", async () => {
+  const state: SplitOutfitState = {
+    ...DEFAULT_SPLIT_OUTFIT_STATE,
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
+  };
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify(state));
+  const prompt = buildSplitOutfitPrompt(resolved, none);
+  assert.match(prompt, /CONSTRUCTION PHOTO ISOLATION/);
+  assert.match(prompt, /exactly two front buttons in one vertical column/);
+  assert.match(prompt, /never two buttons stacked in the same spot/);
+  assert.match(prompt, /one button per hole/);
 });

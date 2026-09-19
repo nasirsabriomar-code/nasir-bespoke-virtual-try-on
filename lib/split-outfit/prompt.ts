@@ -31,7 +31,7 @@ function imageRoleLines(map: SplitImageMap) {
   );
   lines.push(
     map.fabrics.trousers
-      ? `Image ${map.construction.trousers} — NASIR BESPOKE approved trouser construction (cut only — cloth from Image ${map.fabrics.trousers}).`
+      ? `Image ${map.construction.trousers} — NASIR BESPOKE approved trouser CUT TEMPLATE only (rise, pleats, baggy/straight/tapered silhouette, hem). Discard this image's original cloth colour completely. Cloth is Image ${map.fabrics.trousers} only.`
       : `Image ${map.construction.trousers} — NASIR BESPOKE approved trouser construction AND cloth appearance. If this image shows jeans, the customer wears those jeans unless a trouser fabric photograph was supplied.`,
   );
   lines.push(
@@ -95,6 +95,7 @@ export function buildSplitOutfitPrompt(
     imageRoleLines(map),
     "CUSTOMER PHOTO AUTHORITY — CRITICAL: Image 1 is the sole authority for the customer's identity, face, skin tone, age appearance, hair, facial hair, natural body size, build, body proportions, height, visible physical characteristics, pose, posture, expression, hands, camera perspective, framing, lighting, shadows, and background. Tailor every garment around the customer's actual body. Never slim, enlarge, reshape, lengthen, shorten, beautify, replace, or otherwise alter the customer to fit a garment or a mannequin.",
     "CURATED CONSTRUCTION AUTHORITY: Wear exactly the selected pieces listed below. Do not substitute a different jacket, trouser, shirt, waistcoat, or shoe. Never copy a reference model, mannequin, person, scene, or background. When a piece has a fabric photograph, that photograph wins over the construction photograph for colour, shade, and texture only.",
+    "CONSTRUCTION PHOTO ISOLATION — CRITICAL: Each construction photograph may show a full mannequin look (jacket plus waistcoat, tie, trousers, or shirt). Extract ONLY the named piece's cut from that image. Ignore every other garment and accessory visible in it. Jacket buttons belong only on the jacket, in that jacket's own button stance, one button per hole in a single vertical column — never stack or overlay two buttons in one position. Waistcoat buttons belong only on the waistcoat layer from the waistcoat image. Do not copy waistcoat buttons onto the jacket, or jacket buttons onto the waistcoat.",
     `SELECTED MODULAR OUTFIT (${resolved.state.family}):\n${componentLines.join("\n")}`,
     map.hasWaistcoat
       ? "TEXT-COMPOSED PIECES: Any accessories listed above have no reference photograph. Place each only where the description says. Do not invent details beyond what is described, and do not add any accessory not explicitly listed. Do not invent a second waistcoat."

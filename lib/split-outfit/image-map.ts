@@ -70,5 +70,8 @@ export function buildSplitImageMap(resolved: ResolvedSplitOutfit, fabrics: Split
 const CLOTH_TRAITS = "exact colour, shade, texture, weave, yarn, nap, pile, slub, pattern, pattern scale, sheen, finish, and material";
 
 export function fabricFidelityOverride(piece: string, fabricImage: number, constructionImage: number) {
-  return `FINAL FABRIC APPLICATION OVERRIDE — ${piece.toUpperCase()}: Image ${fabricImage} is the sole authority for the ${CLOTH_TRAITS} of the ${piece}. The ${piece} must look cut and sewn from that cloth, including how the weave reads at seams, edges, pockets, and folds. Do not keep, mix, tint, or infer cloth from Image 1, Image ${constructionImage}, any other fabric photograph, or catalogue text. Construction Image ${constructionImage} is cut and silhouette only for this ${piece}.`;
+  const trousersExtra = piece === "trousers"
+    ? ` Image ${constructionImage} is a complete pair of trousers used only as a cut template — discard its original colour, wash, and cloth entirely (including olive, khaki, navy, grey, denim, or any other colour visible there). Recolour the entire trouser garment: waistband, fly, pockets, belt loops, seams, both legs, folds, and hem.`
+    : "";
+  return `FINAL FABRIC APPLICATION OVERRIDE — ${piece.toUpperCase()}: Image ${fabricImage} is the sole authority for the ${CLOTH_TRAITS} of the ${piece}. The ${piece} must look cut and sewn from that cloth, including how the weave reads at seams, edges, pockets, and folds. Do not keep, mix, tint, or infer cloth from Image 1, Image ${constructionImage}, any other fabric photograph, or catalogue text. Construction Image ${constructionImage} is cut and silhouette only for this ${piece}.${trousersExtra}`;
 }

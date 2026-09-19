@@ -315,7 +315,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["ceremony", "wedding", "formal-business"],
     reference: referenceFor("SUIT_UPPER_THREE_PIECE"),
     generation: {
-      constructionFragment: "Two-button jacket with a slim notch lapel and a deeper front gorge cut to reveal a waistcoat beneath.",
+      constructionFragment: "Jacket only: slim notch lapel, deeper front gorge to reveal a waistcoat, and exactly two front buttons in one vertical column — one button per hole, never two buttons stacked in the same spot. Ignore the waistcoat, tie, shirt, and trousers if they appear in the jacket photograph.",
     },
   },
   {
