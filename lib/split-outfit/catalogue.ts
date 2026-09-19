@@ -315,7 +315,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["ceremony", "wedding", "formal-business"],
     reference: referenceFor("SUIT_UPPER_THREE_PIECE"),
     generation: {
-      constructionFragment: "Jacket cut with a deeper front gorge specifically to reveal a matching or contrast waistcoat beneath.",
+      constructionFragment: "Two-button jacket with a slim notch lapel and a deeper front gorge cut to reveal a waistcoat beneath.",
     },
   },
   {
@@ -451,15 +451,23 @@ export const SUIT_LOWER_OPTIONS: SplitComponentOption[] = [
     customer: {
       name: "Denim",
       subtitle: "Five-pocket jean construction",
-      description: "Jean-cut trousers with a yoke, five-pocket layout, coin pocket, and a straight to slightly tapered leg. Cloth still comes from the uploaded fabric.",
-      details: ["Five-Pocket Layout", "Yoke Back", "Coin Pocket", "Straight to Slight Taper"],
+      description: "Jean-cut trousers with a yoke, five-pocket layout, coin pocket, and a straight to slightly tapered leg. These are jeans — cloth comes from the denim reference, not the uploaded suiting fabric.",
+      details: ["Five-Pocket Jean Layout", "Yoke Back", "Coin Pocket", "Straight to Slight Taper"],
       imagePlaceholderLabel: "Denim Trouser",
     },
-    materialRequirements: [trouserFabric],
+    materialRequirements: [
+      {
+        slotId: "trouser-primary",
+        label: "Jeans",
+        defaultFabricSource: "atelier-standard",
+        description: "Jean cloth from the approved denim reference — not the uploaded suiting fabric.",
+      },
+    ],
     compatibilityTags: ["casual", "jean-cut"],
     reference: referenceFor("SUIT_LOWER_DENIM"),
     generation: {
-      constructionFragment: "Five-pocket trousers with a jean yoke, riveted coin pocket, and a straight to slightly tapered leg.",
+      appearance: "reference",
+      constructionFragment: "Denim jeans — not tailored suit trousers — with five-pocket jean construction, a back yoke, belt loops, riveted coin pocket, and a straight to slightly tapered jean leg.",
     },
   },
   {
@@ -560,7 +568,8 @@ export const SUIT_SHIRT_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["formal", "business", "versatile", "french-cuffs"],
     reference: referenceFor("SUIT_SHIRT_CLASSIC_FORMAL"),
     generation: {
-      constructionFragment: "Two-ply poplin dress shirt with a semi-spread collar and French double cuffs.",
+      appearance: "reference",
+      constructionFragment: "Dress shirt with a semi-spread collar, a plain front placket, and French double cuffs.",
     },
   },
   {
@@ -585,7 +594,8 @@ export const SUIT_SHIRT_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["modern", "statement-tie"],
     reference: referenceFor("SUIT_SHIRT_SPREAD_COLLAR"),
     generation: {
-      constructionFragment: "Twill dress shirt with a wide cutaway spread collar and convertible rounded barrel cuffs.",
+      appearance: "reference",
+      constructionFragment: "Dress shirt with a wide cutaway spread collar and convertible rounded barrel cuffs.",
     },
   },
   {
@@ -614,7 +624,8 @@ export const SUIT_SHIRT_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_SHIRT_TUXEDO_PLEATED"),
     generation: {
-      constructionFragment: "Evening dress shirt with a pleated Marcella bib front, stud closures, and French cuffs.",
+      appearance: "reference",
+      constructionFragment: "Evening dress shirt with a pleated bib front, stud closures, a turndown collar, and French cuffs.",
     },
   },
 ];
@@ -666,6 +677,7 @@ export const SUIT_WAISTCOAT_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_WAISTCOAT_CLASSIC"),
     generation: {
+      appearance: "uploaded-fabric",
       constructionFragment: "Single-breasted five-button waistcoat with a notched hemline and dual welt pockets.",
     },
   },
@@ -695,6 +707,7 @@ export const SUIT_WAISTCOAT_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_WAISTCOAT_FORMAL"),
     generation: {
+      appearance: "uploaded-fabric",
       constructionFragment: "Double-breasted shawl-collar waistcoat with a horseshoe opening and a straight-cut hem.",
     },
   },
@@ -730,7 +743,8 @@ export const SUIT_WAISTCOAT_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_WAISTCOAT_TUXEDO"),
     generation: {
-      constructionFragment: "Deep U-cut evening waistcoat in black satin, designed to stay concealed under a buttoned dinner jacket.",
+      appearance: "reference",
+      constructionFragment: "Deep U-cut evening waistcoat with covered buttons, designed to stay concealed under a buttoned dinner jacket.",
     },
   },
 ];
@@ -759,7 +773,8 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["formal", "business", "classic"],
     reference: referenceFor("SUIT_SHOE_OXFORD"),
     generation: {
-      constructionFragment: "Cap-toe Oxford shoes in burnished calfskin with closed lacing and a leather sole.",
+      appearance: "reference",
+      constructionFragment: "Cap-toe Oxford shoes with closed lacing.",
     },
   },
   {
@@ -788,7 +803,8 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_SHOE_DERBY"),
     generation: {
-      constructionFragment: "Plain-toe Derby shoes with open lacing and a hand-finished leather upper.",
+      appearance: "reference",
+      constructionFragment: "Plain-toe Derby shoes with open lacing.",
     },
   },
   {
@@ -817,7 +833,8 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_SHOE_LOAFER"),
     generation: {
-      constructionFragment: "Slip-on penny loafers with a hand-sewn apron toe in supple leather.",
+      appearance: "reference",
+      constructionFragment: "Slip-on penny loafers with a hand-sewn apron toe.",
     },
   },
   {
@@ -846,7 +863,8 @@ export const SUIT_FOOTWEAR_OPTIONS: SplitComponentOption[] = [
     },
     reference: referenceFor("SUIT_SHOE_PATENT_OXFORD"),
     generation: {
-      constructionFragment: "Mirror-finish patent leather Oxford shoes with grosgrain ribbon laces.",
+      appearance: "reference",
+      constructionFragment: "Plain-toe evening Oxford shoes with grosgrain ribbon laces.",
     },
   },
 ];
@@ -878,7 +896,8 @@ export const SUIT_ACCESSORY_OPTIONS: SplitComponentOption[] = [
       reasons: { conflictsWith: "A tie and a bow tie cannot be worn together." },
     },
     generation: {
-      constructionFragment: "A hand-rolled mulberry silk necktie tied in a four-in-hand knot.",
+      appearance: "reference",
+      constructionFragment: "A necktie tied in a four-in-hand knot at the shirt collar, sitting under the jacket.",
     },
   },
   {
@@ -910,7 +929,8 @@ export const SUIT_ACCESSORY_OPTIONS: SplitComponentOption[] = [
       },
     },
     generation: {
-      constructionFragment: "A self-tie silk satin bow tie in a butterfly shape.",
+      appearance: "reference",
+      constructionFragment: "A self-tie butterfly bow tie worn at the shirt collar. Do not also add a long necktie.",
     },
   },
   {
@@ -934,7 +954,8 @@ export const SUIT_ACCESSORY_OPTIONS: SplitComponentOption[] = [
     ],
     compatibilityTags: ["universal", "accent"],
     generation: {
-      constructionFragment: "A hand-rolled linen or silk pocket square in a crisp presidential fold.",
+      appearance: "reference",
+      constructionFragment: "A pocket square in a crisp presidential fold, placed only in the jacket breast pocket.",
     },
   },
   {
@@ -962,7 +983,8 @@ export const SUIT_ACCESSORY_OPTIONS: SplitComponentOption[] = [
       reasons: { requires: "Requires a shirt with French cuffs." },
     },
     generation: {
-      constructionFragment: "A pair of polished metal cufflinks worn with French double cuffs.",
+      appearance: "reference",
+      constructionFragment: "A pair of metal cufflinks fastened only through the shirt's French double cuffs.",
     },
   },
   {
@@ -986,7 +1008,8 @@ export const SUIT_ACCESSORY_OPTIONS: SplitComponentOption[] = [
     ],
     compatibilityTags: ["tailoring-detail", "bespoke"],
     generation: {
-      constructionFragment: "Natural horn or mother-of-pearl buttons on the jacket front and cuffs.",
+      appearance: "reference",
+      constructionFragment: "Horn or mother-of-pearl buttons on the jacket front and jacket cuffs only, matching the jacket's button stance.",
     },
   },
 ];

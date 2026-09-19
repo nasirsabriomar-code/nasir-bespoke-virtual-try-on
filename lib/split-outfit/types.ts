@@ -142,6 +142,12 @@ export type SplitComponentOption = {
   /** SERVER-ONLY. Must never reach the client view. */
   generation: {
     constructionFragment: string;
+    /**
+     * Where this piece's cloth/colour/material comes from.
+     * `uploaded-fabric` = Image 2 when the fabric region includes the piece.
+     * `reference` = the piece's own construction photograph (or text if none).
+     */
+    appearance?: "uploaded-fabric" | "reference";
     negativeConstraints?: string[];
   };
 };

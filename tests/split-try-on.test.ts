@@ -101,17 +101,53 @@ test("split prompt fabric override matches Level 1's closing authority and does 
   const upper = buildSplitOutfitPrompt(resolved, "upper");
   const lower = buildSplitOutfitPrompt(resolved, "lower");
 
-  assert.match(both, /FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image 2 is the sole authority for the fabric appearance of the jacket and the trousers/);
-  assert.match(both, /Shirt, waistcoat, footwear, and accessories are not coloured from Image 2/);
-  assert.match(both, /Image 5 — NASIR BESPOKE approved shirt construction reference/);
-  assert.match(both, /Image 6 — NASIR BESPOKE approved footwear construction reference/);
+  assert.match(both, /Image 2 is the sole cloth authority for the jacket and the trousers only/);
+  assert.match(both, /shirt, footwear, accessories are not coloured from Image 2/);
+  assert.match(both, /Image 5 — NASIR BESPOKE approved shirt construction AND cloth appearance/);
+  assert.match(both, /Image 6 — NASIR BESPOKE approved footwear construction AND cloth appearance/);
   assert.doesNotMatch(both, /Image 6 — NASIR BESPOKE approved waistcoat/);
   assert.doesNotMatch(both, /every selected garment piece/);
 
-  assert.match(upper, /Image 2 is the sole authority for the fabric appearance of the jacket/);
-  assert.match(upper, /The trousers must keep their original appearance from Image 4/);
-  assert.match(lower, /Image 2 is the sole authority for the fabric appearance of the trousers/);
-  assert.match(lower, /The jacket must keep its original appearance from Image 3/);
+  assert.match(upper, /Image 2 is the sole cloth authority for the jacket only/);
+  assert.match(upper, /The trousers must be rendered as the selected lower garment in Image 4/);
+  assert.match(lower, /Image 2 is the sole cloth authority for the trousers only/);
+  assert.match(lower, /The jacket must keep the cloth, colour, and material shown in Image 3/);
+});
+
+test("denim trousers keep Image 4 jean cloth and are not recoloured by the uploaded suiting fabric", async () => {
+  const denimState: SplitOutfitState = { ...DEFAULT_SPLIT_OUTFIT_STATE, lowerId: "SUIT_LOWER_DENIM" };
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify(denimState));
+  const both = buildSplitOutfitPrompt(resolved, "both");
+  const lowerOnly = buildSplitOutfitPrompt(resolved, "lower");
+
+  assert.match(both, /Denim jeans — not tailored suit trousers/);
+  assert.match(both, /Trousers \[Image 4 = cut and cloth; do not apply Image 2\]/);
+  assert.match(both, /Image 2 is the sole cloth authority for the jacket only/);
+  assert.match(both, /If Image 4 shows jeans, the customer wears those jeans/);
+  assert.doesNotMatch(both, /the jacket and the trousers only/);
+  assert.match(lowerOnly, /Image 2 is not applied to any garment/);
+  assert.match(lowerOnly, /do not apply Image 2/);
+});
+
+test("classic waistcoat takes uploaded fabric; tuxedo waistcoat keeps its reference cloth", async () => {
+  const classic = await resolveSplitOutfitRecipe(JSON.stringify({
+    ...DEFAULT_SPLIT_OUTFIT_STATE,
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    waistcoatId: "SUIT_WAISTCOAT_CLASSIC",
+  }));
+  const tuxedo = await resolveSplitOutfitRecipe(JSON.stringify({
+    ...DEFAULT_SPLIT_OUTFIT_STATE,
+    upperId: "SUIT_UPPER_TUXEDO",
+    waistcoatId: "SUIT_WAISTCOAT_TUXEDO",
+    shirtId: "SUIT_SHIRT_TUXEDO_PLEATED",
+  }));
+  const classicPrompt = buildSplitOutfitPrompt(classic, "both");
+  const tuxedoPrompt = buildSplitOutfitPrompt(tuxedo, "both");
+
+  assert.match(classicPrompt, /Waistcoat \[Image 6 = cut; Image 2 = cloth\]/);
+  assert.match(classicPrompt, /the jacket and the trousers and the waistcoat/);
+  assert.match(tuxedoPrompt, /Waistcoat \[Image 6 = cut and cloth\]/);
+  assert.doesNotMatch(tuxedoPrompt, /black satin/);
 });
 
 test("an invalid split recipe is rejected server-side by the real resolver, even though the UI would never produce it", async () => {
