@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { restoreLookFromGeneration, type RestoredLook } from "@/lib/history/restore-look";
+import { ZoomableImage } from "@/components/ZoomableImage";
 
 const emptySubscribe = () => () => {};
 
@@ -392,7 +393,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                           ].map((asset) =>
                             selectedEvent.assets?.[asset as keyof NonNullable<HistoryEvent["assets"]>] ? (
                               <figure key={asset}>
-                                <img
+                                <ZoomableImage
                                   src={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/${asset}`}
                                   alt={
                                     asset === "person"
@@ -405,7 +406,6 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                       ? "Lower fabric photo"
                                       : "Generated men's try-on result"
                                   }
-                                  loading="lazy"
                                 />
                                 <figcaption>
                                   {asset === "person"

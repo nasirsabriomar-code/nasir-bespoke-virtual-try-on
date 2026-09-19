@@ -54,6 +54,20 @@ test("Level 1 catalogue component contains full-screen design viewer with access
   assert.match(component, /Escape/);
 });
 
+test("generated try-on results open a click-to-zoom preview", async () => {
+  const [result, preview, css] = await Promise.all([
+    source("components/TryOnResult.tsx"),
+    source("components/ZoomableImage.tsx"),
+    source("app/globals.css"),
+  ]);
+  assert.match(result, /ZoomableImage/);
+  assert.match(preview, /Click the image to zoom/);
+  assert.match(preview, /createPortal/);
+  assert.match(preview, /Escape/);
+  assert.match(css, /\.result-preview-root/);
+  assert.match(css, /\.result-preview-image/);
+});
+
 test("Split component cards render approved photos instead of silhouettes when a reference URL is present", async () => {
   const component = await source("components/split-outfit/SplitComponentCard.tsx");
   assert.match(component, /option\.reference\.url/);

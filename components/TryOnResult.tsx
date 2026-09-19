@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ZoomableImage } from "@/components/ZoomableImage";
 
 type TryOnResultProps = {
   resultUrl: string;
@@ -60,9 +61,7 @@ export function TryOnResult({
       </div>
 
       <div className="result-frame">
-        {/* Blob URLs are transient user images and intentionally bypass framework optimization. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <ZoomableImage
           src={view === "result" ? resultUrl : originalUrl}
           alt={view === "result" ? "Generated virtual try-on" : "Original person photo"}
         />
