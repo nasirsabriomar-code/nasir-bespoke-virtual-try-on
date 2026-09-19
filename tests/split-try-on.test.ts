@@ -5,6 +5,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test, { beforeEach } from "node:test";
 import { handleTryOnRequest } from "@/lib/try-on-handler";
+import { GET as getSplitCatalogAsset } from "@/app/api/split-catalog-assets/[assetId]/route";
 import { readSplitReference, resolveSplitOutfitRecipe, SplitOutfitError, type ResolvedSplitOutfit } from "@/lib/split-outfit/generation";
 import { buildSplitOutfitPrompt } from "@/lib/split-outfit/prompt";
 import { getSplitCatalogueView } from "@/lib/split-outfit/view";
@@ -227,6 +228,7 @@ test("photographed split options are active in the client view; accessories and 
     assert.ok(slot);
     for (const option of slot.options) {
       assert.equal(option.reference?.status, "active", `${option.id} should be active after photography approval`);
+      assert.equal(option.reference?.url, `/api/split-catalog-assets/${option.id}_REFERENCE_V1`);
     }
   }
   const waistcoat = view.slots.find((item) => item.id === "inner-waistcoat");
@@ -236,6 +238,7 @@ test("photographed split options are active in the client view; accessories and 
       assert.equal(option.reference, undefined, "waistcoat None has no photograph");
     } else {
       assert.equal(option.reference?.status, "active", `${option.id} should be active`);
+      assert.equal(option.reference?.url, `/api/split-catalog-assets/${option.id}_REFERENCE_V1`);
     }
   }
   const accessories = view.slots.find((item) => item.id === "accessory");
@@ -245,10 +248,18 @@ test("photographed split options are active in the client view; accessories and 
   }
 });
 
+test("split catalogue photos cannot be read without an authenticated session", async () => {
+  const response = await getSplitCatalogAsset(new Request("http://localhost/api/split-catalog-assets/SUIT_UPPER_CLASSIC_REFERENCE_V1"), {
+    params: Promise.resolve({ assetId: "SUIT_UPPER_CLASSIC_REFERENCE_V1" }),
+  });
+  assert.equal(response.status, 404);
+});
+
 test("the split catalogue view never leaks a reference's private path or checksum", () => {
   const view = getSplitCatalogueView("suit");
   const serialized = JSON.stringify(view);
   assert.doesNotMatch(serialized, /privatePath|checksum|provenance/i);
+  assert.match(serialized, /\/api\/split-catalog-assets\/SUIT_UPPER_CLASSIC_REFERENCE_V1/);
 });
 
 test("readSplitReference serves a real active reference through the same read path a real photo would use", async () => {

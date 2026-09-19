@@ -1,6 +1,7 @@
 import type { OptionRule } from "@/lib/rules/types";
 import type {
   SplitComponentOption,
+  SplitOptionReference,
   SplitOutfitFamily,
   SplitOutfitState,
 } from "./types";
@@ -1058,3 +1059,14 @@ export const SPLIT_CATALOGUE_BY_FAMILY: Record<
     accessories: [],
   },
 };
+
+export function findActiveSplitReference(assetId: string): SplitOptionReference | null {
+  for (const family of Object.values(SPLIT_CATALOGUE_BY_FAMILY)) {
+    for (const options of [family.uppers, family.lowers, family.shirts, family.waistcoats, family.footwear, family.accessories]) {
+      for (const option of options) {
+        if (option.reference?.assetId === assetId && option.reference.status === "active") return option.reference;
+      }
+    }
+  }
+  return null;
+}

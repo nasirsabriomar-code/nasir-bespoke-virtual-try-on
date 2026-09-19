@@ -54,6 +54,12 @@ test("Level 1 catalogue component contains full-screen design viewer with access
   assert.match(component, /Escape/);
 });
 
+test("Split component cards render approved photos instead of silhouettes when a reference URL is present", async () => {
+  const component = await source("components/split-outfit/SplitComponentCard.tsx");
+  assert.match(component, /option\.reference\.url/);
+  assert.match(component, /split-card-photo/);
+});
+
 test("UsageHistory renders through a React portal with proper stacking and accessibility", async () => {
   const [component, css] = await Promise.all([
     source("components/UsageHistory.tsx"),

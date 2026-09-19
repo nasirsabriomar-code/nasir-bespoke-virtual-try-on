@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- private split catalogue photos must be requested with the session cookie. */
+
 import type { Verdict } from "@/lib/rules/types";
 import type { SplitComponentOptionView } from "@/lib/split-outfit/types";
 
@@ -194,9 +196,17 @@ export function SplitComponentCard({
       onClick={onSelect}
     >
       <div className="split-card-media">
-        <div className="split-card-silhouette-wrap">
-          {renderPlaceholderSilhouette(option.categoryId, option.id)}
-        </div>
+        {option.reference?.status === "active" && option.reference.url ? (
+          <img
+            className="split-card-photo"
+            src={option.reference.url}
+            alt={option.customer.name}
+          />
+        ) : (
+          <div className="split-card-silhouette-wrap">
+            {renderPlaceholderSilhouette(option.categoryId, option.id)}
+          </div>
+        )}
         <span className="split-card-badge">{option.customer.imagePlaceholderLabel}</span>
       </div>
 

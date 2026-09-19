@@ -2352,6 +2352,14 @@ a:focus-visible {
   padding: 16px;
   position: relative;
 }
+.split-card-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  max-height: 220px;
+  object-fit: contain;
+  object-position: center;
+}
 .split-card-silhouette-wrap {
   width: 72px;
   height: 90px;

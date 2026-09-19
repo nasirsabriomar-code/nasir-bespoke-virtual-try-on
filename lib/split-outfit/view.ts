@@ -20,7 +20,16 @@ function toOptionView(option: SplitComponentOption): SplitComponentOptionView {
     // privatePath/checksum/provenance are deliberately dropped here — only
     // the status ever reaches the client, same rule as everything else in
     // this projection.
-    ...(option.reference ? { reference: { status: option.reference.status } } : {}),
+    ...(option.reference
+      ? {
+          reference: {
+            status: option.reference.status,
+            ...(option.reference.status === "active"
+              ? { url: `/api/split-catalog-assets/${encodeURIComponent(option.reference.assetId)}` }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 

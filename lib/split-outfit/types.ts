@@ -190,8 +190,8 @@ export type SplitComponentOptionView = {
   rules?: OptionRuleSet;
   compatibilityTags?: string[];
   materialRequirements?: MaterialRequirement[];
-  /** Status only — never the private path, checksum, or provenance. */
-  reference?: { status: SplitAssetStatus };
+  /** Status and same-origin URL only — never the private path, checksum, or provenance. */
+  reference?: { status: SplitAssetStatus; url?: string };
 };
 
 export type SplitCatalogueSlotView = {
