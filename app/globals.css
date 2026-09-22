@@ -366,8 +366,12 @@ a:focus-visible {
   color: var(--atelier-muted, #aaa79e);
   font-size: 9px;
   letter-spacing: 0.08em;
-  padding: 8px 9px;
+  padding: 8px 9px 0;
   text-transform: uppercase;
+}
+
+.generation-details-grid .generation-details-download {
+  margin: 6px 9px 10px;
 }
 
 .generation-details-meta {

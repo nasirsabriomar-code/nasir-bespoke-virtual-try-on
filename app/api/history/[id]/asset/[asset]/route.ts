@@ -40,10 +40,15 @@ const ASSET_KEYS = new Set<GenerationAssetKey>([
   "split-footwear",
 ]);
 
-function downloadFilename(contentType: string) {
-  if (contentType === "image/jpeg") return "nasir-bespoke-try-on.jpg";
-  if (contentType === "image/webp") return "nasir-bespoke-try-on.webp";
-  return "nasir-bespoke-try-on.png";
+function extensionFor(contentType: string) {
+  if (contentType === "image/jpeg") return "jpg";
+  if (contentType === "image/webp") return "webp";
+  return "png";
+}
+
+function downloadFilename(asset: string, contentType: string) {
+  const safeAsset = asset.replace(/[^a-z0-9-]/gi, "") || "image";
+  return `nasir-bespoke-${safeAsset}.${extensionFor(contentType)}`;
 }
 
 export async function GET(request: Request, context: { params: Promise<{ id: string; asset: string }> }) {
@@ -82,8 +87,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         status: 200,
         headers: {
           "Cache-Control": "private, no-store",
-          "Content-Disposition": `attachment; filename="${downloadFilename(contentType)}"`,
+          "Content-Disposition": `attachment; filename="${downloadFilename(asset, contentType)}"`,
           "Content-Type": contentType,
+          ...(reference.bytes ? { "Content-Length": String(reference.bytes) } : {}),
           "X-Content-Type-Options": "nosniff",
         },
       });

@@ -464,6 +464,12 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                     ? "Bespoke visual reference"
                                     : "Final result"}
                                 </figcaption>
+                                <a
+                                  className="generation-details-download"
+                                  href={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/${asset}?download=1`}
+                                >
+                                  Download original
+                                </a>
                               </figure>
                             ) : null,
                           )}
@@ -513,7 +519,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             href={`/api/history/${encodeURIComponent(selectedEvent.id)}/asset/result?download=1`}
                             download="nasir-bespoke-try-on.png"
                           >
-                            Download result
+                            Download result original
                           </a>
                         ) : null}
                       </section>
