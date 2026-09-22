@@ -68,11 +68,18 @@ function namedUpload(image: { file: File; mime: SupportedImageMime }, stem: stri
 function inputParts(input: TryOnInput): ImagePart[] {
   const parts: ImagePart[] = [{ image: input.person, stem: "person-reference" }];
   if (input.outfit) parts.push({ image: input.outfit, stem: "outfit-style-reference" });
-  if (input.fabric) parts.push({ image: input.fabric, stem: "fabric-reference" });
-  if (input.lowerFabric) parts.push({ image: input.lowerFabric, stem: "lower-fabric-reference" });
-  if (input.shirtFabric) parts.push({ image: input.shirtFabric, stem: "shirt-fabric-reference" });
-  if (input.waistcoatFabric) parts.push({ image: input.waistcoatFabric, stem: "waistcoat-fabric-reference" });
-  parts.push(...input.references.map(({ role, image }) => ({ image, stem: `${role}-blueprint` })));
+  const fabrics: ImagePart[] = [];
+  if (input.fabric) fabrics.push({ image: input.fabric, stem: "fabric-reference" });
+  if (input.lowerFabric) fabrics.push({ image: input.lowerFabric, stem: "lower-fabric-reference" });
+  if (input.shirtFabric) fabrics.push({ image: input.shirtFabric, stem: "shirt-fabric-reference" });
+  if (input.waistcoatFabric) fabrics.push({ image: input.waistcoatFabric, stem: "waistcoat-fabric-reference" });
+  const references = input.references.map(({ role, image }) => ({ image, stem: `${role}-blueprint` }));
+  // Split and Full Outfit: construction first, fabric last, so colour is the later signal.
+  if (input.selection.mode === "split" || input.selection.mode === "level1") {
+    parts.push(...references, ...fabrics);
+  } else {
+    parts.push(...fabrics, ...references);
+  }
   return parts;
 }
 

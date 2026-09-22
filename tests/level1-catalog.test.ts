@@ -304,7 +304,7 @@ test("prompt compiler creates valid deterministic prompts for all designs", asyn
     // Permanent 3-authority invariant assertions
     assert.match(prompt, /sole authority for the customer's identity/i);
     assert.match(prompt, /Never slim, enlarge, reshape, lengthen, shorten/i);
-    assert.match(prompt, /Image 2 is authoritative only for (the )?base colour/i);
+    assert.match(prompt, /Image 3 is authoritative only for (the )?base colour/i);
     assert.match(prompt, /authoritative only for garment construction/i);
     assert.match(prompt, new RegExp(design.customer.name, "i"));
     assert.match(prompt, new RegExp(design.blueprint.garmentFamily, "i"));
@@ -333,10 +333,10 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
       assert.ok(design.blueprint.fabricRegions.upper.length > 0, `${design.id} is missing upper fabricRegions`);
       assert.equal(design.blueprint.fabricRegions.lower.length, 0, `${design.id} must not define a lower fabric region`);
       const jacketPrompt = buildLevel1TryOnPrompt(resolved, "jacket");
-      assert.match(jacketPrompt, /Image 2 — physical showroom jacket fabric photograph/);
+      assert.match(jacketPrompt, /Image 3 — physical showroom jacket fabric photograph/);
       assert.match(jacketPrompt, /jacket-only selection/i);
       assert.match(jacketPrompt, /No lower garment fabric input is accepted/i);
-      assert.doesNotMatch(jacketPrompt, /Image 3 — physical showroom lower-garment fabric photograph/);
+      assert.doesNotMatch(jacketPrompt, /lower-garment fabric photograph/);
       assert.doesNotMatch(jacketPrompt, /UNCHANGED REGION/);
       continue;
     }
@@ -378,8 +378,8 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
     assert.equal(stripFabricLines(bothPrompt), stripFabricLines(lowerPrompt), `${design.id}: only fabric-region sentences may differ between "both" and "lower"`);
 
     const customPrompt = buildLevel1TryOnPrompt(resolved, "custom");
-    assert.match(customPrompt, /Image 2 — physical showroom upper-garment fabric photograph/);
-    assert.match(customPrompt, /Image 3 — physical showroom lower-garment fabric photograph/);
+    assert.match(customPrompt, /Image 3 — physical showroom upper-garment fabric photograph/);
+    assert.match(customPrompt, /Image 4 — physical showroom lower-garment fabric photograph/);
     assert.match(customPrompt, /Apply every visible portion of the named lower garment pieces/);
     assert.match(customPrompt, /Customization requires two independently coloured fabric regions/);
     assert.match(customPrompt, /must never make the upper and lower fabrics identical/);

@@ -17,14 +17,14 @@ test("no extra fabrics and no waistcoat numbers person then construction only", 
   assert.equal(map.totalImages, 5);
 });
 
-test("jacket fabric only shifts construction numbers by one", async () => {
+test("jacket fabric is numbered after construction, not before it", async () => {
   const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
   const map = buildSplitImageMap(resolved, { ...none, jacket: true });
-  assert.equal(map.fabrics.jacket, 2);
-  assert.deepEqual(map.construction, { jacket: 3, trousers: 4, shirt: 5, waistcoat: null, shoes: 6 });
+  assert.equal(map.fabrics.jacket, 6);
+  assert.deepEqual(map.construction, { jacket: 2, trousers: 3, shirt: 4, waistcoat: null, shoes: 5 });
 });
 
-test("all four fabrics plus waistcoat freeze a 10-image map", async () => {
+test("all four fabrics plus waistcoat freeze a 10-image map with fabrics last", async () => {
   const state: SplitOutfitState = {
     ...DEFAULT_SPLIT_OUTFIT_STATE,
     upperId: "SUIT_UPPER_THREE_PIECE",
@@ -32,11 +32,11 @@ test("all four fabrics plus waistcoat freeze a 10-image map", async () => {
   };
   const resolved = await resolveSplitOutfitRecipe(JSON.stringify(state));
   const map = buildSplitImageMap(resolved, { jacket: true, trousers: true, shirt: true, waistcoat: true });
-  assert.equal(map.fabrics.jacket, 2);
-  assert.equal(map.fabrics.trousers, 3);
-  assert.equal(map.fabrics.shirt, 4);
-  assert.equal(map.fabrics.waistcoat, 5);
-  assert.deepEqual(map.construction, { jacket: 6, trousers: 7, shirt: 8, waistcoat: 9, shoes: 10 });
+  assert.deepEqual(map.construction, { jacket: 2, trousers: 3, shirt: 4, waistcoat: 5, shoes: 6 });
+  assert.equal(map.fabrics.jacket, 7);
+  assert.equal(map.fabrics.trousers, 8);
+  assert.equal(map.fabrics.shirt, 9);
+  assert.equal(map.fabrics.waistcoat, 10);
   assert.equal(map.totalImages, 10);
 });
 
@@ -63,8 +63,8 @@ test("denim without trouser fabric keeps jean cloth; with fabric gets a per-piec
   assert.match(without, /Denim jeans — not tailored suit trousers/);
   assert.match(without, /Trousers \[Image 3 = cut and cloth\]/);
   assert.doesNotMatch(without, /FINAL FABRIC APPLICATION OVERRIDE — TROUSERS/);
-  assert.match(withFabric, /Trousers \[Image 4 = cut; Image 2 = cloth — exact shade and texture of Image 2/);
-  assert.ok(withFabric.includes(fabricFidelityOverride("trousers", 2, 4)));
+  assert.match(withFabric, /Trousers \[Image 3 = cut; Image 6 = cloth — exact shade and texture of Image 6/);
+  assert.ok(withFabric.includes(fabricFidelityOverride("trousers", 6, 3)));
   assert.match(withFabric, /CUT TEMPLATE/);
   assert.match(withFabric, /discard its original colour, wash, and cloth entirely/i);
   assert.match(withFabric, /weave, yarn, nap, pile, slub, pattern, pattern scale, sheen, finish/);
@@ -74,8 +74,8 @@ test("denim without trouser fabric keeps jean cloth; with fabric gets a per-piec
 test("jacket fabric override names the jacket only and does not recolour shoes", async () => {
   const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
   const prompt = buildSplitOutfitPrompt(resolved, { ...none, jacket: true });
-  assert.ok(prompt.includes(fabricFidelityOverride("jacket", 2, 3)));
-  assert.match(prompt, /Footwear \[Image 6 = cut and cloth\]/);
+  assert.ok(prompt.includes(fabricFidelityOverride("jacket", 6, 2)));
+  assert.match(prompt, /Footwear \[Image 5 = cut and cloth\]/);
   assert.doesNotMatch(prompt, /FINAL FABRIC APPLICATION OVERRIDE — FOOTWEAR/);
   assert.doesNotMatch(prompt, /the jacket and the trousers only/);
 });

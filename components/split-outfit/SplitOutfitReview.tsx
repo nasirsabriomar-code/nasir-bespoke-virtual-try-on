@@ -1,14 +1,20 @@
 "use client";
 
 import type { SplitOutfitSummaryView } from "@/lib/split-outfit/types";
+import type { SplitPieceFabrics } from "./SplitMaterialsSection";
 
 type SplitOutfitReviewProps = {
   summary: SplitOutfitSummaryView;
+  fabrics: SplitPieceFabrics;
   onGenerate: () => void;
   isGenerating: boolean;
 };
 
-export function SplitOutfitReview({ summary, onGenerate, isGenerating }: SplitOutfitReviewProps) {
+function clothLabel(hasUpload: boolean) {
+  return hasUpload ? "Uploaded cloth" : "Reference cloth";
+}
+
+export function SplitOutfitReview({ summary, fabrics, onGenerate, isGenerating }: SplitOutfitReviewProps) {
   const { upper, lower, shirt, waistcoat, footwear, accessories, activeMaterialSlots, isComplete } = summary;
 
   return (
@@ -27,14 +33,14 @@ export function SplitOutfitReview({ summary, onGenerate, isGenerating }: SplitOu
           <div className="split-summary-card">
             <span className="split-summary-kicker">01 · Upper Garment</span>
             <strong className="split-summary-value">{upper ? upper.customer.name : "Not selected"}</strong>
-            <p className="split-summary-detail">{upper ? upper.customer.subtitle : "Choose a jacket style"}</p>
+            <p className="split-summary-detail">{upper ? `${upper.customer.subtitle} · ${clothLabel(Boolean(fabrics.jacket))}` : "Choose a jacket style"}</p>
           </div>
 
           {/* 2. LOWER */}
           <div className="split-summary-card">
             <span className="split-summary-kicker">02 · Lower Garment</span>
             <strong className="split-summary-value">{lower ? lower.customer.name : "Not selected"}</strong>
-            <p className="split-summary-detail">{lower ? lower.customer.subtitle : "Choose trouser tailoring"}</p>
+            <p className="split-summary-detail">{lower ? `${lower.customer.subtitle} · ${clothLabel(Boolean(fabrics.trousers))}` : "Choose trouser tailoring"}</p>
           </div>
 
           {/* 3. INNER */}
@@ -47,8 +53,8 @@ export function SplitOutfitReview({ summary, onGenerate, isGenerating }: SplitOu
                 : ""}
             </strong>
             <p className="split-summary-detail">
-              {shirt ? shirt.customer.subtitle : ""}
-              {waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE" ? ` · ${waistcoat.customer.subtitle}` : ""}
+              {shirt ? `${shirt.customer.subtitle} · ${clothLabel(Boolean(fabrics.shirt))}` : ""}
+              {waistcoat && waistcoat.id !== "SUIT_WAISTCOAT_NONE" ? ` · ${waistcoat.customer.subtitle} · ${clothLabel(Boolean(fabrics.waistcoat))}` : ""}
             </p>
           </div>
 

@@ -101,6 +101,7 @@ export function buildSplitOutfitPrompt(
       ? "TEXT-COMPOSED PIECES: Any accessories listed above have no reference photograph. Place each only where the description says. Do not invent details beyond what is described, and do not add any accessory not explicitly listed. Do not invent a second waistcoat."
       : "TEXT-COMPOSED PIECES: There is no waistcoat — do not add one. Any accessories listed above have no reference photograph. Place each only where the description says. Do not invent details beyond what is described, and do not add any accessory not explicitly listed.",
     ...overrides,
+    "HUE LOCK: Lighting and shadows from Image 1 may shade folds. They must not change the cloth hue toward the room, the customer's previous clothes, or a construction photograph.",
     "REALISM: Use physically credible tailoring around the customer's actual frame: natural shoulder placement, sleeves, folds, drape, gravity, compression, tension, closures, waist behavior, trouser break, and hem. Preserve anatomically correct hands and limbs. Do not add duplicate clothing, random accessories, invented embroidery, extra limbs, text, a border, a collage, split screen, or an explanation. Return only one finished photograph.",
   ].join("\n\n");
 }

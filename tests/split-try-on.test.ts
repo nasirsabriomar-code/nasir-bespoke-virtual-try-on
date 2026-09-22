@@ -24,12 +24,10 @@ function headers() {
   return { origin: "http://localhost", host: "localhost", "sec-fetch-site": "same-origin" };
 }
 
+const PNG_1X1 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+
 function tinyPng(name: string) {
-  return new File(
-    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1])],
-    name,
-    { type: "image/png" },
-  );
+  return new File([PNG_1X1], name, { type: "image/png" });
 }
 
 function splitForm(recipe: SplitOutfitState, extra: Array<[string, string | File]> = []) {
@@ -93,7 +91,12 @@ test("a valid split recipe reaches generate() with the correct references, order
   assert.match(generatedInput.prompt, /Tailor every garment around the customer's actual body/i);
   assert.match(generatedInput.prompt, /SELECTED MODULAR OUTFIT/i);
   assert.match(generatedInput.prompt, /FINAL FABRIC APPLICATION OVERRIDE — JACKET/);
+  assert.match(generatedInput.prompt, /HUE LOCK/);
   assert.ok(generatedInput.fabric);
+  const upper = generatedInput.references.find((reference) => reference.role === "split-upper");
+  const lower = generatedInput.references.find((reference) => reference.role === "split-lower");
+  assert.equal(upper?.image.file.name, "construction-neutral.png");
+  assert.notEqual(lower?.image.file.name, "construction-neutral.png");
 });
 
 test("a split recipe can generate with only a person photo and no fabric", async () => {

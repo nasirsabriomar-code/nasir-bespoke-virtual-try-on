@@ -13,7 +13,7 @@ export const DEFAULT_SPLIT_OUTFIT_STATE: SplitOutfitState = {
   shirtId: "SUIT_SHIRT_CLASSIC_FORMAL",
   waistcoatId: "SUIT_WAISTCOAT_NONE",
   footwearId: "SUIT_SHOE_OXFORD",
-  accessoryIds: ["SUIT_ACC_POCKET_SQUARE"],
+  accessoryIds: [],
 };
 
 /**
@@ -240,7 +240,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["formal", "business", "reception", "dinner"],
     reference: referenceFor("SUIT_UPPER_CLASSIC"),
     generation: {
-      constructionFragment: "Single-breasted two-button jacket with notch lapel, structured natural shoulder, and a double back vent.",
+      constructionFragment: "Jacket only: single-breasted two-button jacket with notch lapel, structured natural shoulder, and a double back vent. One button per hole. Ignore any shirt, tie, waistcoat, or trousers in the jacket photograph.",
     },
   },
   {
@@ -265,7 +265,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["formal", "evening", "statement"],
     reference: referenceFor("SUIT_UPPER_DOUBLE_BREASTED"),
     generation: {
-      constructionFragment: "Double-breasted jacket with wide peak lapels, 6x2 button fastening, roped shoulders, and jetted pockets.",
+      constructionFragment: "Jacket only: double-breasted jacket with wide peak lapels, 6x2 button fastening, roped shoulders, and jetted pockets. One button per hole. Ignore any shirt, tie, waistcoat, or trousers in the jacket photograph.",
     },
   },
   {
@@ -290,7 +290,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["black-tie", "gala", "red-carpet"],
     reference: referenceFor("SUIT_UPPER_TUXEDO"),
     generation: {
-      constructionFragment: "Dinner jacket with silk satin peak lapel facing, single covered silk button closure, and an unvented back.",
+      constructionFragment: "Jacket only: dinner jacket with peak lapel facing, a single covered-button closure, and an unvented back. One button in its own hole. Ignore any shirt, bow tie, waistcoat, or trousers in the jacket photograph.",
     },
   },
   {
@@ -340,7 +340,7 @@ export const SUIT_UPPER_OPTIONS: SplitComponentOption[] = [
     compatibilityTags: ["evening", "fashion-forward", "celebration"],
     reference: referenceFor("SUIT_UPPER_STATEMENT"),
     generation: {
-      constructionFragment: "Jacket with exaggerated high peak lapels, angled hacking pockets, one-button closure, and high side vents.",
+      constructionFragment: "Jacket only: exaggerated high peak lapels, angled hacking pockets, one-button closure, and high side vents. One button in its own hole. Ignore any shirt, tie, waistcoat, or trousers in the jacket photograph.",
     },
   },
 ];

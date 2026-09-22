@@ -32,9 +32,8 @@ export function hasPhotographedWaistcoat(resolved: ResolvedSplitOutfit) {
 
 /**
  * Numbers images for Split Outfit so the prompt and the provider packet
- * cannot drift. Person is always Image 1. Assigned fabrics follow in
- * jacket → trousers → shirt → waistcoat order (omitting unused slots),
- * then construction photos: jacket, trousers, shirt, optional waistcoat, shoes.
+ * cannot drift. Person is Image 1, then construction photos, then assigned
+ * fabrics last so the cloth photograph is the later colour signal.
  */
 export function buildSplitImageMap(resolved: ResolvedSplitOutfit, fabrics: SplitFabricPresence): SplitImageMap {
   const hasWaistcoat = hasPhotographedWaistcoat(resolved);
@@ -42,16 +41,16 @@ export function buildSplitImageMap(resolved: ResolvedSplitOutfit, fabrics: Split
   const person = 1 as const;
   n += 1;
 
-  const jacketFabric = fabrics.jacket ? n++ : null;
-  const trouserFabric = fabrics.trousers ? n++ : null;
-  const shirtFabric = fabrics.shirt ? n++ : null;
-  const waistcoatFabric = hasWaistcoat && fabrics.waistcoat ? n++ : null;
-
   const jacket = n++;
   const trousers = n++;
   const shirt = n++;
   const waistcoat = hasWaistcoat ? n++ : null;
   const shoes = n++;
+
+  const jacketFabric = fabrics.jacket ? n++ : null;
+  const trouserFabric = fabrics.trousers ? n++ : null;
+  const shirtFabric = fabrics.shirt ? n++ : null;
+  const waistcoatFabric = hasWaistcoat && fabrics.waistcoat ? n++ : null;
 
   return {
     hasWaistcoat,

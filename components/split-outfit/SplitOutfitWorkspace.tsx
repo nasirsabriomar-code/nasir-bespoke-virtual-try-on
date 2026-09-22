@@ -355,7 +355,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       <SplitMaterialsSection slots={summary.activeMaterialSlots} />
 
       {/* 07 — YOUR OUTFIT */}
-      <SplitOutfitReview summary={summary} onGenerate={onGenerate} isGenerating={isGenerating} />
+      <SplitOutfitReview summary={summary} fabrics={fabrics} onGenerate={onGenerate} isGenerating={isGenerating} />
     </div>
   );
 }

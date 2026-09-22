@@ -36,6 +36,7 @@ import {
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { generateTryOn } from "@/lib/tryon";
+import { grayscaleConstruction } from "@/lib/tryon/neutralize-construction";
 import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
 import { buildTryOnPrompt } from "@/lib/tryon/prompt";
 import {
@@ -802,6 +803,19 @@ export async function handleTryOnRequest(
     }
 
     generationAttempted = true;
+    const neutralizeSplit = selectionMode === "split";
+    const neutralizeLevel1 = selectionMode === "level1" && (fabricRegion === "both" || fabricRegion === "jacket" || fabricRegion === "custom");
+    const preparedReferences = await Promise.all(references.map(async (reference) => {
+      const stripSplit = neutralizeSplit && (
+        (reference.role === "split-upper" && fabric)
+        || (reference.role === "split-lower" && lowerFabric)
+        || (reference.role === "split-shirt" && shirtFabric)
+        || (reference.role === "split-waistcoat" && waistcoatFabric)
+      );
+      const stripLevel1 = neutralizeLevel1 && (reference.role === "curated-design" || reference.role === "curated-detail");
+      if (!stripSplit && !stripLevel1) return reference;
+      return { ...reference, image: await grayscaleConstruction(reference.image) };
+    }));
     const result = await dependencies.generate({
       person,
       ...(selectionMode === "outfit" && outfit ? { outfit } : {}),
@@ -809,7 +823,7 @@ export async function handleTryOnRequest(
       ...(lowerFabric ? { lowerFabric } : {}),
       ...(shirtFabric ? { shirtFabric } : {}),
       ...(waistcoatFabric ? { waistcoatFabric } : {}),
-      references,
+      references: preparedReferences,
       selection: selectionIds,
       catalogSelection,
       prompt,
