@@ -56,6 +56,38 @@ function extensionFor(mime: SupportedImageMime) {
   return mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
 }
 
+function isFabricStem(stem: string) {
+  return stem === "fabric-reference" || stem.endsWith("-fabric-reference");
+}
+
+/** The showroom photo of a cloth is often draped. Send a flat center crop so folds are not copied as the stripe. */
+export async function centerFabricRepeat(image: TryOnInput["person"]): Promise<TryOnInput["person"]> {
+  try {
+    const source = Buffer.from(await image.file.arrayBuffer());
+    const metadata = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 }).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    if (width < 400 || height < 400) return image;
+    const cropWidth = Math.max(16, Math.round(width * 0.5));
+    const cropHeight = Math.max(16, Math.round(height * 0.5));
+    const left = Math.round((width - cropWidth) / 2);
+    const top = Math.round((height - cropHeight) / 2);
+    const output = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 })
+      .extract({ left, top, width: cropWidth, height: cropHeight })
+      .rotate()
+      .png({ compressionLevel: 9, palette: false })
+      .toBuffer();
+    return {
+      file: new File([output], image.file.name, { type: "image/png" }),
+      mime: "image/png",
+      width: cropWidth,
+      height: cropHeight,
+    };
+  } catch {
+    return image;
+  }
+}
+
 function namedUpload(image: { file: File; mime: SupportedImageMime }, stem: string) {
   // Keep the original bytes exactly as supplied. The wrapper only gives the
   // multipart part a format-identifying filename and content type.
@@ -113,7 +145,9 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const quality = DEFAULT_QUALITY;
     const client = this.clientFactory();
 
-    const parts = inputParts(input);
+    const parts = await Promise.all(inputParts(input).map(async (part) => (
+      isFabricStem(part.stem) ? { ...part, image: await centerFabricRepeat(part.image) } : part
+    )));
     const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
 
     const requestedSize = resolveHighResolutionCanvas(input.person.width, input.person.height);

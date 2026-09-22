@@ -307,6 +307,8 @@ test("prompt compiler creates valid deterministic prompts for all designs", asyn
     assert.match(prompt, /Image 3 is authoritative only for (the )?base colour/i);
     assert.match(prompt, /SCENE LOCK — CRITICAL/);
     assert.match(prompt, /PATTERN GEOMETRY — CRITICAL/);
+    assert.match(prompt, /Dark or black lines stay dark or black/);
+    assert.match(prompt, /Do not recolour lines red/);
     assert.match(prompt, /must not wave, thicken, or redraw stripes/);
     if (category.id !== "jackets") {
       assert.match(prompt, /previous lower-garment cloth/);

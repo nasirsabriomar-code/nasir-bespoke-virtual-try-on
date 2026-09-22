@@ -20,7 +20,7 @@ import {
   resetMemoryRateLimitsForTests,
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
-import { OpenAITryOnProvider } from "@/lib/tryon/providers/openai";
+import { centerFabricRepeat, OpenAITryOnProvider } from "@/lib/tryon/providers/openai";
 import { MAX_IMAGE_BYTES, validateImageFile } from "@/lib/validation";
 
 const PASSWORD = "Correct-Horse-Battery-Staple";
@@ -470,6 +470,21 @@ test("GPT Image 2.5 provider places the construction photo before the fabric pho
     "fabric-reference.png",
     "lower-fabric-reference.png",
   ]);
+});
+
+test("a draped fabric photo is center-cropped before it is sent to the model", async () => {
+  const source = await sharp({
+    create: { width: 800, height: 400, channels: 3, background: { r: 240, g: 240, b: 240 } },
+  }).png().toBuffer();
+  const cropped = await centerFabricRepeat({
+    file: new File([source], "cloth.png", { type: "image/png" }),
+    mime: "image/png",
+    width: 800,
+    height: 400,
+  });
+  assert.equal(cropped.width, 400);
+  assert.equal(cropped.height, 200);
+  assert.equal(cropped.mime, "image/png");
 });
 
 test("upload validation rejects malformed, mismatched, and oversized files", async () => {

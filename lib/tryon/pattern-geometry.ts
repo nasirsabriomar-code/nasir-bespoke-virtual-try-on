@@ -3,7 +3,7 @@ SCENE LOCK — CRITICAL: Change only the selected clothing on the person in Imag
 `.trim();
 
 export const PATTERN_GEOMETRY = `
-PATTERN GEOMETRY — CRITICAL: The fabric photograph is a flat cloth repeat, not a picture of folds. Ignore curves caused by the swatch not lying flat. Copy the repeat exactly: direction, line width, gap, and scale. Stripes, checks, and herringbone stay straight and parallel to the cloth grain. They continue across lapels, pockets, buttons, seams, and from jacket into trousers when those pieces share that fabric. A fold may shade or briefly interrupt a line. It must not wave, thicken, or change the spacing of the repeat on a flat panel. If the swatch is plain, do not invent a stripe or check.
+PATTERN GEOMETRY — CRITICAL: The fabric photograph is a flat cloth repeat, not a picture of folds. Ignore curves caused by the swatch not lying flat. Copy the repeat exactly: direction, line width, gap, and scale. Stripes, checks, and herringbone stay straight and parallel to the cloth grain. They continue across lapels, pockets, buttons, seams, and from jacket into trousers when those pieces share that fabric. A fold may shade or briefly interrupt a line. It must not wave, thicken, or change the spacing of the repeat on a flat panel. If the swatch is plain, do not invent a stripe or check. The colour of the ground and of every line is taken only from the fabric photograph. Dark or black lines stay dark or black. Do not recolour lines red, blue, gold, pink, or any colour from the showroom, the clothing racks, the walls, or the customer's previous clothes.
 `.trim();
 
 export const REALISM_PRESERVING_PATTERN = `
