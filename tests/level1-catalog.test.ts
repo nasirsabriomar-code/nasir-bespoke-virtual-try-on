@@ -305,6 +305,11 @@ test("prompt compiler creates valid deterministic prompts for all designs", asyn
     assert.match(prompt, /sole authority for the customer's identity/i);
     assert.match(prompt, /Never slim, enlarge, reshape, lengthen, shorten/i);
     assert.match(prompt, /Image 3 is authoritative only for (the )?base colour/i);
+    assert.match(prompt, /PATTERN GEOMETRY — CRITICAL/);
+    assert.match(prompt, /must not wave, thicken, or redraw stripes/);
+    if (category.id !== "jackets") {
+      assert.match(prompt, /previous lower-garment cloth/);
+    }
     assert.match(prompt, /authoritative only for garment construction/i);
     assert.match(prompt, new RegExp(design.customer.name, "i"));
     assert.match(prompt, new RegExp(design.blueprint.garmentFamily, "i"));

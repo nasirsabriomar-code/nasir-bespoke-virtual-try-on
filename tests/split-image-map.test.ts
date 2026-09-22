@@ -75,6 +75,9 @@ test("jacket fabric override names the jacket only and does not recolour shoes",
   const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
   const prompt = buildSplitOutfitPrompt(resolved, { ...none, jacket: true });
   assert.ok(prompt.includes(fabricFidelityOverride("jacket", 6, 2)));
+  assert.match(prompt, /PATTERN GEOMETRY — CRITICAL/);
+  assert.match(prompt, /straight, parallel, evenly spaced, and the same scale/);
+  assert.match(prompt, /must not wave, thicken, or redraw stripes/);
   assert.match(prompt, /Footwear \[Image 5 = cut and cloth\]/);
   assert.doesNotMatch(prompt, /FINAL FABRIC APPLICATION OVERRIDE — FOOTWEAR/);
   assert.doesNotMatch(prompt, /the jacket and the trousers only/);

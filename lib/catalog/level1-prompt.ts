@@ -1,4 +1,5 @@
 import type { ResolvedLevel1Design } from "@/lib/catalog/level1-types";
+import { PATTERN_GEOMETRY, REALISM_PRESERVING_PATTERN } from "@/lib/tryon/pattern-geometry";
 
 export type FabricRegion = "upper" | "lower" | "both" | "custom" | "jacket";
 
@@ -54,7 +55,7 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
     : fabricRegion === "custom"
     ? `FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Customization requires two independently coloured fabric regions. Image ${fabricImage} controls the complete fabric appearance of every visible upper piece named above, and Image ${lowerFabricImage} controls the complete fabric appearance of every visible lower piece named above. Do not preserve, copy, or infer the original upper or lower garment colour from Image 1 or Image ${constructionImage}. Words such as “matching”, “coordinated”, or “same”, and any fixed colour, pattern, texture, weave, finish, or material description in the selected design metadata describe garment construction or relationships only; they must never make the upper and lower fabrics identical. If any catalogue instruction or reference image conflicts with this paragraph, the two uploaded fabric photographs control fabric appearance.`
     : fabricRegion === "both"
-      ? `FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image ${fabricImage} is the sole authority for the fabric appearance of every selected garment piece. Do not preserve, copy, or infer a conflicting garment colour, pattern, texture, weave, finish, or material from Image 1, Image ${constructionImage}, or catalogue metadata.`
+      ? `FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image ${fabricImage} is the sole authority for the fabric appearance of ${[...upperPieces, ...lowerPieces].join(", ")}. Replace the customer's original colour on each of those pieces, including a solid black or any other previous lower-garment cloth. Do not preserve, copy, or infer a conflicting garment colour, pattern, texture, weave, finish, or material from Image 1, Image ${constructionImage}, or catalogue metadata.`
       : fabricRegion === "upper"
         ? `FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image ${fabricImage} is the sole authority for the fabric appearance of every visible upper piece named above. The lower garment must keep its original appearance. Do not let Image 1, Image ${constructionImage}, or catalogue metadata override the uploaded upper-fabric colour.`
         : `FINAL FABRIC APPLICATION OVERRIDE — CRITICAL: Image ${fabricImage} is the sole authority for the fabric appearance of every visible lower piece named above. The upper garment must keep its original appearance. Do not let Image 1, Image ${constructionImage}, or catalogue metadata override the uploaded lower-fabric colour.`;
@@ -71,8 +72,9 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
     `DESIGN INSTRUCTIONS: ${(resolved.variant?.promptFragments ?? resolved.design.generation.promptFragments).join(". ")}.`,
     `NEGATIVE DESIGN CONSTRAINTS: ${(resolved.variant?.negativeConstraints ?? resolved.design.generation.negativeConstraints).join(" ")}`,
     finalFabricOverrideLine,
+    PATTERN_GEOMETRY,
     "HUE LOCK: Lighting and shadows from Image 1 may shade folds. They must not change the cloth hue toward the room, the customer's previous clothes, or the construction photograph.",
     "LEVEL 1 STYLING POLICY: Preserve the customer's existing footwear where visible. Do not add a tie, bow tie, pocket square, turban, jewellery, watch, or any other accessory. Do not use the construction reference's colour, fabric, pattern, material, person, or setting.",
-    "REALISM: Use physically credible bespoke tailoring around the customer's actual frame: natural shoulder placement, sleeves, folds, drape, gravity, compression, tension, closures, waist behavior, trouser break, and hem. Preserve anatomically correct hands and limbs. Do not add duplicate clothing, random accessories, invented embroidery, extra limbs, text, a border, a collage, split screen, or an explanation. Return only one finished photograph.",
+    REALISM_PRESERVING_PATTERN,
   ].join("\n\n");
 }
