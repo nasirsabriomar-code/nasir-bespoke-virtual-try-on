@@ -360,6 +360,7 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
   assert.equal(parameters.model, "gpt-image-2.5-sunburst");
   assert.equal(parameters.quality, "medium");
   assert.equal(parameters.output_format, "png");
+  assert.equal(parameters.background, "opaque");
   assert.equal(parameters.output_compression, undefined);
   assert.equal("input_fidelity" in parameters, false);
   assert.equal(Array.isArray(parameters.image), true);
@@ -440,7 +441,7 @@ test("GPT Image provider retries an invalid image response with normalized 4K-co
   assert.equal(normalizedPerson.height, 960);
 });
 
-test("GPT Image 2.5 provider places separate upper and lower fabrics before curated references", async () => {
+test("GPT Image 2.5 provider places the construction photo before the fabric photos", async () => {
   let captured: Record<string, unknown> | null = null;
   const fakeClient = {
     images: {
@@ -465,9 +466,9 @@ test("GPT Image 2.5 provider places separate upper and lower fabrics before cura
   const images = (captured as Record<string, unknown>).image as File[];
   assert.deepEqual(images.map((image) => image.name), [
     "person-reference.png",
+    "curated-design-blueprint.png",
     "fabric-reference.png",
     "lower-fabric-reference.png",
-    "curated-design-blueprint.png",
   ]);
 });
 

@@ -129,7 +129,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
       quality,
       size,
       output_format: "png",
-      background: "auto",
+      background: "opaque",
       n: 1,
     });
     const editWithSizeFallback = async (images: File[]) => {

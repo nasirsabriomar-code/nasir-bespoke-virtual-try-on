@@ -1,4 +1,4 @@
-import { PATTERN_GEOMETRY, REALISM_PRESERVING_PATTERN } from "@/lib/tryon/pattern-geometry";
+import { PATTERN_GEOMETRY, REALISM_PRESERVING_PATTERN, SCENE_LOCK } from "@/lib/tryon/pattern-geometry";
 import type { ResolvedSplitOutfit } from "./generation";
 import {
   buildSplitImageMap,
@@ -93,6 +93,7 @@ export function buildSplitOutfitPrompt(
   return [
     "You are the controlled visualization engine for NASIR BESPOKE, a luxury men's bespoke tailoring business. This is exclusively a men's clothing and men's formalwear system. Generate one photorealistic edit, not a new studio portrait or fashion editorial.",
     "EDIT PRIORITY (non-negotiable): Keep Image 1's customer, identity, body, pose, composition, camera, lighting, environment, and scene unchanged. Image 1 does not control the colour, shade, texture, weave, pattern, finish, or material appearance of any garment piece when a fabric photograph is assigned to that piece.",
+    SCENE_LOCK,
     imageRoleLines(map),
     "CUSTOMER PHOTO AUTHORITY — CRITICAL: Image 1 is the sole authority for the customer's identity, face, skin tone, age appearance, hair, facial hair, natural body size, build, body proportions, height, visible physical characteristics, pose, posture, expression, hands, camera perspective, framing, lighting, shadows, and background. Tailor every garment around the customer's actual body. Never slim, enlarge, reshape, lengthen, shorten, beautify, replace, or otherwise alter the customer to fit a garment or a mannequin.",
     "CURATED CONSTRUCTION AUTHORITY: Wear exactly the selected pieces listed below. Do not substitute a different jacket, trouser, shirt, waistcoat, or shoe. Never copy a reference model, mannequin, person, scene, or background. When a piece has a fabric photograph, that photograph wins over the construction photograph for colour, shade, and texture only.",

@@ -1,5 +1,5 @@
 import type { ResolvedLevel1Design } from "@/lib/catalog/level1-types";
-import { PATTERN_GEOMETRY, REALISM_PRESERVING_PATTERN } from "@/lib/tryon/pattern-geometry";
+import { PATTERN_GEOMETRY, REALISM_PRESERVING_PATTERN, SCENE_LOCK } from "@/lib/tryon/pattern-geometry";
 
 export type FabricRegion = "upper" | "lower" | "both" | "custom" | "jacket";
 
@@ -63,6 +63,7 @@ export function buildLevel1TryOnPrompt(resolved: ResolvedLevel1Design, fabricReg
   return [
     "You are the controlled visualization engine for NASIR BESPOKE, a luxury men's bespoke tailoring business. This is exclusively a men's clothing and men's formalwear system. Generate one photorealistic edit, not a new studio portrait or fashion editorial.",
     "EDIT PRIORITY (non-negotiable): Keep Image 1's customer, identity, body, pose, composition, camera, lighting, environment, and scene unchanged. Image 1 does not control the colour, shade, texture, weave, pattern, finish, or material appearance of any garment piece when a fabric authority instruction assigns that piece a fabric.",
+    SCENE_LOCK,
     roleLines.join("\n"),
     "CUSTOMER PHOTO AUTHORITY — CRITICAL: Image 1 is the sole authority for the customer's identity, face, skin tone, age appearance, hair, facial hair, natural body size, build, body proportions, height, visible physical characteristics, pose, posture, expression, hands, camera perspective, framing, lighting, shadows, and background. Tailor the garment around the customer's actual body. Never slim, enlarge, reshape, lengthen, shorten, beautify, replace, or otherwise alter the customer to fit the garment or the mannequin. Never adopt mannequin or reference-person proportions.",
     fabricAuthorityLine,
