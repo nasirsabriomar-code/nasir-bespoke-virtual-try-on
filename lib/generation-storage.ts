@@ -1,10 +1,8 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { del, get, issueSignedToken, presignUrl, put } from "@vercel/blob";
+import { isR2Configured, presignR2Url, r2Delete, r2Get, r2Put } from "@/lib/r2-storage";
 import { detectImageDimensions } from "@/lib/validation";
-
-const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
 export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
 
@@ -38,13 +36,7 @@ export class GenerationStorageConfigurationError extends Error {
 }
 
 export function isGenerationStorageConfigured() {
-  return Boolean(process.env[BLOB_TOKEN_ENV]?.trim());
-}
-
-function getBlobToken() {
-  const token = process.env[BLOB_TOKEN_ENV]?.trim();
-  if (!token) throw new GenerationStorageConfigurationError();
-  return token;
+  return isR2Configured();
 }
 
 function extensionFor(contentType: string) {
@@ -61,15 +53,8 @@ export function isGenerationAssetPath(path: string, generationId: string, asset:
     : /^nasir-bespoke\/generations\/[0-9a-f-]{36}\/[a-z0-9-]+\.(jpg|png|webp)$/i.test(path) && path.startsWith(`nasir-bespoke/generations/${generationId}/${asset}.`);
 }
 
-async function putPrivate(path: string, body: Blob, contentType: string, token: string) {
-  return put(path, body, {
-    access: "private",
-    token,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType,
-    cacheControlMaxAge: 0,
-  });
+async function putPrivate(path: string, body: Blob, contentType: string) {
+  await r2Put(path, body, contentType);
 }
 
 async function describeAsset(body: Blob, contentType: string) {
@@ -90,7 +75,6 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
 
   const uploaded: string[] = [];
   try {
-    const token = getBlobToken();
     const entries: Array<[GenerationAssetKey, Blob, string]> = [
       ["person", input.person, input.person.type || "image/jpeg"],
       ...(input.outfit ? [["outfit", input.outfit, input.outfit.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
@@ -105,27 +89,24 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
     for (const [asset, body, contentType] of entries) {
       const path = pathname(input.generationId, asset, contentType);
       const metadata = await describeAsset(body, contentType);
-      await putPrivate(path, body, contentType, token);
+      await putPrivate(path, body, contentType);
       uploaded.push(path);
       refs[asset] = { pathname: path, contentType, ...metadata };
     }
     return refs;
   } catch (error) {
-    const token = process.env[BLOB_TOKEN_ENV]?.trim();
-    await Promise.all(uploaded.map((path) => del(path, token ? { token } : undefined).catch(() => undefined)));
+    await Promise.all(uploaded.map((path) => r2Delete(path).catch(() => undefined)));
     throw error;
   }
 }
 
 export async function getPrivateGenerationAsset(path: string) {
-  const token = getBlobToken();
-  return get(path, { access: "private", token });
+  const response = await r2Get(path);
+  if (response.status === 404) return null;
+  if (!response.ok || !response.body) throw new Error(`R2 read failed with status ${response.status}.`);
+  return { statusCode: response.status, stream: response.body, blob: { contentType: response.headers.get("content-type") ?? undefined } };
 }
 
 export async function getPrivateGenerationAssetUrl(path: string) {
-  const token = getBlobToken();
-  const validUntil = Date.now() + 5 * 60_000;
-  const signedToken = await issueSignedToken({ token, pathname: path, operations: ["get"], validUntil });
-  const result = await presignUrl(signedToken, { access: "private", pathname: path, operation: "get", validUntil });
-  return result.presignedUrl;
+  return presignR2Url(path, "GET", 5 * 60);
 }
