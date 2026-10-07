@@ -11,6 +11,17 @@ import {
   markUploadComplete,
 } from "@/lib/highres/ledger";
 
+export class HighResolutionUploadError extends Error {
+  constructor(message: string, public readonly status = 400) {
+    super(message);
+    this.name = "HighResolutionUploadError";
+  }
+}
+
+export function assertHighResolutionStorage() {
+  if (!isGenerationStorageConfigured()) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
+}
+
 function extension(type: string) {
   return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
 }
