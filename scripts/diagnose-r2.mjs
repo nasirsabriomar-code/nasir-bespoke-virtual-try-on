@@ -13,5 +13,16 @@ const key=h(h(h(h('AWS4'+env.R2_SECRET_ACCESS_KEY,day),'auto'),'s3'),'aws4_reque
 const r=await fetch('https://'+host+uri+'?'+query+'&X-Amz-Signature='+sig);
 const t=await r.text();console.log('R2_BUCKET_METADATA',JSON.stringify({status:r.status,code:t.match(/<Code>([^<]+)<\/Code>/)?.[1]||null,keyCount:t.match(/<KeyCount>([^<]+)<\/KeyCount>/)?.[1],truncated:t.match(/<IsTruncated>([^<]+)<\/IsTruncated>/)?.[1],keys:[...t.matchAll(/<Key>([^<]+)<\/Key>/g)].map(m=>m[1])}));
 }catch(e){console.log('R2_LIST_ERROR',e.name,e.cause?.code||'');}
-try {const {get}=await import('@vercel/blob');const b=await get('nasir-bespoke/catalogue/level1/v1/SUIT_01_CLASSIC/approved.png',{access:'private',token:process.env.NASIR_BLOB_READ_WRITE_TOKEN});console.log('BLOB_SOURCE_METADATA',JSON.stringify({found:!!b,status:b?.statusCode,hasStream:!!b?.stream}));await b?.stream?.cancel();}catch(e){console.log('BLOB_SOURCE_ERROR',JSON.stringify({name:e.name,status:e.statusCode||e.status,code:e.code,suspended:/suspend/i.test(e.message),tokenMissing:/token.*(required|missing|not)/i.test(e.message),unauthorized:/unauthor|forbidden/i.test(e.message),notFound:/not found/i.test(e.message),messageCategory:e.message.replace(/[^a-zA-Z ]/g,' ').split(/\s+/).filter(w=>['store','suspended','token','required','fetch','failed','unavailable','private','pathname','url','must','access','denied'].includes(w.toLowerCase())).slice(0,10).join(' ')}));}
+console.log('DIAGNOSTIC_COMPLETE_NO_RELEASE');process.exit(1)
+try {
+ const {list,get}=await import('@vercel/blob');
+ const token=process.env.NASIR_BLOB_READ_WRITE_TOKEN;
+ const result=await list({prefix:'nasir-bespoke/catalogue/',limit:1000,token});
+ console.log('BLOB_CATALOGUE_LIST',JSON.stringify({count:result.blobs.length,hasMore:result.hasMore,keys:result.blobs.map(b=>b.pathname)}));
+ const source=result.blobs.find(b=>b.pathname==='nasir-bespoke/catalogue/level1/v1/SUIT_01_CLASSIC/approved.png');
+ if(source){const b=await get(source.url,{access:'private',token,useCache:false});console.log('BLOB_URL_READ',JSON.stringify({found:!!b,status:b?.statusCode}));await b?.stream?.cancel();}
+}catch(e){console.log('BLOB_READ_ERROR',JSON.stringify({name:e.name,suspended:/suspend/i.test(e.message),unauthorized:/unauthor|forbidden/i.test(e.message),notFound:/not found/i.test(e.message)}));}
+const {presignR2Url}=await import('../lib/r2-storage.ts');
+const cors=await fetch(presignR2Url('', 'GET',300,{cors:''}));
+const xml=await cors.text();console.log('R2_CORS',JSON.stringify({status:cors.status,code:xml.match(/<Code>([^<]+)<\/Code>/)?.[1],origins:[...xml.matchAll(/<AllowedOrigin>([^<]+)<\/AllowedOrigin>/g)].map(m=>m[1]),methods:[...xml.matchAll(/<AllowedMethod>([^<]+)<\/AllowedMethod>/g)].map(m=>m[1]),headers:[...xml.matchAll(/<AllowedHeader>([^<]+)<\/AllowedHeader>/g)].map(m=>m[1])}));
 console.log('DIAGNOSTIC_COMPLETE_NO_RELEASE');process.exit(1);
