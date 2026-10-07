@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { del, get } from "@vercel/blob";
+import { r2Delete, r2Get } from "@/lib/r2-storage";
 import { isGenerationStorageConfigured } from "@/lib/generation-storage";
 import { validateImageFile } from "@/lib/validation";
 import {
@@ -11,34 +11,15 @@ import {
   markUploadComplete,
 } from "@/lib/highres/ledger";
 
-const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
-
-export class HighResolutionUploadError extends Error {
-  constructor(message: string, public readonly status = 400) {
-    super(message);
-    this.name = "HighResolutionUploadError";
-  }
-}
-
-function blobToken() {
-  const token = process.env[BLOB_TOKEN_ENV]?.trim();
-  if (!token) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
-  return token;
-}
-
-export function assertHighResolutionStorage() {
-  if (!isGenerationStorageConfigured()) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
-}
-
 function extension(type: string) {
   return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
 }
 
 async function readSlotBlob(slot: UploadSlot) {
-  const response = await get(slot.pathname, { access: "private", token: blobToken() });
-  if (!response || response.statusCode !== 200 || !response.stream) throw new HighResolutionUploadError("The uploaded image is unavailable. Please upload it again.", 404);
-  const bytes = new Uint8Array(await new Response(response.stream).arrayBuffer());
-  return { bytes, contentType: response.blob.contentType || slot.contentType };
+  const response = await r2Get(slot.pathname);
+  if (!response.ok || !response.body) throw new HighResolutionUploadError("The uploaded image is unavailable. Please upload it again.", 404);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return { bytes, contentType: response.headers.get("content-type") || slot.contentType };
 }
 
 export async function completeUploadForUser(username: string, id: string) {
@@ -67,7 +48,7 @@ export async function uploadSlotToFile(slot: UploadSlot) {
 }
 
 export async function removeConsumedUploadObjects(slots: UploadSlot[]) {
-  await Promise.all(slots.map((slot) => del(slot.pathname, { token: blobToken() }).catch(() => undefined)));
+  await Promise.all(slots.map((slot) => r2Delete(slot.pathname).catch(() => undefined)));
 }
 
 export function requiredRolesForRequest(
