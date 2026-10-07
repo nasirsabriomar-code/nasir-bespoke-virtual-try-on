@@ -38,13 +38,6 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      setScaleIndex(0);
-      setOffset({ x: 0, y: 0 });
-    }
-  }, [open]);
-
   function cycleZoom() {
     setScaleIndex((current) => {
       const next = (current + 1) % ZOOM_STEPS.length;
@@ -85,7 +78,7 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
       <button
         type="button"
         className={`zoomable-image-trigger ${className ?? ""}`.trim()}
-        onClick={() => setOpen(true)}
+        onClick={() => { setScaleIndex(0); setOffset({ x: 0, y: 0 }); setOpen(true); }}
         aria-label={`Preview ${alt}`}
       >
         <img src={src} alt={alt} />
@@ -110,6 +103,12 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
                     alt={alt}
                     className={`result-preview-image is-zoom-${scale}${scale > 1 ? " is-pannable" : ""}`}
                     style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={"Zoom " + alt}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cycleZoom(); }
+                    }}
                     onClick={onImageClick}
                     onPointerDown={onPointerDown}
                     onPointerMove={onPointerMove}

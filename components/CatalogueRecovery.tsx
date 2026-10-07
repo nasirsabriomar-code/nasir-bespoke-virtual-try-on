@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 
 export function CatalogueRecovery() {
@@ -37,6 +38,6 @@ export function CatalogueRecovery() {
     <label>Approved image backups <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy}
       onChange={event => void restore(event.target.files)} /></label>
     <p role="status">{status}</p>
-    <a href="/">Return to Try-On</a>
+    <Link href="/">Return to Try-On</Link>
   </main>;
 }

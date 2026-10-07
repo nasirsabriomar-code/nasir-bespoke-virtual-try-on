@@ -180,14 +180,15 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     objectUrls.current.delete(url);
   }, []);
 
-  useEffect(() => {
-    if (splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE") return;
+  const updateSplitOutfit = useCallback((next: SplitOutfitState) => {
+    setSplitOutfit(next);
+    if (next.waistcoatId && next.waistcoatId !== "SUIT_WAISTCOAT_NONE") return;
     setSplitFabrics((current) => {
       if (!current.waistcoat) return current;
       revokeUrl(current.waistcoat.previewUrl);
       return { ...current, waistcoat: null };
     });
-  }, [revokeUrl, splitOutfit.waistcoatId]);
+  }, [revokeUrl]);
 
   const clearResult = useCallback(() => {
     setResultUrl((current) => {
@@ -235,7 +236,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     } catch (selectionError: unknown) {
       setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
     }
-  }, [clearResult, revokeUrl]);
+  }, [clearResult, revokeUrl, updateSplitOutfit]);
 
   const removeImage = useCallback((role: UploadRole) => {
     setError(null);
@@ -421,7 +422,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     });
     if (look.kind === "split") {
       setMode("split");
-      setSplitOutfit(look.state);
+      updateSplitOutfit(look.state);
       setFabricRegion(look.fabricRegion);
       return;
     }
@@ -693,7 +694,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       ) : (
         <SplitOutfitWorkspace
           state={splitOutfit}
-          onChange={setSplitOutfit}
+          onChange={updateSplitOutfit}
           onGenerate={generate}
           isGenerating={isGenerating}
           fabrics={splitFabrics}

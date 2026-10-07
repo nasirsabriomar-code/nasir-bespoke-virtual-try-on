@@ -24,7 +24,7 @@
     "lint": "eslint app components lib tests scripts",
     "typecheck": "next typegen && tsc --noEmit",
     "test:storage": "NODE_ENV=test NODE_OPTIONS=--conditions=react-server node --import=tsx --test tests/r2-uploads.test.ts",
-    "verify": "npm run lint && npm run typecheck && npm test",
+    "verify": "node scripts/verify.mjs",
     "db:migrate:catalog:r2": "NODE_OPTIONS=--conditions=react-server node --import=tsx scripts/migrate-catalogue-to-r2.mts"
   },
   "dependencies": {
