@@ -1,16 +1,18 @@
 import type { NextConfig } from "next";
 
+const r2AccountId = process.env.R2_ACCOUNT_ID?.trim();
+const r2Origin = r2AccountId && /^[a-f0-9]{32}$/i.test(r2AccountId)
+  ? ` https://${r2AccountId}.r2.cloudflarestorage.com` : "";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
-  // Direct-to-Blob uploads are browser fetches, not image loads. Keep this
-  // narrowly scoped to the private store host instead of allowing arbitrary
-  // external connections in production.
-  `connect-src 'self' https://vercel.com https://*.private.blob.vercel-storage.com${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
+  // Permit only the configured R2 account for signed uploads and history images.
+  `connect-src 'self' https://vercel.com https://*.private.blob.vercel-storage.com${r2Origin}${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
   "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "img-src 'self' blob: data: https://*.private.blob.vercel-storage.com",
+  `img-src 'self' blob: data: https://*.private.blob.vercel-storage.com${r2Origin}`,
   "media-src 'none'",
   "object-src 'none'",
   `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
