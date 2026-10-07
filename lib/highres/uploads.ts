@@ -1,8 +1,9 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { r2Delete, r2Get } from "@/lib/r2-storage";
+import { r2Delete, r2Get, r2Put } from "@/lib/r2-storage";
 import { isGenerationStorageConfigured } from "@/lib/generation-storage";
+import { readUploadChunks, removeUploadChunks } from "@/lib/highres/upload-chunks";
 import { validateImageFile } from "@/lib/validation";
 import {
   type UploadRole,
@@ -11,12 +12,8 @@ import {
   markUploadComplete,
 } from "@/lib/highres/ledger";
 
-export class HighResolutionUploadError extends Error {
-  constructor(message: string, public readonly status = 400) {
-    super(message);
-    this.name = "HighResolutionUploadError";
-  }
-}
+import { HighResolutionUploadError } from "@/lib/highres/upload-error";
+export { HighResolutionUploadError } from "@/lib/highres/upload-error";
 
 export function assertHighResolutionStorage() {
   if (!isGenerationStorageConfigured()) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
@@ -38,14 +35,19 @@ export async function completeUploadForUser(username: string, id: string) {
   if (!slot || slot.username !== username) throw new HighResolutionUploadError("Upload not found.", 404);
   if (slot.status === "consumed") throw new HighResolutionUploadError("This upload has already been used. Please choose the image again.", 409);
   if (new Date(slot.expiresAt).getTime() < Date.now()) throw new HighResolutionUploadError("This upload session expired. Please choose the image again.", 410);
-  const { bytes, contentType } = await readSlotBlob(slot);
+  const response = await r2Get(slot.pathname);
+  const fromChunks = response.status === 404;
+  const bytes = fromChunks ? await readUploadChunks(slot) : new Uint8Array(await response.arrayBuffer());
+  const contentType = fromChunks ? slot.contentType : response.headers.get("content-type") || slot.contentType;
   if (bytes.byteLength !== slot.bytes) throw new HighResolutionUploadError("The uploaded image size did not match the approved upload.", 400);
   const file = new File([bytes], `${slot.role}.${extension(contentType)}`, { type: contentType });
   const validated = await validateImageFile(file, "an uploaded image");
   if (validated.mime !== slot.contentType) throw new HighResolutionUploadError("The uploaded image type did not match the approved upload.", 400);
   const checksum = createHash("sha256").update(bytes).digest("hex");
+  if (fromChunks) await r2Put(slot.pathname, bytes, slot.contentType);
   const completed = await markUploadComplete(id, { checksum, width: validated.width, height: validated.height });
   if (!completed) throw new HighResolutionUploadError("Upload not found.", 404);
+  if (fromChunks) await removeUploadChunks(slot);
   return completed;
 }
 
