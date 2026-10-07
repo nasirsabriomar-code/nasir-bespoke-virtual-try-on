@@ -13,4 +13,5 @@ const key=h(h(h(h('AWS4'+env.R2_SECRET_ACCESS_KEY,day),'auto'),'s3'),'aws4_reque
 const r=await fetch('https://'+host+uri+'?'+query+'&X-Amz-Signature='+sig);
 const t=await r.text();console.log('R2_BUCKET_METADATA',JSON.stringify({status:r.status,code:t.match(/<Code>([^<]+)<\/Code>/)?.[1]||null,keyCount:t.match(/<KeyCount>([^<]+)<\/KeyCount>/)?.[1],truncated:t.match(/<IsTruncated>([^<]+)<\/IsTruncated>/)?.[1],keys:[...t.matchAll(/<Key>([^<]+)<\/Key>/g)].map(m=>m[1])}));
 }catch(e){console.log('R2_LIST_ERROR',e.name,e.cause?.code||'');}
+try {const {get}=await import('@vercel/blob');const b=await get('nasir-bespoke/catalogue/level1/v1/SUIT_01_CLASSIC/approved.png',{access:'private',token:process.env.NASIR_BLOB_READ_WRITE_TOKEN});console.log('BLOB_SOURCE_METADATA',JSON.stringify({found:!!b,status:b?.statusCode,hasStream:!!b?.stream}));await b?.stream?.cancel();}catch(e){console.log('BLOB_SOURCE_ERROR',JSON.stringify({name:e.name,status:e.statusCode||e.status,code:e.code}));}
 console.log('DIAGNOSTIC_COMPLETE_NO_RELEASE');process.exit(1);
