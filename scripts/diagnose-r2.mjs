@@ -1,4 +1,4 @@
-import {createHash,createHmac} from 'node:crypto';import {r2Get} from './lib/r2-storage.ts';
+import {createHash,createHmac} from 'node:crypto';import {r2Get} from '../lib/r2-storage.ts';
 const env=Object.fromEntries(['R2_ACCOUNT_ID','R2_BUCKET_NAME','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY'].map(k=>[k,process.env[k]?.trim()||'']));
 console.log('R2_CONFIG_SHAPE',JSON.stringify(Object.fromEntries(Object.entries(env).map(([k,v])=>[k,{present:!!v,length:v.length,valid:k==='R2_ACCOUNT_ID'?/^[a-f0-9]{32}$/.test(v):undefined}]))));
 const code=async r=>{const t=r.ok?'':await r.text();console.log('R2_RESULT',JSON.stringify({status:r.status,code:t.match(/<Code>([^<]+)<\/Code>/)?.[1]||null,contentType:r.headers.get('content-type'),size:r.headers.get('content-length')}));if(r.ok)await r.body?.cancel()};
