@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
 import { GenerationState } from "@/components/GenerationState";
 import { ImageUpload } from "@/components/ImageUpload";
 import { Level1Catalogue } from "@/components/Level1Catalogue";
@@ -80,11 +79,18 @@ async function uploadOriginal(role: UploadRole, file: File, onProgress: (progres
   });
   const slotPayload = await slotResponse.json().catch(() => ({})) as UploadSlotResponse & { error?: string };
   if (!slotResponse.ok || !slotPayload.id || !slotPayload.pathname) throw new Error(slotPayload.error || "We couldn't prepare this upload.");
-  await upload(slotPayload.pathname, file, {
-    access: "private", handleUploadUrl: `/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}`,
-    multipart: file.size > 5 * 1024 * 1024,
-    onUploadProgress: ({ percentage }) => onProgress(Math.round(percentage)),
+  const authorizationResponse = await fetch(`/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}`, {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
   });
+  const authorization = await authorizationResponse.json().catch(() => ({})) as { uploadUrl?: string; error?: string };
+  if (!authorizationResponse.ok || !authorization.uploadUrl) throw new Error(authorization.error || "We couldn't authorize this upload.");
+  const uploadResponse = await fetch(authorization.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!uploadResponse.ok) throw new Error("We couldn't upload the original image.");
+  onProgress(100);
   const completeResponse = await fetch(`/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}/complete`, {
     method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
   });
