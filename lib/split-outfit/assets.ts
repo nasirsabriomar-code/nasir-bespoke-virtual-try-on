@@ -3,22 +3,14 @@ import "server-only";
 import { existsSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { get } from "@vercel/blob";
+import { r2Get } from "@/lib/r2-storage";
 import type { SplitOptionReference } from "./types";
-
-const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
 export class SplitAssetStorageError extends Error {
   constructor(message = "Private split-outfit asset storage is not configured.") {
     super(message);
     this.name = "SplitAssetStorageError";
   }
-}
-
-function getBlobToken() {
-  const token = process.env[BLOB_TOKEN_ENV]?.trim();
-  if (!token || token === "[SENSITIVE]") throw new SplitAssetStorageError();
-  return token;
 }
 
 function extensionFor(contentType: string) {
@@ -49,8 +41,9 @@ export async function getPrivateSplitAsset(reference: SplitOptionReference) {
     return null;
   }
   try {
-    const blob = await get(reference.privatePath, { access: "private", token: getBlobToken() });
-    return { reference, blob };
+    const response = await r2Get(reference.privatePath);
+    if (!response.ok || !response.body) return null;
+    return { reference, blob: { statusCode: response.status, stream: response.body, blob: { contentType: response.headers.get("content-type") ?? reference.contentType } } };
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       const exts = [extensionFor(reference.contentType), "png", "jpg", "jpeg", "webp"];
