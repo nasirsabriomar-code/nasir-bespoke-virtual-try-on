@@ -100,7 +100,6 @@ export async function storeApprovedLevel1DesignImage(input: {
   const linkedAssets = catalogue.assets.filter((asset) => assetIds.has(asset.id));
   if (linkedAssets.length !== assetIds.size) throw new CuratedAssetStorageError("The curated design asset mapping is incomplete.");
 
-  const token = getBlobToken();
   const bytes = new Uint8Array(await input.file.arrayBuffer());
   const privatePath = `nasir-bespoke/catalogue/level1/v1/${design.id}/approved.${extensionFor(contentType)}`;
   await r2Put(privatePath, new Blob([bytes], { type: contentType }), contentType);
