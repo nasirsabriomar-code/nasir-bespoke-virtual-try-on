@@ -694,7 +694,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       ) : (
         <SplitOutfitWorkspace
           state={splitOutfit}
-          onChange={updateSplitOutfit}
+          onChange={(updater) => updateSplitOutfit(updater(splitOutfit))}
           onGenerate={generate}
           isGenerating={isGenerating}
           fabrics={splitFabrics}
