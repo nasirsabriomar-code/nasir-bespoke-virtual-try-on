@@ -236,7 +236,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     } catch (selectionError: unknown) {
       setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
     }
-  }, [clearResult, revokeUrl, updateSplitOutfit]);
+  }, [clearResult, revokeUrl]);
 
   const removeImage = useCallback((role: UploadRole) => {
     setError(null);
@@ -431,7 +431,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     setDesignId(look.designId);
     setDesignVariantId(look.variantId);
     setFabricRegion(look.fabricRegion);
-  }, [clearResult, revokeUrl]);
+  }, [clearResult, revokeUrl, updateSplitOutfit]);
 
   const startOver = useCallback(() => {
     setError(null);
