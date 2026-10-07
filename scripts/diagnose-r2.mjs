@@ -13,7 +13,7 @@ const key=h(h(h(h('AWS4'+env.R2_SECRET_ACCESS_KEY,day),'auto'),'s3'),'aws4_reque
 const r=await fetch('https://'+host+uri+'?'+query+'&X-Amz-Signature='+sig);
 const t=await r.text();console.log('R2_BUCKET_METADATA',JSON.stringify({status:r.status,code:t.match(/<Code>([^<]+)<\/Code>/)?.[1]||null,keyCount:t.match(/<KeyCount>([^<]+)<\/KeyCount>/)?.[1],truncated:t.match(/<IsTruncated>([^<]+)<\/IsTruncated>/)?.[1],keys:[...t.matchAll(/<Key>([^<]+)<\/Key>/g)].map(m=>m[1])}));
 }catch(e){console.log('R2_LIST_ERROR',e.name,e.cause?.code||'');}
-console.log('DIAGNOSTIC_COMPLETE_NO_RELEASE');process.exit(1)
+
 try {
  const {list,get}=await import('@vercel/blob');
  const token=process.env.NASIR_BLOB_READ_WRITE_TOKEN;
@@ -25,4 +25,6 @@ try {
 const {presignR2Url}=await import('../lib/r2-storage.ts');
 const cors=await fetch(presignR2Url('', 'GET',300,{cors:''}));
 const xml=await cors.text();console.log('R2_CORS',JSON.stringify({status:cors.status,code:xml.match(/<Code>([^<]+)<\/Code>/)?.[1],origins:[...xml.matchAll(/<AllowedOrigin>([^<]+)<\/AllowedOrigin>/g)].map(m=>m[1]),methods:[...xml.matchAll(/<AllowedMethod>([^<]+)<\/AllowedMethod>/g)].map(m=>m[1]),headers:[...xml.matchAll(/<AllowedHeader>([^<]+)<\/AllowedHeader>/g)].map(m=>m[1])}));
+
+
 console.log('DIAGNOSTIC_COMPLETE_NO_RELEASE');process.exit(1);
