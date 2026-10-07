@@ -38,13 +38,6 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      setScaleIndex(0);
-      setOffset({ x: 0, y: 0 });
-    }
-  }, [open]);
-
   function cycleZoom() {
     setScaleIndex((current) => {
       const next = (current + 1) % ZOOM_STEPS.length;
@@ -53,13 +46,13 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
     });
   }
 
-  function onPointerDown(event: PointerEvent<HTMLImageElement>) {
+  function onPointerDown(event: PointerEvent<HTMLButtonElement>) {
     if (scale <= 1) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: event.clientX, y: event.clientY, originX: offset.x, originY: offset.y, moved: false };
   }
 
-  function onPointerMove(event: PointerEvent<HTMLImageElement>) {
+  function onPointerMove(event: PointerEvent<HTMLButtonElement>) {
     if (!drag.current) return;
     const dx = event.clientX - drag.current.x;
     const dy = event.clientY - drag.current.y;
@@ -74,7 +67,7 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
     cycleZoom();
   }
 
-  function onImageClick(event: MouseEvent<HTMLImageElement>) {
+  function onImageClick(event: MouseEvent<HTMLButtonElement>) {
     if (scale > 1) return;
     event.stopPropagation();
     cycleZoom();
@@ -85,7 +78,7 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
       <button
         type="button"
         className={`zoomable-image-trigger ${className ?? ""}`.trim()}
-        onClick={() => setOpen(true)}
+        onClick={() => { setScaleIndex(0); setOffset({ x: 0, y: 0 }); setOpen(true); }}
         aria-label={`Preview ${alt}`}
       >
         <img src={src} alt={alt} />
@@ -105,11 +98,11 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
                   </button>
                 </div>
                 <div className="result-preview-canvas">
-                  <img
-                    src={src}
-                    alt={alt}
-                    className={`result-preview-image is-zoom-${scale}${scale > 1 ? " is-pannable" : ""}`}
-                    style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+                  <button type="button" style={{ background: "transparent", border: 0, padding: 0 }}
+                    aria-label={"Zoom " + alt}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cycleZoom(); }
+                    }}
                     onClick={onImageClick}
                     onPointerDown={onPointerDown}
                     onPointerMove={onPointerMove}
@@ -117,9 +110,15 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
                     onPointerCancel={() => {
                       drag.current = null;
                     }}
-                    draggable={false}
-                  />
-                </div>
+                  >
+                    <img
+                    src={src}
+                    alt={alt}
+                    className={`result-preview-image is-zoom-${scale}${scale > 1 ? " is-pannable" : ""}`}
+                    style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+                      draggable={false}
+                    />
+                  </button>                </div>
               </div>
             </div>,
             document.body,

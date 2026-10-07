@@ -1,5 +1,7 @@
 "use client";
 
+import { UPLOAD_CHUNK_BYTES } from "@/lib/highres/upload-config";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GenerationState } from "@/components/GenerationState";
 import { ImageUpload } from "@/components/ImageUpload";
@@ -79,18 +81,19 @@ async function uploadOriginal(role: UploadRole, file: File, onProgress: (progres
   });
   const slotPayload = await slotResponse.json().catch(() => ({})) as UploadSlotResponse & { error?: string };
   if (!slotResponse.ok || !slotPayload.id || !slotPayload.pathname) throw new Error(slotPayload.error || "We couldn't prepare this upload.");
-  const authorizationResponse = await fetch(`/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}`, {
-    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
-  });
-  const authorization = await authorizationResponse.json().catch(() => ({})) as { uploadUrl?: string; error?: string };
-  if (!authorizationResponse.ok || !authorization.uploadUrl) throw new Error(authorization.error || "We couldn't authorize this upload.");
-  const uploadResponse = await fetch(authorization.uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type },
-    body: file,
-  });
-  if (!uploadResponse.ok) throw new Error("We couldn't upload the original image.");
-  onProgress(100);
+  const count = Math.ceil(file.size / UPLOAD_CHUNK_BYTES);
+  for (let index = 0; index < count; index++) {
+    const uploadResponse = await fetch("/api/try-on/uploads/" + encodeURIComponent(slotPayload.id) + "/parts/" + index, {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file.slice(index * UPLOAD_CHUNK_BYTES, (index + 1) * UPLOAD_CHUNK_BYTES),
+    });
+    if (!uploadResponse.ok) {
+      const payload = await uploadResponse.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || "We couldn't upload the original image.");
+    }
+    onProgress(Math.round((index + 1) * 100 / count));
+  }
   const completeResponse = await fetch(`/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}/complete`, {
     method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
   });
@@ -177,14 +180,15 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     objectUrls.current.delete(url);
   }, []);
 
-  useEffect(() => {
-    if (splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE") return;
+  const updateSplitOutfit = useCallback((next: SplitOutfitState) => {
+    setSplitOutfit(next);
+    if (next.waistcoatId && next.waistcoatId !== "SUIT_WAISTCOAT_NONE") return;
     setSplitFabrics((current) => {
       if (!current.waistcoat) return current;
       revokeUrl(current.waistcoat.previewUrl);
       return { ...current, waistcoat: null };
     });
-  }, [revokeUrl, splitOutfit.waistcoatId]);
+  }, [revokeUrl]);
 
   const clearResult = useCallback(() => {
     setResultUrl((current) => {
@@ -418,7 +422,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     });
     if (look.kind === "split") {
       setMode("split");
-      setSplitOutfit(look.state);
+      updateSplitOutfit(look.state);
       setFabricRegion(look.fabricRegion);
       return;
     }
@@ -427,7 +431,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     setDesignId(look.designId);
     setDesignVariantId(look.variantId);
     setFabricRegion(look.fabricRegion);
-  }, [clearResult, revokeUrl]);
+  }, [clearResult, revokeUrl, updateSplitOutfit]);
 
   const startOver = useCallback(() => {
     setError(null);
@@ -690,7 +694,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       ) : (
         <SplitOutfitWorkspace
           state={splitOutfit}
-          onChange={setSplitOutfit}
+          onChange={(updater) => updateSplitOutfit(updater(splitOutfit))}
           onGenerate={generate}
           isGenerating={isGenerating}
           fabrics={splitFabrics}

@@ -38,8 +38,17 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function encode(value: string) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 function encodePath(value: string) {
-  return value.split("/").map((part) => encodeURIComponent(part)).join("/");
+  return value.split("/").map(encode).join("/");
+}
+
+function canonicalQuery(params: Record<string, string>) {
+  return Object.entries(params).map(([key, value]) => [encode(key), encode(value)])
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map((entry) => entry.join("=")).join("&");
 }
 
 function signingKey(secret: string, date: string) {
@@ -49,34 +58,34 @@ function signingKey(secret: string, date: string) {
   return hmac(serviceKey, "aws4_request");
 }
 
-export function presignR2Url(pathname: string, method: "GET" | "PUT" | "DELETE", expiresSeconds = 300) {
+export function presignR2Url(pathname: string, method: "GET" | "PUT" | "DELETE" | "HEAD", expiresSeconds = 300, query: Record<string, string> = {}) {
   const { accountId, accessKeyId, secretAccessKey, bucket } = config();
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const date = amzDate.slice(0, 8);
   const host = `${accountId}.r2.cloudflarestorage.com`;
-  const canonicalUri = `/${encodeURIComponent(bucket)}/${encodePath(pathname)}`;
+  const canonicalUri = `/${encode(bucket)}${pathname ? `/${encodePath(pathname)}` : ""}`;
   const scope = `${date}/${REGION}/${SERVICE}/aws4_request`;
-  const params = new URLSearchParams({
+  const params: Record<string, string> = {
+    ...query,
     "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
     "X-Amz-Credential": `${accessKeyId}/${scope}`,
     "X-Amz-Date": amzDate,
     "X-Amz-Expires": String(Math.min(Math.max(expiresSeconds, 1), 3600)),
     "X-Amz-SignedHeaders": "host",
-  });
-  params.sort();
+  };
+  const queryString = canonicalQuery(params);
   const canonicalRequest = [
     method,
     canonicalUri,
-    params.toString(),
+    queryString,
     `host:${host}\n`,
     "host",
     "UNSIGNED-PAYLOAD",
   ].join("\n");
   const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
   const signature = createHmac("sha256", signingKey(secretAccessKey, date)).update(stringToSign).digest("hex");
-  params.set("X-Amz-Signature", signature);
-  return `https://${host}${canonicalUri}?${params.toString()}`;
+  return `https://${host}${canonicalUri}?${queryString}&X-Amz-Signature=${signature}`;
 }
 
 export async function r2Put(pathname: string, body: Blob | Uint8Array, contentType: string) {
@@ -88,8 +97,22 @@ export async function r2Put(pathname: string, body: Blob | Uint8Array, contentTy
   if (!response.ok) throw new Error(`R2 upload failed with status ${response.status}.`);
 }
 
+export class R2RequestError extends Error {
+  constructor(public readonly status: number, public readonly code: string) {
+    super(`R2 request failed (${status}, ${code}).`);
+    this.name = "R2RequestError";
+  }
+}
+
 export async function r2Get(pathname: string) {
-  return fetch(presignR2Url(pathname, "GET"));
+  const response = await fetch(presignR2Url(pathname, "GET"), { cache: "no-store" });
+  if (!response.ok && response.status !== 404) {
+    const xml = await response.text();
+    const code = xml.match(/<Code>([A-Za-z0-9]+)<\/Code>/)?.[1] || "UnknownError";
+    console.error("r2_read_failed", { status: response.status, code });
+    throw new R2RequestError(response.status, code);
+  }
+  return response;
 }
 
 export async function r2Delete(pathname: string) {

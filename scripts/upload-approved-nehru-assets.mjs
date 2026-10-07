@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { get, put } from "@vercel/blob";
+import { get } from "@vercel/blob";
 
 const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 
