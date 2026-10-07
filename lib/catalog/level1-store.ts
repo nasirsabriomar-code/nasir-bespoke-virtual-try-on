@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { Redis } from "@upstash/redis";
+import { applyCatalogueAvailability } from "@/lib/catalog/availability";
 import { DEFAULT_LEVEL1_CATALOGUE } from "@/lib/catalog/level1-seed";
 import {
   type CuratedAsset,
@@ -107,10 +108,11 @@ export async function getLevel1CatalogueView(): Promise<Level1CatalogueView> {
           : {}),
       };
     });
-  return {
+  const view: Level1CatalogueView = {
     categories: categories.map(({ id, name, description, sortOrder }) => ({ id, name, description, sortOrder })),
     designs,
   };
+  return process.env.NODE_ENV === "production" ? applyCatalogueAvailability(catalogue, view) : view;
 }
 
 export async function resolveLevel1Design(categoryId: string, designId: string, variantId?: string): Promise<ResolvedLevel1Design> {

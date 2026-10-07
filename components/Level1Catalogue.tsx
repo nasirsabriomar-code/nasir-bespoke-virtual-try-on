@@ -84,6 +84,7 @@ export function Level1Catalogue({
         {designs.map((design) => {
           const selected = design.id === designId;
           const ready = design.generation.state === "ready";
+          const selectable = ready || Boolean(design.variants?.some(variant => variant.generation.state === "ready"));
           const hasImage = design.cardImage.state === "ready" && Boolean(design.cardImage.url);
 
           return (
@@ -91,9 +92,11 @@ export function Level1Catalogue({
               className={`level1-design-card${selected ? " is-selected" : ""}`}
               key={design.id}
               role="button"
-              tabIndex={0}
+              tabIndex={selectable ? 0 : -1}
+              aria-disabled={!selectable}
               aria-pressed={selected}
               onClick={() => {
+                if (!selectable) return;
                 if (design.variants?.length) {
                   setChoosingVariantDesign(design);
                 } else {
@@ -101,7 +104,7 @@ export function Level1Catalogue({
                 }
               }}
               onKeyDown={(e) => {
-                if (e.key === " " || e.key === "Enter") {
+                if (selectable && (e.key === " " || e.key === "Enter")) {
                   e.preventDefault();
                   if (design.variants?.length) {
                     setChoosingVariantDesign(design);
@@ -144,7 +147,7 @@ export function Level1Catalogue({
                 ) : (
                   <div className="level1-card-placeholder" aria-hidden="true">
                     <span>NB</span>
-                    <small>Catalogue image awaiting approval</small>
+                    <small>Reference image unavailable</small>
                   </div>
                 )}
               </div>
@@ -156,7 +159,7 @@ export function Level1Catalogue({
                 </div>
                 <p className="level1-card-description">{design.description}</p>
                 <p className="level1-card-intent">{design.intent}</p>
-                {!ready ? <span className="level1-card-state">Awaiting approved reference</span> : null}
+                {!ready ? <span className="level1-card-state">Reference unavailable</span> : null}
               </div>
             </div>
           );

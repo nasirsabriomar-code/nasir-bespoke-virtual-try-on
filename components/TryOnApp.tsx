@@ -207,7 +207,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     () => selectedDesign?.variants?.find((variant) => variant.id === designVariantId) ?? null,
     [designVariantId, selectedDesign],
   );
-  const selectedReferenceReady = selectedDesign?.generation.state === "ready" && (!selectedVariant || selectedVariant.generation.state === "ready");
+  const selectedReferenceReady = (selectedVariant ?? selectedDesign)?.generation.state === "ready";
   const isJacketCategory = categoryId === "jackets";
 
   const changeImage = useCallback(async (role: UploadRole, file: File) => {
@@ -685,9 +685,9 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
             </button>
           </section>
 
-          {selectedDesign?.generation.state === "awaiting-approved-reference" ? (
+          {selectedDesign && !selectedReferenceReady ? (
             <p className="level1-pending-note" role="status">
-              This design is ready for review. Generation unlocks when its approved private catalogue reference is added.
+              This reference image is unavailable. Choose an available design or variation.
             </p>
           ) : null}
         </>
