@@ -4,12 +4,11 @@ import { existsSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
-import { get, put } from "@vercel/blob";
+import { r2Get, r2Put } from "@/lib/r2-storage";
 import { getLevel1Catalogue, getActiveLevel1Asset, replaceLevel1Catalogue } from "@/lib/catalog/level1-store";
 import type { CuratedAsset, CuratedAssetPurpose } from "@/lib/catalog/level1-types";
 import type { SupportedImageMime } from "@/lib/validation";
 
-const BLOB_TOKEN_ENV = "NASIR_BLOB_READ_WRITE_TOKEN";
 const ALLOWED_TYPES = new Set<SupportedImageMime>(["image/jpeg", "image/png", "image/webp"]);
 
 export class CuratedAssetStorageError extends Error {
@@ -17,12 +16,6 @@ export class CuratedAssetStorageError extends Error {
     super(message);
     this.name = "CuratedAssetStorageError";
   }
-}
-
-function getBlobToken() {
-  const token = process.env[BLOB_TOKEN_ENV]?.trim();
-  if (!token || token === "[SENSITIVE]") throw new CuratedAssetStorageError();
-  return token;
 }
 
 function extensionFor(contentType: SupportedImageMime) {
@@ -38,8 +31,9 @@ export async function getPrivateLevel1Asset(assetId: string) {
   const asset = await getActiveLevel1Asset(assetId);
   if (!asset) return null;
   try {
-    const blob = await get(asset.privatePath as string, { access: "private", token: getBlobToken() });
-    return { asset, blob };
+    const response = await r2Get(asset.privatePath as string);
+    if (!response.ok || !response.body) return null;
+    return { asset, blob: { statusCode: response.status, stream: response.body, blob: { contentType: response.headers.get("content-type") ?? asset.contentType } } };
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       const exts = [extensionFor(asset.contentType || "image/png"), "png", "jpg", "jpeg", "webp"];
@@ -74,20 +68,9 @@ export async function storeApprovedLevel1Asset(input: {
   const catalogue = await getLevel1Catalogue();
   const current = catalogue.assets.find((asset) => asset.id === input.assetId && asset.purpose === input.purpose);
   if (!current) throw new CuratedAssetStorageError("The supplied approved asset ID is not recognized.");
-  const token = getBlobToken();
   const bytes = new Uint8Array(await input.file.arrayBuffer());
   const privatePath = canonicalPath(current, contentType);
-  await put(privatePath, new Blob([bytes], { type: contentType }), {
-    access: "private",
-    token,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    // Private blobs are only read through authenticated application routes.
-    // Blob requires cache configuration of at least one minute; the route
-    // response itself remains private and no-store.
-    cacheControlMaxAge: 60,
-    contentType,
-  });
+  await r2Put(privatePath, new Blob([bytes], { type: contentType }), contentType);
   const checksum = createHash("sha256").update(bytes).digest("hex");
   const nextAsset: CuratedAsset = { ...current, status: "active", privatePath, contentType, checksum, provenance: input.provenance.trim() || "approved Nasir Bespoke catalogue source" };
   await replaceLevel1Catalogue({ ...catalogue, assets: catalogue.assets.map((asset) => asset.id === current.id ? nextAsset : asset) });
@@ -120,14 +103,7 @@ export async function storeApprovedLevel1DesignImage(input: {
   const token = getBlobToken();
   const bytes = new Uint8Array(await input.file.arrayBuffer());
   const privatePath = `nasir-bespoke/catalogue/level1/v1/${design.id}/approved.${extensionFor(contentType)}`;
-  await put(privatePath, new Blob([bytes], { type: contentType }), {
-    access: "private",
-    token,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 60,
-    contentType,
-  });
+  await r2Put(privatePath, new Blob([bytes], { type: contentType }), contentType);
   const checksum = createHash("sha256").update(bytes).digest("hex");
   const provenance = input.provenance.trim() || "approved Nasir Bespoke catalogue source";
   await replaceLevel1Catalogue({
