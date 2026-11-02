@@ -29,6 +29,12 @@ function jsonError(error: string, status: number, headers?: HeadersInit) {
   );
 }
 
+function tooManyAttempts(resetAt: number) {
+  return jsonError("Too many sign-in attempts. Please wait and try again.", 429, {
+    "Retry-After": String(Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))),
+  });
+}
+
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) {
     return jsonError("This sign-in request was blocked. Please refresh and try again.", 403);
@@ -45,17 +51,18 @@ export async function POST(request: Request) {
 
   try {
     const rateLimit = await checkLoginRateLimit(getRequestIdentifier(request));
-    if (!rateLimit.allowed) {
-      return jsonError("Too many sign-in attempts. Please wait and try again.", 429, {
-        "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
-      });
-    }
+    if (!rateLimit.allowed) return tooManyAttempts(rateLimit.resetAt);
 
     const body = (await request.json()) as unknown;
     if (!body || typeof body !== "object") return jsonError("Invalid sign-in request.", 400);
     const record = body as Record<string, unknown>;
     const username = typeof record.username === "string" ? record.username : "";
     const password = typeof record.password === "string" ? record.password : "";
+
+    // Also limit by account so changing address cannot extend password guessing.
+    const accountLimit = await checkLoginRateLimit(`account:${username.trim().toLowerCase().slice(0, 64)}`);
+    if (!accountLimit.allowed) return tooManyAttempts(accountLimit.resetAt);
+
     const user = await verifyCredentials(username, password);
 
     if (!user) return jsonError("The username or password is incorrect.", 401);

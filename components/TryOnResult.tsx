@@ -2,18 +2,13 @@
 
 import { useState } from "react";
 import { ZoomableImage } from "@/components/ZoomableImage";
+import type { ResultSummary } from "@/lib/result-summary";
 
 type TryOnResultProps = {
   resultUrl: string;
   originalUrl: string;
   outputSize?: string;
-  summary: {
-    garment: string;
-    lower?: string;
-    fabric: string;
-    turban: string;
-    shoes: string;
-  };
+  summary: ResultSummary;
   onRegenerate: () => void;
   onReset: () => void;
   isGenerating: boolean;
@@ -71,7 +66,7 @@ export function TryOnResult({
         <div><dt>Garment</dt><dd>{summary.garment}</dd></div>
         {summary.lower ? <div><dt>Lower</dt><dd>{summary.lower}</dd></div> : null}
         <div><dt>Fabric</dt><dd>{summary.fabric}</dd></div>
-        <div><dt>Turban</dt><dd>{summary.turban}</dd></div>
+        {summary.turban ? <div><dt>Turban</dt><dd>{summary.turban}</dd></div> : null}
         <div><dt>Shoes</dt><dd>{summary.shoes}</dd></div>
         {outputSize ? <div><dt>Master</dt><dd>{outputSize} PNG</dd></div> : null}
       </dl>

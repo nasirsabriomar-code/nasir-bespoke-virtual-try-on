@@ -18,6 +18,7 @@ const globalSessionStore = globalThis as typeof globalThis & {
 const memorySessions = globalSessionStore.__nasirMemorySessions ?? new Map<string, MemorySession>();
 globalSessionStore.__nasirMemorySessions = memorySessions;
 let redisCache: { key: string; redis: Redis } | null = null;
+const REDIS_TIMED_OUT = Symbol("redis-timed-out");
 
 function sessionKey(sessionId: string) {
   const hashed = createHash("sha256").update(sessionId).digest("hex");
@@ -67,9 +68,11 @@ export async function isSessionActive(sessionId: string, username: string) {
   if (redis) {
     try {
       const redisPromise = redis.get<string>(key);
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+      const timeoutPromise = new Promise<typeof REDIS_TIMED_OUT>((resolve) => setTimeout(() => resolve(REDIS_TIMED_OUT), 2500));
       const val = await Promise.race([redisPromise, timeoutPromise]);
-      if (val !== null) return val === userHash;
+      // An answer from Redis is final: null means revoked, possibly by another
+      // instance, so this instance's memory must not bring the session back.
+      if (val !== REDIS_TIMED_OUT) return val === userHash;
     } catch {
       // Fallback to memory
     }

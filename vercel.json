@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "npm run verify && npm run build:next"
+  "buildCommand": "npm run verify && npm run build:next",
+  "crons": [{ "path": "/api/cron/cleanup-uploads", "schedule": "0 3 * * *" }]
 }

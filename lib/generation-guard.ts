@@ -3,10 +3,10 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { Redis } from "@upstash/redis";
 
-// Function maxDuration is 180s and the OpenAI client times out at 165s.
+// Function maxDuration is 300s and the OpenAI client times out at 165s.
 // The lease must outlive a still-running invocation so a second isolate cannot
 // start another paid call. 30s of grace covers clock skew and cleanup.
-export const GENERATION_LOCK_TTL_SECONDS = 210;
+export const GENERATION_LOCK_TTL_SECONDS = 330;
 export const IDEMPOTENCY_TTL_SECONDS = 900;
 // Same 3s control-plane ceiling as lib/rate-limit.ts (Ratelimit timeout: 3_000).
 // Retry is disabled so a hung Upstash request cannot multiply past that budget.
@@ -139,11 +139,15 @@ async function redisOp<T>(operation: (redis: Redis) => Promise<T>): Promise<T> {
   }
 }
 
+export function normalizeIdempotencyKey(raw: string) {
+  if (!UUID_PATTERN.test(raw) || raw.length > 80) return "";
+  return raw.toLowerCase();
+}
+
 export function parseIdempotencyKey(request: Request): string | null {
   const raw = request.headers.get("idempotency-key")?.trim() ?? "";
   if (!raw) return null;
-  if (!UUID_PATTERN.test(raw) || raw.length > 80) return "";
-  return raw.toLowerCase();
+  return normalizeIdempotencyKey(raw);
 }
 
 function parseRecord(value: unknown): IdempotencyRecord | null {

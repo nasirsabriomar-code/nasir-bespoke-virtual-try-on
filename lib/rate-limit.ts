@@ -175,9 +175,10 @@ export async function checkLoginRateLimit(identifier: string): Promise<RateLimit
 }
 
 export function getRequestIdentifier(request: Request) {
+  // Vercel overwrites x-forwarded-for. Other client-supplied headers such as
+  // cf-connecting-ip pass through unverified, so they must not identify anyone.
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   return (
-    request.headers.get("cf-connecting-ip") ||
     forwarded ||
     request.headers.get("x-real-ip") ||
     "local"

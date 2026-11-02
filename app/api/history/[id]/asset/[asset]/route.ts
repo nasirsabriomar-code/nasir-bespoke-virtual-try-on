@@ -6,6 +6,7 @@ import {
   isGenerationAssetPath,
   type GenerationAssetKey,
 } from "@/lib/generation-storage";
+import { lookupGenerationEvent } from "@/lib/history/lookup-generation";
 import { getUsageEvent } from "@/lib/usage-history";
 import { getPermanentGeneration, isPermanentHistoryConfigured } from "@/lib/highres/ledger";
 
@@ -59,9 +60,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id, asset } = await context.params;
     if (!id || !ASSET_KEYS.has(asset as GenerationAssetKey)) return new Response("Not found", { status: 404 });
     if (!/^[0-9a-f-]{36}$/i.test(id)) return new Response("Not found", { status: 404 });
-    const event = isPermanentHistoryConfigured()
-      ? await getPermanentGeneration(id)
-      : await getUsageEvent(id);
+    const event = await lookupGenerationEvent(id, {
+      permanent: async (generationId) => isPermanentHistoryConfigured() ? getPermanentGeneration(generationId) : null,
+      recent: getUsageEvent,
+    });
     const reference = event?.assets?.[asset as GenerationAssetKey];
     if (!reference || !isGenerationAssetPath(reference.pathname, id, asset as GenerationAssetKey)) {
       return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
@@ -69,12 +71,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
     if (wantsDownload) {
-      // Downloads are owner-only. Return the same 404 used for missing assets so
-      // this endpoint does not disclose another staff member's generation.
-      if (!event || event.username !== user.username) {
-        return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
-      }
-
+      // History is shared among authenticated staff, so downloads follow the
+      // same access as viewing.
       // Stream the private Blob through this authenticated route. This keeps the
       // signed Blob URL out of the browser address bar and download history.
       const blob = await getPrivateGenerationAsset(reference.pathname);

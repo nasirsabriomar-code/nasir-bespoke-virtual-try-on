@@ -157,6 +157,21 @@ export async function consumeUploadSlots(username: string, ids: string[]) {
   return slots as UploadSlot[];
 }
 
+export async function listExpiredUploadSlots(expiredBefore: Date, limit: number) {
+  const sql = getSql();
+  if (!sql) return [...memoryUploads.values()].filter((slot) => new Date(slot.expiresAt) < expiredBefore).slice(0, limit);
+  await ensureSchema();
+  const rows = await sql`SELECT * FROM nasir_tryon_uploads WHERE expires_at < ${expiredBefore.toISOString()} ORDER BY expires_at LIMIT ${limit}`;
+  return rows.map((row) => rowToSlot(row as Record<string, unknown>));
+}
+
+export async function deleteUploadSlot(id: string) {
+  const sql = getSql();
+  if (!sql) { memoryUploads.delete(id); return; }
+  await ensureSchema();
+  await sql`DELETE FROM nasir_tryon_uploads WHERE id = ${id}`;
+}
+
 export async function persistPermanentGeneration(event: UsageEvent) {
   const sql = getSql();
   if (!sql) { memoryGenerations.set(event.id, event); return; }

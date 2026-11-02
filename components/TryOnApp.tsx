@@ -12,7 +12,10 @@ import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
+import { fetchWithTimeout, recoverGeneration } from "@/lib/generation-recovery";
+import { buildResultSummary, type ResultSummary } from "@/lib/result-summary";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
+import { clearSplitFabrics } from "@/lib/split-outfit/client-fabrics";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
 import type { FabricRegion } from "@/lib/catalog/level1-prompt";
@@ -30,6 +33,7 @@ type TryOnAppProps = {
 };
 
 const MAX_CLIENT_FILE_SIZE = 50 * 1024 * 1024;
+const GENERATION_REQUEST_TIMEOUT_MS = 285_000;
 const DIRECT_UPLOAD_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const UPLOAD_HELP = {
@@ -134,6 +138,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [originalResultUrl, setOriginalResultUrl] = useState<string | null>(null);
   const [outputSize, setOutputSize] = useState<string | null>(null);
+  const [resultSummary, setResultSummary] = useState<ResultSummary | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -197,6 +202,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     });
     setOriginalResultUrl(null);
     setOutputSize(null);
+    setResultSummary(null);
   }, [revokeUrl]);
 
   const selectedDesign = useMemo(
@@ -286,12 +292,20 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     setIsGenerating(true);
     clearResult();
 
-    let timeout: number | null = null;
+    // Captured now so the summary describes this look, not later selection changes.
+    const summary = mode === "split"
+      ? buildResultSummary({ mode, splitOutfit, hasUploadedFabric: Object.values(splitFabrics).some(Boolean) })
+      : buildResultSummary({ mode: "full", designName: selectedDesign?.name ?? "Curated design", variantName: selectedVariant?.name });
+    const showResult = (nextResultUrl: string, nextOriginalUrl: string, nextOutputSize: string | null) => {
+      setResultUrl(nextResultUrl);
+      setOriginalResultUrl(nextOriginalUrl);
+      setOutputSize(nextOutputSize);
+      setResultSummary(summary);
+    };
+
     try {
       const idempotencyKey = crypto.randomUUID();
       generationKeyRef.current = idempotencyKey;
-      const controller = new AbortController();
-      timeout = window.setTimeout(() => controller.abort(), 285_000);
       setUploadProgress(0);
       const personUpload = await uploadOriginal("person", person.file, setUploadProgress);
       const fabricUpload = mode === "split"
@@ -330,15 +344,26 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           }
           : null;
       if (!requestBody) throw new Error("We couldn't create the try-on. Please try again.");
-      const response = await fetch("/api/try-on", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      window.clearTimeout(timeout);
-      timeout = null;
+      let response: Response;
+      try {
+        response = await fetchWithTimeout("/api/try-on", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(requestBody),
+        }, GENERATION_REQUEST_TIMEOUT_MS);
+      } catch {
+        // The connection dropped or timed out, but the paid generation may still
+        // be running. Follow it rather than asking staff to pay for another.
+        const recovered = await recoverGeneration(idempotencyKey);
+        if (recovered.kind === "complete") {
+          showResult(recovered.resultUrl, recovered.originalUrl, null);
+          return;
+        }
+        throw new Error(recovered.kind === "failed"
+          ? recovered.error
+          : "We lost contact with this try-on. Please check History before trying again, as it may still finish.");
+      }
       if (response.status === 401) {
         window.location.replace("/login");
         return;
@@ -349,29 +374,17 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       }
       const payload = await response.json().catch(() => ({})) as GenerationResponse;
       if (!payload.resultUrl || !payload.originalUrl) throw new Error("We couldn't create the try-on. Please try again.");
-      const nextResultUrl = payload.resultUrl;
-      setResultUrl(() => {
-        return nextResultUrl;
-      });
-      setOriginalResultUrl(payload.originalUrl);
-      setOutputSize(payload.metadata?.outputWidth && payload.metadata?.outputHeight
+      showResult(payload.resultUrl, payload.originalUrl, payload.metadata?.outputWidth && payload.metadata?.outputHeight
         ? `${payload.metadata.outputWidth}×${payload.metadata.outputHeight}`
         : payload.metadata?.reportedSize ?? null);
     } catch (generationError: unknown) {
-      setError(
-        generationError instanceof DOMException && generationError.name === "AbortError"
-          ? "The generation took too long. Please try again."
-          : generationError instanceof Error
-            ? generationError.message
-            : "We couldn't create the try-on. Please try again.",
-      );
+      setError(generationError instanceof Error ? generationError.message : "We couldn't create the try-on. Please try again.");
     } finally {
-      if (timeout !== null) window.clearTimeout(timeout);
       generationKeyRef.current = null;
       setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, splitFabrics, splitOutfit]);
+  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit]);
 
   const selectSplitFabric = useCallback(async (piece: keyof SplitPieceFabrics, file: File) => {
     setError(null);
@@ -452,6 +465,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       revokeUrl(current?.previewUrl);
       return null;
     });
+    setSplitFabrics((current) => clearSplitFabrics(current, revokeUrl));
+    setSplitOutfit(DEFAULT_SPLIT_OUTFIT_STATE);
   }, [clearResult, isJacketCategory, revokeUrl]);
 
   return (
@@ -709,24 +724,19 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
 
       {isGenerating ? <GenerationState /> : null}
 
-      {resultUrl && originalResultUrl ? (
+      {resultUrl && originalResultUrl && resultSummary ? (
         <TryOnResult
           resultUrl={resultUrl}
           originalUrl={originalResultUrl}
           outputSize={outputSize ?? undefined}
-          summary={{
-            garment: selectedDesign?.name ?? "Curated Suit",
-            fabric: "Uploaded fabric",
-            turban: "None",
-            shoes: "Keep Existing",
-          }}
+          summary={resultSummary}
           onRegenerate={generate}
           onReset={startOver}
           isGenerating={isGenerating}
         />
       ) : null}
 
-      <p className="privacy-note">Photos are used only to create your try-on. AI visualization; actual garment fit may vary.</p>
+      <p className="privacy-note">Photos and results are kept in private History, visible to signed-in staff. AI visualization; actual garment fit may vary.</p>
       </section>
     </main>
   );

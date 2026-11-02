@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { APIConnectionTimeoutError } from "openai";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { CatalogCompatibilityError, validateCatalogSelection } from "@/lib/catalog/compatibility";
@@ -53,6 +54,7 @@ import {
   isPermanentHistoryConfigured,
   persistPermanentGeneration,
   type UploadRole,
+  type UploadSlot,
 } from "@/lib/highres/ledger";
 import {
   HighResolutionUploadError,
@@ -316,31 +318,39 @@ async function recordUsageSafely(
   assets?: GenerationAssetRefs,
 ) {
   if (!dependencies.recordUsage) return;
-  try {
-    const event: UsageEvent = {
-      id: requestId,
-      occurredAt: new Date().toISOString(),
-      username,
-      status,
-      device: getRequestDevice(request),
-      durationMs,
-      provider: metadata?.provider ?? "openai",
-      model: metadata?.model ?? "gpt-image-2.5-sunburst",
-      quality: metadata?.quality ?? "medium",
-      generation,
-      assets,
-    };
-    await dependencies.recordUsage(event);
-    // Redis remains the fast guard/rate-limit store. Every completed generation
-    // is also written to the permanent ledger when Neon is configured.
-    await persistPermanentGeneration(event);
-  } catch (error) {
-    // Usage history must never make a try-on fail after the model has run.
-    console.error("try_on_usage_history_failed", {
-      requestId,
-      errorName: error instanceof Error ? error.name : "UnknownError",
-    });
+  const event: UsageEvent = {
+    id: requestId,
+    occurredAt: new Date().toISOString(),
+    username,
+    status,
+    device: getRequestDevice(request),
+    durationMs,
+    provider: metadata?.provider ?? "openai",
+    model: metadata?.model ?? "gpt-image-2.5-sunburst",
+    quality: metadata?.quality ?? "medium",
+    generation,
+    assets,
+  };
+  // Each store is written independently: a generation must stay findable in
+  // whichever one succeeds. Neither failure may fail a try-on the model has run.
+  const writes = await Promise.allSettled([
+    dependencies.recordUsage(event),
+    persistPermanentGeneration(event),
+  ]);
+  for (const write of writes) {
+    if (write.status === "rejected") {
+      console.error("try_on_usage_history_failed", {
+        requestId,
+        errorName: write.reason instanceof Error ? write.reason.name : "UnknownError",
+      });
+    }
   }
+}
+
+function isTimeoutError(error: unknown) {
+  // The SDK's timeout error keeps the default name "Error", so check its type.
+  return error instanceof APIConnectionTimeoutError
+    || (error instanceof Error && error.name.toLowerCase().includes("timeout"));
 }
 
 const HIGHRES_TEXT_FIELDS = [
@@ -368,6 +378,7 @@ async function handleHighResolutionRequest(
     throw error;
   }
   if (!user) return jsonError("Your session has expired. Please sign in again.", 401);
+  let consumedSlots: UploadSlot[] | null = null;
   try {
     const existingKey = parseIdempotencyKey(request);
     if (existingKey === "") return jsonError("Invalid idempotency key.", 400);
@@ -401,6 +412,7 @@ async function handleHighResolutionRequest(
     if (required.some((role) => !ids[role])) return jsonError("Please upload the required person, fabric, and outfit images.", 400);
     const slots = await consumeUploadSlots(user.username, required.map((role) => ids[role] as string));
     if (!slots) return jsonError("One or more upload sessions expired or were already used. Please upload the images again.", 409);
+    consumedSlots = slots;
     const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
     if (required.some((role) => !slotByRole.has(role))) return jsonError("Uploaded images did not match the requested roles.", 400);
     const [person, fabric, outfit, lowerFabric, shirtFabric, waistcoatFabric] = await Promise.all([
@@ -429,17 +441,19 @@ async function handleHighResolutionRequest(
     headers.delete("content-type");
     headers.delete("content-length");
     headers.set("X-Nasir-High-Resolution", "1");
-    const response = await handleTryOnRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies);
-    // The permanent generation copy is written before success is returned. The
-    // short-lived direct-upload object is no longer needed afterwards.
-    if (response.ok) await removeConsumedUploadObjects(slots);
-    return response;
+    return await handleTryOnRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies);
   } catch (error) {
     if (error instanceof HighResolutionUploadError) return jsonError(error.message, error.status);
     if (error instanceof UploadValidationError) return jsonError(error.message, error.code === "file_too_large" ? 413 : 400);
     if (error instanceof AuthConfigurationError) return jsonError("Authentication is not configured.", 503);
     console.error("highres_tryon_prepare_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
-    return jsonError("We couldn't prepare the full-resolution images. Please upload them again.", 400);
+    if (error instanceof SyntaxError) return jsonError("We couldn't prepare the full-resolution images. Please upload them again.", 400);
+    // Everything else here is a storage or control-plane outage, which new uploads would not fix.
+    return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+  } finally {
+    // Slots are single-use, so these temporary customer photos are never needed
+    // again, whether or not the generation succeeded. Success keeps its own copy.
+    if (consumedSlots) await removeConsumedUploadObjects(consumedSlots);
   }
 }
 
@@ -762,8 +776,8 @@ export async function handleTryOnRequest(
         ...await Promise.all(level1Resolved.detailAssets.map((asset) => (dependencies.readLevel1Reference ?? readLevel1Reference)(asset, "curated-detail"))),
       ]
       : [];
-    // Image order contract: person, fabric, jacket, trousers, shirt,
-    // optional waistcoat, footwear — see lib/split-outfit/prompt.ts.
+    // Image order contract: person, jacket, trousers, shirt, optional
+    // waistcoat, footwear, then fabrics — see lib/split-outfit/image-map.ts.
     const readSplit = dependencies.readSplitReference ?? readSplitReference;
     const splitReferenceInputs = splitResolved
       ? [
@@ -940,7 +954,7 @@ export async function handleTryOnRequest(
     const durationMs = Date.now() - startedAt;
     if (generationAttempted) {
       if (idempotencyKey) {
-        const isTimeout = error instanceof Error && error.name.toLowerCase().includes("timeout");
+        const isTimeout = isTimeoutError(error);
         await writeIdempotencyRecord(user.username, idempotencyKey, {
           status: "failed",
           error: isTimeout
@@ -1008,7 +1022,7 @@ export async function handleTryOnRequest(
     }
 
     const errorMetadata = safeProviderError(error);
-    const isTimeout = errorMetadata.errorName.toLowerCase().includes("timeout");
+    const isTimeout = isTimeoutError(error);
     const isInvalidProviderImage = errorMetadata.code === "invalid_image_file";
     console.error("try_on_generation_failed", {
       requestId,

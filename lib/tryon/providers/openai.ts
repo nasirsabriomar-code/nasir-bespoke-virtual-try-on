@@ -88,6 +88,33 @@ export async function centerFabricRepeat(image: TryOnInput["person"]): Promise<T
   }
 }
 
+/**
+ * Phones often store portraits sideways with an EXIF rotation tag. Bake the
+ * rotation in so the canvas and the pixels agree. Upright images keep their
+ * original bytes.
+ */
+export async function uprightImage(image: TryOnInput["person"]): Promise<TryOnInput["person"]> {
+  try {
+    const source = Buffer.from(await image.file.arrayBuffer());
+    const metadata = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 }).metadata();
+    if (!metadata.orientation || metadata.orientation === 1) return image;
+    const rotated = sharp(source, { failOn: "error", limitInputPixels: 40_000_000 }).rotate();
+    const mime: SupportedImageMime = metadata.hasAlpha ? "image/png" : "image/jpeg";
+    const { data, info } = await (mime === "image/png"
+      ? rotated.png({ compressionLevel: 9, palette: false })
+      : rotated.jpeg({ quality: 100, chromaSubsampling: "4:4:4", mozjpeg: true })
+    ).toBuffer({ resolveWithObject: true });
+    return {
+      file: new File([new Uint8Array(data)], `upright.${extensionFor(mime)}`, { type: mime }),
+      mime,
+      width: info.width,
+      height: info.height,
+    };
+  } catch {
+    return image;
+  }
+}
+
 function namedUpload(image: { file: File; mime: SupportedImageMime }, stem: string) {
   // Keep the original bytes exactly as supplied. The wrapper only gives the
   // multipart part a format-identifying filename and content type.
@@ -145,12 +172,13 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const quality = DEFAULT_QUALITY;
     const client = this.clientFactory();
 
-    const parts = await Promise.all(inputParts(input).map(async (part) => (
+    const person = await uprightImage(input.person);
+    const parts = await Promise.all(inputParts({ ...input, person }).map(async (part) => (
       isFabricStem(part.stem) ? { ...part, image: await centerFabricRepeat(part.image) } : part
     )));
     const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
 
-    const requestedSize = resolveHighResolutionCanvas(input.person.width, input.person.height);
+    const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
     console.info("try_on_provider_inputs", {
       requestId: input.requestId,
       model: MODEL,
@@ -171,7 +199,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
         return { response: await edit(requestedSize, images), resolvedSize: requestedSize };
       } catch (error) {
         if (!isSizeRejection(error)) throw error;
-        const fallbackSize = resolveFallbackCanvas(input.person.width, input.person.height);
+        const fallbackSize = resolveFallbackCanvas(person.width, person.height);
         return { response: await edit(fallbackSize, images), resolvedSize: fallbackSize };
       }
     };

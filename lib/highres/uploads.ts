@@ -8,12 +8,17 @@ import { validateImageFile } from "@/lib/validation";
 import {
   type UploadRole,
   type UploadSlot,
+  deleteUploadSlot,
   getUploadSlot,
+  listExpiredUploadSlots,
   markUploadComplete,
 } from "@/lib/highres/ledger";
 
 import { HighResolutionUploadError } from "@/lib/highres/upload-error";
 export { HighResolutionUploadError } from "@/lib/highres/upload-error";
+
+const EXPIRED_UPLOAD_GRACE_MS = 60 * 60_000;
+const EXPIRED_UPLOAD_BATCH = 500;
 
 export function assertHighResolutionStorage() {
   if (!isGenerationStorageConfigured()) throw new HighResolutionUploadError("Private image storage is not configured.", 503);
@@ -62,6 +67,17 @@ export async function uploadSlotToFile(slot: UploadSlot) {
 
 export async function removeConsumedUploadObjects(slots: UploadSlot[]) {
   await Promise.all(slots.map((slot) => r2Delete(slot.pathname).catch(() => undefined)));
+}
+
+/** Removes abandoned uploads. The grace period keeps a slot consumed just before expiry safe. */
+export async function removeExpiredUploads(now = Date.now()) {
+  const slots = await listExpiredUploadSlots(new Date(now - EXPIRED_UPLOAD_GRACE_MS), EXPIRED_UPLOAD_BATCH);
+  for (const slot of slots) {
+    await r2Delete(slot.pathname);
+    await removeUploadChunks(slot);
+    await deleteUploadSlot(slot.id);
+  }
+  return slots.length;
 }
 
 export function requiredRolesForRequest(
