@@ -1,3 +1,30 @@
+/** Set to "not-started" when a request was rejected before any paid call for its key. */
+export const GENERATION_STATE_HEADER = "X-Generation-State";
+/** Set to "false" when a paid result is returned inline because History could not store it. */
+export const RESULT_SAVED_HEADER = "X-Result-Saved";
+
+export type GenerationResponseKind =
+  /** Normal stored result: JSON with history URLs. */
+  | "stored"
+  /** Paid result returned once as image bytes; it is not in History. */
+  | "unsaved"
+  /** Definitive rejection: nothing ran for this key, so stop tracking it. */
+  | "rejected"
+  /** Outcome unknown (proxy error, timeout, conflict on this key): follow the key. */
+  | "uncertain";
+
+/** Decides how the client handles a /api/try-on response without starting another paid run. */
+export function classifyGenerationResponse(response: Pick<Response, "ok" | "status" | "headers">): GenerationResponseKind {
+  if (response.ok) {
+    return response.headers.get(RESULT_SAVED_HEADER) === "false" ? "unsaved" : "stored";
+  }
+  if (response.headers.get(GENERATION_STATE_HEADER) === "not-started") return "rejected";
+  // A replayed failure is the recorded outcome of this key.
+  if (response.headers.get("Idempotency-Replayed") === "true") return "rejected";
+  if (response.status >= 500 || response.status === 409) return "uncertain";
+  return "rejected";
+}
+
 export type GenerationStatus =
   | { state: "absent" }
   | { state: "in_progress" }

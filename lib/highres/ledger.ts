@@ -136,10 +136,20 @@ export async function markUploadComplete(id: string, metadata: Pick<UploadSlot, 
   return existing?.status === "uploaded" ? existing : null;
 }
 
+function isUsableSlot(slot: UploadSlot | null, username: string): slot is UploadSlot {
+  return Boolean(slot && slot.username === username && slot.status === "uploaded" && new Date(slot.expiresAt).getTime() >= Date.now());
+}
+
+/** Read-only eligibility check. Consumption still happens atomically in consumeUploadSlots. */
+export async function findUsableUploadSlots(username: string, ids: string[]) {
+  const slots = await Promise.all([...new Set(ids)].map(getUploadSlot));
+  return slots.every((slot) => isUsableSlot(slot, username)) ? slots as UploadSlot[] : null;
+}
+
 export async function consumeUploadSlots(username: string, ids: string[]) {
   const unique = [...new Set(ids)];
   const slots = await Promise.all(unique.map(getUploadSlot));
-  if (slots.some((slot) => !slot || slot.username !== username || slot.status !== "uploaded" || new Date(slot.expiresAt).getTime() < Date.now())) return null;
+  if (!slots.every((slot) => isUsableSlot(slot, username))) return null;
   const sql = getSql();
   if (!sql) {
     if (unique.some(id => memoryUploads.get(id)?.status !== "uploaded")) return null;

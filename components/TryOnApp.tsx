@@ -17,7 +17,7 @@ import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
-import { fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
+import { classifyGenerationResponse, fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
 import { buildResultSummary, type ResultSummary } from "@/lib/result-summary";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import { clearSplitFabrics } from "@/lib/split-outfit/client-fabrics";
@@ -395,9 +395,10 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           headers: { "Content-Type": "application/json", "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
           body: JSON.stringify(requestWithGuidance),
         }, GENERATION_REQUEST_TIMEOUT_MS);
-        // A proxy error or conflict can arrive while the original job is still
-        // running. Reconcile that key before allowing a new generation.
-        if (response.status >= 500 || response.status === 409) throw new Error("Generation outcome needs confirmation.");
+        // A proxy error or a conflict on this key can arrive while the original
+        // job is still running. Reconcile that key before allowing a new
+        // generation. Rejections the server marks as never started are final.
+        if (classifyGenerationResponse(response) === "uncertain") throw new Error("Generation outcome needs confirmation.");
       } catch {
         // The connection dropped or timed out, but the paid generation may still
         // be running. Follow it rather than asking staff to pay for another.
@@ -416,10 +417,20 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         window.location.replace("/login");
         return;
       }
-      if (!response.ok) {
+      const outcome = classifyGenerationResponse(response);
+      if (outcome === "rejected") {
         trackPending(null);
         const payload: unknown = await response.json().catch(() => ({}));
         throw new Error(readResponseError(payload, "We couldn't create the try-on. Please try again."));
+      }
+      if (outcome === "unsaved") {
+        // The paid image exists only in this response. Show it and say so.
+        trackPending(null);
+        const unsavedUrl = URL.createObjectURL(await response.blob());
+        objectUrls.current.add(unsavedUrl);
+        showResult(unsavedUrl, person.previewUrl, null);
+        setError("This try-on could not be saved to History. Download it now; it will be lost when you leave this page.");
+        return;
       }
       const payload = await response.json().catch(() => ({})) as GenerationResponse;
       if (!payload.resultUrl || !payload.originalUrl) throw new Error("We couldn't create the try-on. Please try again.");

@@ -55,6 +55,7 @@ import {
 import { storeGenerationAssets, type GenerationAssetRefs } from "@/lib/generation-storage";
 import {
   consumeUploadSlots,
+  findUsableUploadSlots,
   isPermanentHistoryConfigured,
   persistPermanentGeneration,
   type UploadRole,
@@ -79,6 +80,10 @@ import {
   detectImageMime,
   validateImageFile,
 } from "@/lib/validation";
+
+import { GENERATION_STATE_HEADER, RESULT_SAVED_HEADER } from "@/lib/generation-recovery";
+
+const UPLOADS_UNAVAILABLE_MESSAGE = "One or more upload sessions expired or were already used. Please upload the images again.";
 
 const JSON_HEADERS = {
   "Cache-Control": "no-store, private",
@@ -143,17 +148,46 @@ function generationResultResponse(generationId: string, metadata?: TryOnOutput["
   });
 }
 
-async function replayOrBlockIdempotency(username: string, key: string) {
+/**
+ * A result the model produced but storage could not keep. It is streamed back
+ * once so the paid image is not discarded; staff are told to download it.
+ */
+function unsavedResultResponse(bytes: Uint8Array, contentType: string, generationId: string, extraHeaders?: HeadersInit) {
+  const exactBytes = bytes.slice();
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(exactBytes);
+      controller.close();
+    },
+  }), {
+    status: 200,
+    headers: {
+      "Cache-Control": "no-store, private",
+      "Content-Disposition": 'inline; filename="nasir-bespoke-try-on.png"',
+      "Content-Type": contentType,
+      "X-Content-Type-Options": "nosniff",
+      [RESULT_SAVED_HEADER]: "false",
+      "X-Generation-Id": generationId,
+      ...extraHeaders,
+    },
+  });
+}
+
+/** Tracks whether this request reached the paid provider call, or deferred to an existing key. */
+type RequestState = { generationStarted: boolean; deferredToKey: boolean };
+
+async function replayOrBlockIdempotency(username: string, key: string, state?: RequestState) {
   const decision = await resolveIdempotencyForRequest(username, key);
+  if (decision.kind === "absent") return null;
+  if (state) state.deferredToKey = true;
   if (decision.kind === "replay") return replayIdempotentResult(decision.record);
-  if (decision.kind === "in_progress") {
-    return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
-  }
-  return null;
+  return jsonError("A try-on is already in progress. Please wait for it to finish.", 409, {
+    [GENERATION_STATE_HEADER]: "in-progress",
+  });
 }
 
 function replayIdempotentResult(record: Extract<IdempotencyRecord, { status: "complete" } | { status: "complete_generation" } | { status: "failed" }>) {
-  if (record.status === "failed") return jsonError(record.error, record.httpStatus);
+  if (record.status === "failed") return jsonError(record.error, record.httpStatus, { "Idempotency-Replayed": "true" });
   if (record.status === "complete_generation") return generationResultResponse(record.generationId, undefined, { "Idempotency-Replayed": "true" });
   return imageResultResponse(Uint8Array.from(Buffer.from(record.body, "base64")), record.contentType, {
     "Idempotency-Replayed": "true",
@@ -377,6 +411,7 @@ type HighResolutionRequest = {
 async function handleHighResolutionRequest(
   request: Request,
   dependencies: RouteDependencies,
+  state: RequestState,
 ): Promise<Response> {
   if (!isSameOriginRequest(request)) return jsonError("This request was blocked. Please refresh and try again.", 403);
   let user;
@@ -392,7 +427,7 @@ async function handleHighResolutionRequest(
     const existingKey = parseIdempotencyKey(request);
     if (existingKey === "") return jsonError("Invalid idempotency key.", 400);
     if (existingKey) {
-      const replay = await replayOrBlockIdempotency(user.username, existingKey);
+      const replay = await replayOrBlockIdempotency(user.username, existingKey, state);
       if (replay) return replay;
     }
     assertHighResolutionStorage();
@@ -425,9 +460,11 @@ async function handleHighResolutionRequest(
       waistcoatFabric: Boolean(ids.waistcoatFabric),
     });
     if (required.some((role) => !ids[role])) return jsonError("Please upload the required person, fabric, and outfit images.", 400);
-    const slots = await consumeUploadSlots(user.username, required.map((role) => ids[role] as string));
-    if (!slots) return jsonError("One or more upload sessions expired or were already used. Please upload the images again.", 409);
-    consumedSlots = slots;
+    // Check the uploads now but consume them only once the lock and rate limit
+    // allow a paid call. A rejected request must leave them reusable.
+    const requiredIds = required.map((role) => ids[role] as string);
+    const slots = await findUsableUploadSlots(user.username, requiredIds);
+    if (!slots) return jsonError(UPLOADS_UNAVAILABLE_MESSAGE, 409);
     const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
     if (required.some((role) => !slotByRole.has(role))) return jsonError("Uploaded images did not match the requested roles.", 400);
     const [person, fabric, outfit, lowerFabric, shirtFabric, waistcoatFabric] = await Promise.all([
@@ -455,7 +492,12 @@ async function handleHighResolutionRequest(
     const headers = new Headers(request.headers);
     headers.delete("content-type");
     headers.delete("content-length");
-    return await handleMultipartRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies, true);
+    return await handleMultipartRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies, state, {
+      claimUploads: async () => {
+        consumedSlots = await consumeUploadSlots(user.username, requiredIds);
+        return Boolean(consumedSlots);
+      },
+    });
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) return jsonError("The try-on selection is too large.", 413);
     if (error instanceof HighResolutionUploadError) return jsonError(error.message, error.status);
@@ -466,8 +508,9 @@ async function handleHighResolutionRequest(
     // Everything else here is a storage or control-plane outage, which new uploads would not fix.
     return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
   } finally {
-    // Slots are single-use, so these temporary customer photos are never needed
-    // again, whether or not the generation succeeded. Success keeps its own copy.
+    // Consumed slots are single-use, so these temporary customer photos are never
+    // needed again, whether or not the generation succeeded. Success keeps its own
+    // copy. Unconsumed slots stay for a retry; expired ones are removed by cron.
     if (consumedSlots) await removeConsumedUploadObjects(consumedSlots);
   }
 }
@@ -476,17 +519,31 @@ export async function handleTryOnRequest(
   request: Request,
   dependencies: RouteDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<Response> {
-  if ((request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) {
-    return handleHighResolutionRequest(request, dependencies);
+  const state: RequestState = { generationStarted: false, deferredToKey: false };
+  const response = (request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")
+    ? await handleHighResolutionRequest(request, dependencies, state)
+    : await handleMultipartRequest(request, dependencies, state);
+  // Tell the client this request never reached the paid call, so it must not
+  // wait on a key that was never recorded. Replays and in-progress answers
+  // describe an existing key and keep their own meaning.
+  if (!response.ok && !state.generationStarted && !state.deferredToKey) {
+    response.headers.set(GENERATION_STATE_HEADER, "not-started");
   }
-  return handleMultipartRequest(request, dependencies, false);
+  return response;
 }
+
+type HighResolutionHandoff = {
+  /** Atomically consumes the request's uploads. False when any was already used or expired. */
+  claimUploads: () => Promise<boolean>;
+};
 
 async function handleMultipartRequest(
   request: Request,
   dependencies: RouteDependencies,
-  highResolution: boolean,
+  state: RequestState,
+  handoff?: HighResolutionHandoff,
 ): Promise<Response> {
+  const highResolution = Boolean(handoff);
   const requestId = crypto.randomUUID();
 
   if (!isSameOriginRequest(request)) {
@@ -515,7 +572,7 @@ async function handleMultipartRequest(
 
   if (idempotencyKey) {
     try {
-      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
       if (blocked) return blocked;
     } catch (error) {
       if (error instanceof GenerationGuardUnavailableError) {
@@ -745,7 +802,7 @@ async function handleMultipartRequest(
       }
     }
     if (idempotencyKey) {
-      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
       if (blocked) return blocked;
     }
 
@@ -760,14 +817,14 @@ async function handleMultipartRequest(
     }
     if (!lease) {
       if (idempotencyKey) {
-        const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+        const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
         if (blocked) return blocked;
       }
       return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
     }
 
     if (idempotencyKey) {
-      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey);
+      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
       if (blocked) return blocked;
     }
 
@@ -800,6 +857,10 @@ async function handleMultipartRequest(
           "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
         },
       );
+    }
+
+    if (handoff && !(await handoff.claimUploads())) {
+      return jsonError(UPLOADS_UNAVAILABLE_MESSAGE, 409, rateHeaders);
     }
 
     // Level 1 resolves only trusted server-owned asset IDs. The actual private
@@ -854,6 +915,7 @@ async function handleMultipartRequest(
     }
 
     generationAttempted = true;
+    state.generationStarted = true;
     const neutralizeSplit = selectionMode === "split";
     const neutralizeLevel1 = selectionMode === "level1" && (fabricRegion === "both" || fabricRegion === "jacket" || fabricRegion === "custom");
     const preparedReferences = await Promise.all(references.map(async (reference) => {
@@ -902,18 +964,7 @@ async function handleMultipartRequest(
         errorName: storageError instanceof Error ? storageError.name : "UnknownError",
       });
     }
-    if (highResolution && !assets?.result) {
-      throw new HighResolutionUploadError("We couldn't save the full-resolution master. Please try again.", 503);
-    }
-    await recordUsageSafely(
-      dependencies,
-      request,
-      user.username,
-      requestId,
-      "success",
-      Date.now() - startedAt,
-      result.metadata,
-      level1Resolved ? {
+    const generationSummary: NonNullable<UsageEvent["generation"]> = level1Resolved ? {
         mode: "level1",
         categoryId: level1Resolved.category.id,
         categoryName: level1Resolved.category.name,
@@ -959,7 +1010,32 @@ async function handleMultipartRequest(
           waistcoat: Boolean(waistcoatFabric) && hasPhotographedWaistcoat(splitResolved),
         },
         fabricRegion,
-      } : { mode: "outfit" },
+      } : { mode: "outfit" };
+
+    if (highResolution && !assets?.result) {
+      // The provider has already been paid. Throwing here would discard the
+      // image and push staff into a second paid run, so hand it back once.
+      console.error("try_on_result_unsaved", { requestId, route: "try-on" });
+      await recordUsageSafely(dependencies, request, user.username, requestId, "success", Date.now() - startedAt, result.metadata, generationSummary);
+      if (idempotencyKey) {
+        await writeIdempotencyRecord(user.username, idempotencyKey, {
+          status: "failed",
+          error: "This try-on was generated but could not be saved to History. It was only shown once.",
+          httpStatus: 502,
+        }).catch(() => console.error("generation_idempotency_store_failed", { requestId, route: "try-on" }));
+      }
+      return unsavedResultResponse(result.bytes, result.contentType, requestId, rateHeaders);
+    }
+
+    await recordUsageSafely(
+      dependencies,
+      request,
+      user.username,
+      requestId,
+      "success",
+      Date.now() - startedAt,
+      result.metadata,
+      generationSummary,
       assets,
     );
     console.info("try_on_generation", {

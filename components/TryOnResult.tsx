@@ -77,7 +77,7 @@ export function TryOnResult({
       </dl>
 
       <div className="result-actions">
-        <a href={`${resultUrl}${resultUrl.includes("?") ? "&" : "?"}download=1`} download={filename}>Download</a>
+        <a href={resultUrl.startsWith("blob:") ? resultUrl : `${resultUrl}${resultUrl.includes("?") ? "&" : "?"}download=1`} download={filename}>Download</a>
         <button type="button" onClick={onRegenerate} disabled={isGenerating}>
           {isGenerating ? "Creating…" : "Try Again"}
         </button>
