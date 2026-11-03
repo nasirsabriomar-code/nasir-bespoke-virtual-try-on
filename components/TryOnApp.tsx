@@ -26,6 +26,7 @@ import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
 import type { FabricRegion } from "@/lib/catalog/level1-prompt";
 import type { RestoredLook } from "@/lib/history/restore-look";
+import type { BuilderStepId } from "@/lib/split-outfit/builder-steps";
 
 type UploadedImage = {
   file: File;
@@ -127,6 +128,12 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [resultSummary, setResultSummary] = useState<ResultSummary | null>(null);
   // Split Outfit keeps every result from this page session for showing the customer.
   const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
+  const [builderStep, setBuilderStep] = useState<BuilderStepId>("customer");
+  const [visitedSteps, setVisitedSteps] = useState<ReadonlySet<BuilderStepId>>(() => new Set<BuilderStepId>(["customer"]));
+  const goToStep = useCallback((step: BuilderStepId) => {
+    setBuilderStep(step);
+    setVisitedSteps((current) => (current.has(step) ? current : new Set([...current, step])));
+  }, []);
   const uploadController = useRef<AbortController | null>(null);
   const [generationStage, setGenerationStage] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -601,7 +608,51 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
     setSplitOutfit(DEFAULT_SPLIT_OUTFIT_STATE);
     setFabricGuidance({});
     setBackgroundControl({ mode: "prompt-only" });
+    setBuilderStep("customer");
+    setVisitedSteps(new Set<BuilderStepId>(["customer"]));
   }, [clearResult, isJacketCategory, revokeUrl]);
+
+  const personUpload = (
+    <ImageUpload
+      id="customer-photo"
+      label={UPLOAD_HELP.person.label}
+      description={UPLOAD_HELP.person.description}
+      guidance="Use one person in even light, with a clear face and the clothing area visible. Avoid crossed arms where possible. Include feet when changing shoes; cropped-away details cannot be preserved faithfully."
+      file={person?.file ?? null}
+      previewUrl={person?.previewUrl ?? null}
+      onSelect={(file) => void changeImage("person", file)}
+      onRemove={() => removeImage("person")}
+      disabled={isGenerating}
+    />
+  );
+
+  const backgroundBlock = person ? <details className="fabric-reference-controls"><summary>Advanced · Background preservation: {backgroundControl.mode === "prompt-only" ? "Prompt only" : backgroundControl.mode === "masked" ? "Garment mask" : "Preserve outside region"}</summary><BackgroundControls previewUrl={person.previewUrl} value={backgroundControl} onChange={setBackgroundControl} disabled={isGenerating} /></details> : null;
+
+  const statusBlock = (
+    <>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {pendingGeneration && !isGenerating ? <section aria-label="Pending generation"><p>We need to check whether the previous generation finished before starting another paid run.</p><button type="button" onClick={() => void reconcilePending(pendingGeneration)}>Check generation again</button></section> : null}
+
+      {uploadProgress !== null ? <p className="privacy-note" role="status">{generationStage || "Preparing originals"} · {uploadProgress}% of total upload.</p> : null}
+
+      {isGenerating && !pendingGeneration ? <button type="button" onClick={() => uploadController.current?.abort()}>Cancel upload</button> : null}
+      {isGenerating ? <GenerationState /> : null}
+    </>
+  );
+
+  const resultBlock = resultUrl && originalResultUrl && resultSummary ? (
+        <TryOnResult
+          resultUrl={resultUrl}
+          originalUrl={originalResultUrl}
+          outputSize={outputSize ?? undefined}
+          summary={resultSummary}
+          onRegenerate={generate}
+          onReset={startOver}
+          isGenerating={isGenerating}
+          fabricReferences={resultReferences}
+          notice={draftChanged ? "The outfit has changed since this result" : undefined}
+        />
+      ) : null;
 
   return (
     <main className="atelier-shell">
@@ -639,7 +690,29 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         <p className="atelier-intro">Choose the look you love. We handle the complexity.</p>
       </section>
 
-      <section className="level1-flow" aria-label="Create a visual try-on">
+      {splitOutfitEnabled ? (
+        <ModeSelector
+          disabled={isGenerating}
+          mode={mode}
+          onModeChange={(nextMode) => {
+            setMode(nextMode);
+            if (nextMode === "split") {
+              // "custom" and "jacket" are Full Outfit-only fabric modes; Split
+              // Outfit only ever accepts upper/lower/both.
+              setFabricRegion((current) => (current === "custom" || current === "jacket" ? "both" : current));
+              setReuseFabricForLower(false);
+              setLowerFabric((current) => {
+                revokeUrl(current?.previewUrl);
+                return null;
+              });
+            }
+            clearResult();
+            setError(null);
+          }}
+        />
+      ) : null}
+
+      {mode === "full" ? <section className="level1-flow" aria-label="Create a visual try-on">
         <div className="level1-step-heading">
           <span>01</span>
           <div>
@@ -648,17 +721,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           </div>
         </div>
         <div className="level1-upload-grid">
-          <ImageUpload
-            id="customer-photo"
-            label={UPLOAD_HELP.person.label}
-            description={UPLOAD_HELP.person.description}
-            guidance="Use one person in even light, with a clear face and the clothing area visible. Avoid crossed arms where possible. Include feet when changing shoes; cropped-away details cannot be preserved faithfully."
-            file={person?.file ?? null}
-            previewUrl={person?.previewUrl ?? null}
-            onSelect={(file) => void changeImage("person", file)}
-            onRemove={() => removeImage("person")}
-            disabled={isGenerating}
-          />
+          {personUpload}
           {mode === "full" ? (
             <ImageUpload
               id="fabric-photo"
@@ -686,9 +749,6 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
             />
           ) : null}
         </div>
-        {mode === "split" ? (
-          <p className="privacy-note">Optional cloth for jacket, trousers, shirt, and waistcoat is assigned in Fabrics &amp; materials below. Shoes keep the shoe photograph.</p>
-        ) : null}
         {mode === "full" && !isJacketCategory ? <div
           className="comparison-toggle fabric-region-toggle"
           role="radiogroup"
@@ -749,29 +809,8 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           </label>
         ) : null}
         <p className="privacy-note">Studio quality: medium effort · full-resolution originals · private PNG master.</p>
-      </section>
+      </section> : null}
 
-      {splitOutfitEnabled ? (
-        <ModeSelector
-          disabled={isGenerating}
-          mode={mode}
-          onModeChange={(nextMode) => {
-            setMode(nextMode);
-            if (nextMode === "split") {
-              // "custom" and "jacket" are Full Outfit-only fabric modes; Split
-              // Outfit only ever accepts upper/lower/both.
-              setFabricRegion((current) => (current === "custom" || current === "jacket" ? "both" : current));
-              setReuseFabricForLower(false);
-              setLowerFabric((current) => {
-                revokeUrl(current?.previewUrl);
-                return null;
-              });
-            }
-            clearResult();
-            setError(null);
-          }}
-        />
-      ) : null}
 
       {mode === "full" ? (
         <>
@@ -858,31 +897,21 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           onFabricSelect={(piece, file) => void selectSplitFabric(piece, file)}
           onFabricRemove={removeSplitFabric}
           onReuseJacketOnTrousers={reuseJacketOnTrousers}
+          step={builderStep}
+          onStepChange={goToStep}
+          visited={visitedSteps}
+          personPreview={person?.previewUrl ?? null}
+          personSlot={personUpload}
+          statusSlot={statusBlock}
+          reviewExtras={<>{backgroundBlock}{resultBlock}</>}
         />
       )}
-      {person ? <details className="fabric-reference-controls"><summary>Advanced · Background preservation: {backgroundControl.mode === "prompt-only" ? "Prompt only" : backgroundControl.mode === "masked" ? "Garment mask" : "Preserve outside region"}</summary><BackgroundControls previewUrl={person.previewUrl} value={backgroundControl} onChange={setBackgroundControl} disabled={isGenerating} /></details> : null}
-      {mode === "full" ? activeFabricReferences.map(item => <FabricReferenceControls key={item.role + item.image.previewUrl} label={item.label} previewUrl={item.image.previewUrl} value={fabricGuidance[item.role]} onChange={value => setFabricGuidance(current => ({ ...current, [item.role]: value }))} disabled={isGenerating} />) : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      {pendingGeneration && !isGenerating ? <section aria-label="Pending generation"><p>We need to check whether the previous generation finished before starting another paid run.</p><button type="button" onClick={() => void reconcilePending(pendingGeneration)}>Check generation again</button></section> : null}
-
-      {uploadProgress !== null ? <p className="privacy-note" role="status">{generationStage || "Preparing originals"} · {uploadProgress}% of total upload.</p> : null}
-
-      {isGenerating && !pendingGeneration ? <button type="button" onClick={() => uploadController.current?.abort()}>Cancel upload</button> : null}
-      {isGenerating ? <GenerationState /> : null}
-
-      {resultUrl && originalResultUrl && resultSummary ? (
-        <TryOnResult
-          resultUrl={resultUrl}
-          originalUrl={originalResultUrl}
-          outputSize={outputSize ?? undefined}
-          summary={resultSummary}
-          onRegenerate={generate}
-          onReset={startOver}
-          isGenerating={isGenerating}
-          fabricReferences={resultReferences}
-          notice={draftChanged ? "The outfit has changed since this result" : undefined}
-        />
-      ) : null}
+      {mode === "full" ? <>
+        {backgroundBlock}
+        {activeFabricReferences.map(item => <FabricReferenceControls key={item.role + item.image.previewUrl} label={item.label} previewUrl={item.image.previewUrl} value={fabricGuidance[item.role]} onChange={value => setFabricGuidance(current => ({ ...current, [item.role]: value }))} disabled={isGenerating} />)}
+        {statusBlock}
+        {resultBlock}
+      </> : null}
 
       <p className="privacy-note">Photos and results are kept in private History, visible to signed-in staff. AI visualization; actual garment fit may vary.</p>
       </section>

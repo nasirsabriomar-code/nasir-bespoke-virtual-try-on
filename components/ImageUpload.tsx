@@ -12,6 +12,8 @@ type ImageUploadProps = {
   onSelect: (file: File) => void;
   onRemove: () => void;
   disabled?: boolean;
+  /** One-row layout for cloth inside a builder step. */
+  compact?: boolean;
 };
 
 const ACCEPTED_IMAGES = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
@@ -26,6 +28,7 @@ export function ImageUpload({
   onSelect,
   onRemove,
   disabled = false,
+  compact = false,
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -76,6 +79,28 @@ export function ImageUpload({
       disabled={disabled}
     />
   );
+
+  if (compact) {
+    return (
+      <div className="upload-compact">
+        {input}
+        {cameraInput}
+        <div className="upload-compact-thumb">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {previewUrl && file ? <img src={previewUrl} alt={`${label} preview`} /> : <span aria-hidden="true">No cloth photo</span>}
+        </div>
+        <div className="upload-compact-body">
+          <strong>{label}</strong>
+          <div className="upload-compact-actions" aria-label={`${label} image actions`}>
+            <button type="button" onClick={openPicker} disabled={disabled}>{previewUrl && file ? "Change" : "Upload"}</button>
+            <button type="button" onClick={openCamera} disabled={disabled}>Camera</button>
+            {previewUrl && file ? <button type="button" onClick={onRemove} disabled={disabled}>Remove</button> : null}
+          </div>
+          <p className="upload-compact-guidance">{guidance}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="upload-column">
