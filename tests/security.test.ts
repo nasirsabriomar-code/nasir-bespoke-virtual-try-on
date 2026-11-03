@@ -21,7 +21,8 @@ import {
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { centerFabricRepeat, OpenAITryOnProvider } from "@/lib/tryon/providers/openai";
-import { MAX_IMAGE_BYTES, validateImageFile } from "@/lib/validation";
+import { MAX_IMAGE_BYTES } from "@/lib/validation";
+import { validateImageFile } from "@/lib/validate-image";
 
 const PASSWORD = "Correct-Horse-Battery-Staple";
 const TEST_USER = {
@@ -63,7 +64,7 @@ function sameOriginHeaders(extra: Record<string, string> = {}) {
 
 function tinyPng(name: string) {
   return new File(
-    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1])],
+    [Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgYGgAAACEAIGcaMMkAAAAAElFTkSuQmCC", "base64")],
     name,
     { type: "image/png" },
   );

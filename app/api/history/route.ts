@@ -1,3 +1,4 @@
+import { historyOwner } from "@/lib/history/access";
 import { getGenerationReviews } from "@/lib/history/reviews";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
@@ -27,8 +28,8 @@ export async function GET(request: Request) {
     const rawLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
     const offset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
     const history = isPermanentHistoryConfigured()
-      ? await getPermanentHistory(rawLimit, Number.isFinite(offset) ? Math.max(0, offset) : 0)
-      : await getUsageHistory(rawLimit);
+      ? await getPermanentHistory(rawLimit, Number.isFinite(offset) ? Math.max(0, offset) : 0, historyOwner(user))
+      : await getUsageHistory(rawLimit, Number.isFinite(offset) ? Math.max(0, offset) : 0, historyOwner(user));
     let reviews: Awaited<ReturnType<typeof getGenerationReviews>> = {};
     try { reviews = await getGenerationReviews(history.events.map(event => event.id), user.username); } catch { console.error("history_feedback_unavailable"); }
     return Response.json(redactUsageHistoryForClient({ ...history, events: history.events.map(event => ({ ...event, review: reviews[event.id] })) }), { status: 200, headers: JSON_HEADERS });

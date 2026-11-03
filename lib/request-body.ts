@@ -7,7 +7,7 @@ export class RequestBodyTooLargeError extends Error {
 
 // Enforce the limit on streamed bytes, including chunked requests and clients
 // that omit or understate Content-Length. Stop reading as soon as it is crossed.
-export async function readBoundedBody(request: Request, maximumBytes: number) {
+export async function readBoundedBody(request: Request, maximumBytes: number, timeoutMs = 30_000) {
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
     await request.body?.cancel().catch(() => undefined);
@@ -18,16 +18,21 @@ export async function readBoundedBody(request: Request, maximumBytes: number) {
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new DOMException("Upload timed out", "TimeoutError")), timeoutMs);
+  });
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), deadline]);
       if (done) break;
       size += value.byteLength;
       if (size > maximumBytes) throw new RequestBodyTooLargeError();
       chunks.push(value);
     }
   } finally {
-    await reader.cancel().catch(() => undefined);
+    clearTimeout(timer);
+    void reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
   const bytes = new Uint8Array(size);

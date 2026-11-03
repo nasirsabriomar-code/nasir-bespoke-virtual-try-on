@@ -1,6 +1,8 @@
+import { cleanupRetainedGenerations } from "@/lib/history/deletion";
 import { removeExpiredUploads } from "@/lib/highres/uploads";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 // Vercel Cron sends CRON_SECRET as a bearer token. Without a configured secret
@@ -11,7 +13,9 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
   try {
-    return Response.json({ removed: await removeExpiredUploads() });
+    const removed = await removeExpiredUploads();
+    const generations = await cleanupRetainedGenerations();
+    return Response.json({ removed, generations });
   } catch (error) {
     console.error("upload_cleanup_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
     return Response.json({ error: "Cleanup failed." }, { status: 503 });

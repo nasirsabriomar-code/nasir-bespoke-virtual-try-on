@@ -154,7 +154,7 @@ The resolved configuration becomes the source of truth for both the prompt and h
 
 Upstash Redis stores authoritative session state, rate limits, bounded recent history and account-isolated feedback. Cloudflare R2 stores private catalogue references, chunk uploads, customer inputs and PNG results; authenticated routes proxy assets. Neon PostgreSQL stores upload ownership/status/checksums and permanent generation records. These paths do not use Vercel Blob.
 
-Permanent history is paginated; bounded Redis history is a fallback. Abandoned uploads have a cleanup path. Completed images and review keys have no automatic deletion lifecycle yet; see SECURITY.md.
+Permanent history is paginated; bounded Redis history is a fallback. Abandoned uploads have a cleanup path. Completed generations default to 30-day retention. Owners/admins can delete from History; durable tombstones hide queued work and the daily cleanup retries asset, history, review and replay-cache removal. See SECURITY.md.
 
 ## Deployment
 
@@ -166,7 +166,7 @@ The production deployment must contain server-only values for OpenAI, authentica
 
 ## Staff review metadata and browser continuity
 
-`GET/PUT /api/history/[id]/review` authenticates the caller, verifies the generation exists under the shared-staff history policy and stores only the caller's review. PUT requires the origin check and a 4 KB bounded body. Reviews/favourites use Redis metadata keys scoped to a hashed username and generation ID; local development uses process memory. A feedback-store failure does not hide generation history. No SQL migration is introduced for reviews.
+`GET/PUT /api/history/[id]/review` authenticates the caller, verifies the generation exists under the owner/admin history policy and stores only the caller's review. PUT requires the origin check and a 4 KB bounded body. Reviews/favourites use Redis metadata keys scoped to a hashed username and generation ID; local development uses process memory. A feedback-store failure does not hide generation history. No SQL migration is introduced for reviews.
 
 Pending generation keys and bounded look summaries survive a tab refresh in account-scoped session storage. No photo bytes or session tokens are persisted for recovery. Logout clears this tracking. Upload checkpoints contain only a content fingerprint, slot ID, expiry and next acknowledged chunk. Client retries reuse the same slot/index; server completion cannot revive consumed slots.
 

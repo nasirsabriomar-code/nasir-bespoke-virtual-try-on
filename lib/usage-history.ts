@@ -1,3 +1,5 @@
+import { deletedGenerationIds } from "@/lib/highres/ledger";
+import { generationExpired } from "@/lib/history/retention-policy";
 import type { GenerationReview } from "@/lib/history/review-types";
 import { sanitizeGenerationMetadata } from "@/lib/tryon/metadata";
 import type { TryOnMetadata } from "@/lib/tryon/types";
@@ -267,7 +269,7 @@ function getRedis() {
 
   const key = createHash("sha256").update(`${url}:${token}`).digest("hex");
   if (!redisCache || redisCache.key !== key) {
-    redisCache = { key, redis: new Redis({ url, token }) };
+    redisCache = { key, redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3000) }) };
   }
   return redisCache.redis;
 }
@@ -339,30 +341,15 @@ export async function recordUsageEvent(event: UsageEvent) {
   memoryHistory.total += 1;
 }
 
-export async function getUsageHistory(limit = 100): Promise<UsageHistory> {
+export async function getUsageHistory(limit = 100, offset = 0, username?: string): Promise<UsageHistory> {
   const safeLimit = Math.min(Math.max(Math.floor(limit) || 100, 1), 100);
-  const retained = maxEvents();
-  const redis = getRedis();
-  if (redis) {
-    const [rawEvents, total] = await Promise.all([
-      redis.lrange<string>(HISTORY_KEY, 0, safeLimit - 1),
-      redis.get<number>(HISTORY_TOTAL_KEY),
-    ]);
-    return {
-      events: rawEvents.map(parseEvent).filter((event): event is UsageEvent => Boolean(event)),
-      total: typeof total === "number" ? total : 0,
-      retained,
-    };
-  }
-
-  return {
-    events: memoryHistory.events
-      .slice(0, safeLimit)
-      .map(parseEvent)
-      .filter((event): event is UsageEvent => Boolean(event)),
-    total: memoryHistory.total,
-    retained,
-  };
+  const safeOffset = Math.max(0, Math.floor(offset) || 0);
+  // Filter before paging: never expose other staff's events or counts. The
+  // fallback is bounded by maxEvents, including records beyond the first 100.
+  const history = await getAllUsageHistoryForMigration();
+  const deleted = await deletedGenerationIds(history.events.map(event => event.id));
+  const events = history.events.filter(event => (!username || event.username === username) && !generationExpired(event.occurredAt) && !deleted.has(event.id));
+  return { events: events.slice(safeOffset, safeOffset + safeLimit), total: events.length, retained: events.length };
 }
 
 // Administrative migration helper. The staff API intentionally pages at 100,
@@ -390,7 +377,7 @@ export async function getAllUsageHistoryForMigration(): Promise<UsageHistory> {
 }
 
 export async function getUsageEvent(id: string) {
-  const history = await getUsageHistory(maxEvents());
+  const history = await getAllUsageHistoryForMigration();
   return history.events.find((event) => event.id === id) ?? null;
 }
 
@@ -438,5 +425,15 @@ export function resetMemoryUsageHistoryForTests() {
   if (process.env.NODE_ENV === "test") {
     memoryHistory.events.length = 0;
     memoryHistory.total = 0;
+  }
+}
+
+export async function removeUsageEvent(id: string) {
+  const store = getRedis();
+  if (store) {
+    const events = await store.lrange<string>(HISTORY_KEY, 0, maxEvents() - 1);
+    for (const raw of events) if (parseEvent(raw)?.id === id) await store.lrem(HISTORY_KEY, 0, typeof raw === "string" ? raw : JSON.stringify(raw));
+  } else {
+    memoryHistory.events = memoryHistory.events.filter(raw => parseEvent(raw)?.id !== id);
   }
 }

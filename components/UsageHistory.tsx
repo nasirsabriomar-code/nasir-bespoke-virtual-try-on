@@ -162,6 +162,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<HistoryEvent | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -238,6 +239,22 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function deleteSelectedGeneration() {
+    if (isDeleting || !selectedEvent || !window.confirm("Permanently delete this generation and its stored customer photos?")) return;
+    setError(null);
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/history/${encodeURIComponent(selectedEvent.id)}`, { method: "DELETE", credentials: "same-origin", cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok && !payload.deletionQueued) throw new Error(payload.error || "Deletion failed. Please try again.");
+      if (payload.deletionQueued) setError(payload.error);
+      const id = selectedEvent.id;
+      setSelectedEvent(null);
+      setHistory(current => current ? { ...current, events: current.events.filter(event => event.id !== id), total: Math.max(0, current.total - 1), retained: Math.max(0, current.retained - 1) } : current);
+    } catch (error) { setError(error instanceof Error ? error.message : "Deletion failed."); }
+    finally { setIsDeleting(false); }
   }
 
   async function loadMoreHistory() {
@@ -393,6 +410,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             Back to history
                           </button>
                         </div>
+                        <button type="button" className="history-button" disabled={isDeleting} onClick={() => void deleteSelectedGeneration()}>Delete generation and photos</button>
                         <div className="generation-details-grid">
                           {[
                             "person",

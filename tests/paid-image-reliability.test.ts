@@ -38,7 +38,7 @@ beforeEach(() => {
 
 function tinyPng(name: string) {
   return new File(
-    [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1])],
+    [Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgYGgAAACEAIGcaMMkAAAAAElFTkSuQmCC", "base64")],
     name,
     { type: "image/png" },
   );
@@ -104,7 +104,7 @@ test("#1 a Redis history failure still writes the permanent generation record", 
   assert.equal((await getPermanentHistory(100)).total, before + 1);
 });
 
-const event = (id: string) => ({ id, username: "showroom" }) as UsageEvent;
+const event = (id: string) => ({ id, username: "showroom", occurredAt: new Date().toISOString() }) as UsageEvent;
 
 test("#1 generation lookup falls back to recent history when the ledger misses or fails", async () => {
   assert.equal((await lookupGenerationEvent("a", { permanent: async () => event("permanent"), recent: async () => event("recent") }))?.id, "permanent");

@@ -1,6 +1,9 @@
 // Originals are uploaded in chunks to private R2 storage. This limit protects
 // the server-to-model handoff; it never causes browser-side resizing or
 // recompression.
+export const MAX_IMAGE_PIXELS = 40_000_000;
+export const MAX_IMAGE_EDGE = 16_384;
+
 export const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 // Legacy multipart requests remain bounded while the application transitions
 // to direct uploads. New high-resolution requests contain JSON asset IDs.
@@ -93,60 +96,4 @@ export function detectImageDimensions(bytes: Uint8Array, mime: SupportedImageMim
     }
   }
   return null;
-}
-
-export async function validateImageFile(file: File | null, label: string) {
-  if (!file || file.size === 0) {
-    throw new UploadValidationError(
-      `Please upload ${label}.`,
-      "missing_file",
-    );
-  }
-
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new UploadValidationError(
-      "This image is too large. Please choose a smaller image.",
-      "file_too_large",
-    );
-  }
-
-  const header = new Uint8Array(await file.slice(0, 512 * 1024).arrayBuffer());
-  const detectedMime = detectImageMime(header);
-
-  if (detectedMime === "image/heic") {
-    throw new UploadValidationError(
-      "This HEIC image could not be converted. Please upload a JPG, PNG, or WebP image.",
-      "unsupported_type",
-    );
-  }
-
-  if (!detectedMime) {
-    throw new UploadValidationError(
-      "Please upload a valid JPG, PNG, or WebP image.",
-      "invalid_image",
-    );
-  }
-
-  const dimensions = detectImageDimensions(header, detectedMime);
-  if (!dimensions || dimensions.width < 1 || dimensions.height < 1) {
-    throw new UploadValidationError(
-      "The selected file does not appear to be a valid image.",
-      "invalid_image",
-    );
-  }
-
-  const declaredMime = file.type.toLowerCase();
-  if (declaredMime && declaredMime !== detectedMime) {
-    throw new UploadValidationError(
-      "The selected file does not appear to be a valid image.",
-      "invalid_image",
-    );
-  }
-
-  return {
-    file,
-    mime: detectedMime,
-    width: dimensions.width,
-    height: dimensions.height,
-  };
 }

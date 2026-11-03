@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHmac } from "node:crypto";
+import type { AuthorizedUser } from "@/lib/auth/config";
 import { SignJWT, jwtVerify } from "jose";
 import { AuthConfigurationError, findAuthorizedUser } from "@/lib/auth/config";
 import { activateSession, isSessionActive, revokeSession } from "@/lib/auth/session-store";
@@ -54,6 +56,14 @@ export function getSessionCookieOptions() {
     : options;
 }
 
+// HMAC avoids exposing password hashes in readable JWT payloads. Configuration
+// changes invalidate old sessions without scanning the session store.
+function authenticationVersion(user: AuthorizedUser) {
+  return createHmac("sha256", getSessionSecret()).update(JSON.stringify([
+    user.username, user.passwordHash, user.role ?? "staff", user.authVersion ?? "1",
+  ])).digest("hex");
+}
+
 export async function createSessionToken(username: string) {
   const user = findAuthorizedUser(username);
   if (!user) throw new AuthConfigurationError();
@@ -61,7 +71,7 @@ export async function createSessionToken(username: string) {
   const sessionId = crypto.randomUUID();
   const ttlSeconds = getSessionTtlSeconds();
 
-  const token = await new SignJWT({ type: "staff-session" })
+  const token = await new SignJWT({ type: "staff-session", authVersion: authenticationVersion(user) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(user.username)
     .setJti(sessionId)
@@ -90,7 +100,7 @@ export async function getCurrentUserFromToken(token: string | null | undefined) 
       typeof payload.jti !== "string"
     ) return null;
     const user = findAuthorizedUser(payload.sub);
-    if (!user || !(await isSessionActive(payload.jti, user.username))) return null;
+    if (!user || payload.authVersion !== authenticationVersion(user) || !(await isSessionActive(payload.jti, user.username))) return null;
     return user;
   } catch (error) {
     if (error instanceof AuthConfigurationError) throw error;

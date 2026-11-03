@@ -39,11 +39,11 @@ The app is designed for showroom computers, iPads, and phones. It is deployed as
 
 The application is a visualization tool, not a measurement, sizing, ordering, CRM, inventory, payment, or customer-account system. AI output can vary and must not be described as a guaranteed physical fit.
 
-The current history model is shared among authenticated staff. Fine-grained user/showroom permissions, MFA, password reset, image-retention automation, and advanced insider-threat controls remain future work.
+History and retained assets are owner-scoped by default, with explicitly configured administrator access. Completed generations default to 30-day retention and can be deleted by owners/admins. Showroom-level sharing, MFA, password-reset UI and advanced insider-threat controls remain future work.
 
 ## Technology baseline
 
-- Next.js 16.3 App Router
+- Next.js 16.4.5 App Router
 - React 19.2
 - TypeScript 5.9
 - Tailwind CSS 4
@@ -62,7 +62,7 @@ Completed foundation: authenticated person/fabric uploads, optional outfit input
 
 ### Phase 2 — Expanded garment intelligence
 
-Deeply configure more garment families beyond the current suit-first system. Add official Nasir Bespoke reference photography, stronger compatibility rules, per-user history authorization, retention controls, MFA, and operational audit tools.
+Deeply configure more garment families beyond the current suit-first system. Add official Nasir Bespoke reference photography, stronger compatibility rules, showroom sharing, managed account controls, MFA, and operational audit tools.
 
 ### Phase 3 — 2D preview engine
 

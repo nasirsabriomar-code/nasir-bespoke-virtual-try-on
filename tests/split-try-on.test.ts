@@ -1,3 +1,4 @@
+import { resetMemoryRateLimitsForTests } from "@/lib/rate-limit";
 import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
@@ -60,6 +61,7 @@ function fakeResolvedSplitOutfit(state: SplitOutfitState): ResolvedSplitOutfit {
 }
 
 beforeEach(() => {
+  resetMemoryRateLimitsForTests();
   process.env.AUTH_SESSION_SECRET = "test-session-secret-that-is-at-least-thirty-two-bytes";
   process.env.AUTH_USERS_JSON = JSON.stringify([TEST_USER]);
   process.env.RATE_LIMIT_BACKEND = "memory";
@@ -299,7 +301,7 @@ test("the split catalogue view never leaks a reference's private path or checksu
 });
 
 test("readSplitReference serves a real active reference through the same read path a real photo would use", async () => {
-  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
+  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgYGgAAACEAIGcaMMkAAAAAElFTkSuQmCC", "base64");
   const checksum = createHash("sha256").update(bytes).digest("hex");
   const cacheDir = path.join(process.cwd(), ".cache/catalog-assets");
   const cachePath = path.join(cacheDir, "TEST_SPLIT_UPPER_REFERENCE_V1.png");
@@ -325,7 +327,7 @@ test("readSplitReference serves a real active reference through the same read pa
 });
 
 test("readSplitReference rejects an active reference whose bytes don't match its recorded checksum", async () => {
-  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
+  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgYGgAAACEAIGcaMMkAAAAAElFTkSuQmCC", "base64");
   const cacheDir = path.join(process.cwd(), ".cache/catalog-assets");
   const cachePath = path.join(cacheDir, "TEST_SPLIT_UPPER_TAMPERED_V1.png");
   await mkdir(cacheDir, { recursive: true });

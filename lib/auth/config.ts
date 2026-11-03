@@ -4,6 +4,8 @@ export type AuthorizedUser = {
   username: string;
   displayName: string;
   passwordHash: string;
+  role?: "staff" | "admin";
+  authVersion?: string;
 };
 
 export class AuthConfigurationError extends Error {
@@ -42,6 +44,9 @@ export function getAuthorizedUsers(): AuthorizedUser[] {
       const username = normalizeUsername(String(record.username ?? ""));
       const displayName = String(record.displayName ?? "").trim();
       const passwordHash = String(record.passwordHash ?? "");
+      const role = record.role ?? "staff";
+      const authVersion = record.authVersion ?? "1";
+      if ((role !== "staff" && role !== "admin") || typeof authVersion !== "string" || !/^[a-zA-Z0-9._-]{1,64}$/.test(authVersion)) throw new AuthConfigurationError();
 
       if (
         !/^[a-z0-9._-]{2,64}$/.test(username) ||
@@ -54,7 +59,7 @@ export function getAuthorizedUsers(): AuthorizedUser[] {
       }
 
       usernames.add(username);
-      return { username, displayName, passwordHash };
+      return { username, displayName, passwordHash, role, authVersion };
     });
   } catch (error) {
     if (error instanceof AuthConfigurationError) throw error;

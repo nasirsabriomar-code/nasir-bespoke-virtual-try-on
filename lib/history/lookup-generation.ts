@@ -1,3 +1,5 @@
+import { deletedGenerationIds } from "@/lib/highres/ledger";
+import { generationExpired } from "./retention-policy";
 import type { UsageEvent } from "@/lib/usage-history";
 
 type GenerationReaders = {
@@ -10,11 +12,13 @@ type GenerationReaders = {
  * stay reachable through recent history: its image already exists and was paid for.
  */
 export async function lookupGenerationEvent(id: string, readers: GenerationReaders) {
+  if ((await deletedGenerationIds([id])).has(id)) return null;
   try {
     const permanent = await readers.permanent(id);
-    if (permanent) return permanent;
+    if (permanent) return generationExpired(permanent.occurredAt) ? null : permanent;
   } catch (error) {
     console.error("history_ledger_read_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
   }
-  return readers.recent(id);
+  const recent = await readers.recent(id);
+  return recent && !generationExpired(recent.occurredAt) ? recent : null;
 }
