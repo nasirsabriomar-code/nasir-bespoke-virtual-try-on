@@ -2937,3 +2937,13 @@ a:focus-visible {
 .atelier-shell [id^="split-piece-"] { scroll-margin-top: 2rem; }
 .atelier-shell .split-summary-card a { display: inline-block; margin-top: .5rem; text-decoration: underline; }
 .atelier-shell details.fabric-reference-controls > summary { cursor: pointer; padding: .75rem; }
+
+/* Split Outfit: a shown result whose recipe no longer matches the draft. */
+.atelier-shell .result-notice {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--atelier-gold);
+  background: var(--atelier-gold-soft);
+  color: var(--atelier-text);
+  font-size: 14px;
+}

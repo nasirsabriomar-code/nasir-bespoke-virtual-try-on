@@ -18,7 +18,8 @@ import { ModeSelector } from "@/components/split-outfit/ModeSelector";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
 import { classifyGenerationResponse, fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
-import { buildResultSummary, type ResultSummary } from "@/lib/result-summary";
+import { buildResultSummary, summaryDiffers, type ResultSummary } from "@/lib/result-summary";
+import { addSessionResult, releaseSessionResults, submissionSwatches, type SessionResult } from "@/lib/session-results";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import { clearSplitFabrics, effectiveSplitFabrics } from "@/lib/split-outfit/client-fabrics";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
@@ -124,6 +125,8 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [outputSize, setOutputSize] = useState<string | null>(null);
   const [resultReferences, setResultReferences] = useState<{ label: string; url: string }[]>([]);
   const [resultSummary, setResultSummary] = useState<ResultSummary | null>(null);
+  // Split Outfit keeps every result from this page session for showing the customer.
+  const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
   const uploadController = useRef<AbortController | null>(null);
   const [generationStage, setGenerationStage] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -197,6 +200,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
     setOriginalResultUrl(null);
     setOutputSize(null);
     setResultSummary(null);
+    setSessionResults((current) => releaseSessionResults(current, revokeUrl));
   }, [revokeUrl]);
 
   const trackPending = useCallback((value: PendingGeneration | null) => {
@@ -224,12 +228,13 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       setOriginalResultUrl(recovered.originalUrl);
       setResultSummary(value.summary);
       setOutputSize(null);
+      if (value.summary.pieces) setSessionResults((current) => addSessionResult(current, { id: value.key, resultUrl: recovered.resultUrl, originalUrl: recovered.originalUrl, summary: value.summary, swatches: {}, ownedUrls: [], recovered: true }, revokeUrl));
       setError(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Recovery is unavailable.");
       if (error instanceof RecoveryAuthenticationError) window.location.replace("/login");
     } finally { setIsGenerating(false); }
-  }, [trackPending]);
+  }, [revokeUrl, trackPending]);
 
   useEffect(() => {
     let pending: PendingGeneration | null = null;
@@ -262,6 +267,13 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       : [{ role: "fabric", label: "Jacket fabric", image: splitFabrics.jacket }, { role: "lowerFabric", label: "Trouser fabric", image: splitFabrics.trousers }, { role: "shirtFabric", label: "Shirt fabric", image: splitFabrics.shirt }, ...(splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE" ? [{ role: "waistcoatFabric" as const, label: "Waistcoat fabric", image: splitFabrics.waistcoat }] : [])];
     return candidates.filter((item): item is typeof item & { image: UploadedImage } => item.image !== null);
   }, [mode, isJacketCategory, fabric, fabricRegion, reuseFabricForLower, lowerFabric, splitFabrics, splitOutfit.waistcoatId]);
+
+  const latestResult = sessionResults.at(-1) ?? null;
+  const draftChanged = useMemo(() => {
+    if (mode !== "split" || !latestResult) return false;
+    const draft = buildResultSummary({ mode: "split", splitOutfit, hasUploadedFabric: Object.values(splitFabrics).some(Boolean), fabrics: { jacket: Boolean(splitFabrics.jacket), trousers: Boolean(splitFabrics.trousers), shirt: Boolean(splitFabrics.shirt), waistcoat: Boolean(splitFabrics.waistcoat) }, trousersLinked });
+    return summaryDiffers(latestResult.summary, draft);
+  }, [latestResult, mode, splitFabrics, splitOutfit, trousersLinked]);
 
   const changeImage = useCallback(async (role: UploadRole, file: File) => {
     setError(null);
@@ -339,18 +351,36 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
 
     setError(null);
     setIsGenerating(true);
-    clearResult();
+    // Split Outfit adds each result to the session; Full Outfit shows only the newest.
+    if (mode !== "split") clearResult();
 
     // Captured now so the summary describes this look, not later selection changes.
     const summary = mode === "split"
       ? buildResultSummary({ mode, splitOutfit, hasUploadedFabric: Object.values(splitFabrics).some(Boolean), fabrics: { jacket: Boolean(splitFabrics.jacket), trousers: Boolean(splitFabrics.trousers), shirt: Boolean(splitFabrics.shirt), waistcoat: Boolean(splitFabrics.waistcoat) }, trousersLinked })
       : buildResultSummary({ mode: "full", designName: selectedDesign?.name ?? "Curated design", variantName: selectedVariant?.name });
+    let resultKey = "";
+    const idempotencyKeyForResult = () => resultKey || crypto.randomUUID();
+    const submittedSplitFiles = { jacket: splitFabrics.jacket?.file ?? null, trousers: splitFabrics.trousers?.file ?? null, shirt: splitFabrics.shirt?.file ?? null, waistcoat: splitFabrics.waistcoat?.file ?? null };
+    const submittedTrousersLinked = trousersLinked;
     const showResult = (nextResultUrl: string, nextOriginalUrl: string, nextOutputSize: string | null) => {
       setResultUrl(nextResultUrl);
       setOriginalResultUrl(nextOriginalUrl);
       setOutputSize(nextOutputSize);
       setResultSummary(summary);
       const historyId = nextResultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)?.[1];
+      if (mode === "split") {
+        const { swatches, ownedUrls } = submissionSwatches({
+          historyId,
+          files: submittedSplitFiles,
+          trousersLinked: submittedTrousersLinked,
+          createUrl: (file) => { const url = URL.createObjectURL(file); objectUrls.current.add(url); return url; },
+        });
+        const labels = { jacket: "Jacket fabric", trousers: "Trouser fabric", shirt: "Shirt fabric", waistcoat: "Waistcoat fabric" } as const;
+        setResultReferences((Object.keys(labels) as (keyof typeof labels)[]).flatMap((piece) => swatches[piece] && !(piece === "trousers" && submittedTrousersLinked) ? [{ label: labels[piece], url: swatches[piece] }] : []));
+        const owned = nextResultUrl.startsWith("blob:") ? [...ownedUrls, nextResultUrl] : ownedUrls;
+        setSessionResults((current) => addSessionResult(current, { id: historyId ?? idempotencyKeyForResult(), resultUrl: nextResultUrl, originalUrl: nextOriginalUrl, summary, swatches, ownedUrls: owned, recovered: false }, revokeUrl));
+        return;
+      }
       setResultReferences(activeFabricReferences.map(item => {
         const asset = ({ fabric: "fabric", lowerFabric: "lower-fabric", shirtFabric: "shirt-fabric", waistcoatFabric: "waistcoat-fabric" } as const)[item.role];
         if (historyId) return { label: item.label, url: `/api/history/${historyId}/asset/${asset}` };
@@ -363,6 +393,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
 
     try {
       const idempotencyKey = crypto.randomUUID();
+      resultKey = idempotencyKey;
       generationKeyRef.current = idempotencyKey;
       setUploadProgress(0);
       uploadController.current = new AbortController();
@@ -468,7 +499,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [accountId, activeFabricReferences, trackPending, backgroundControl, effectiveGuidance, categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit, trousersLinked]);
+  }, [accountId, activeFabricReferences, trackPending, backgroundControl, effectiveGuidance, categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, revokeUrl, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit, trousersLinked]);
 
   const selectSplitFabric = useCallback(async (piece: keyof SplitPieceFabrics, file: File) => {
     const ticket = ++splitUploadTickets.current[piece];
@@ -486,11 +517,10 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         if (previous) revokeUrl(previous.previewUrl);
         return { ...current, [piece]: { file: prepared, previewUrl } };
       });
-      clearResult();
     } catch (selectionError: unknown) {
       if (ticket === splitUploadTickets.current[piece]) setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
     }
-  }, [clearResult, revokeUrl]);
+  }, [revokeUrl]);
 
   const removeSplitFabric = useCallback((piece: keyof SplitPieceFabrics) => {
     ++splitUploadTickets.current[piece];
@@ -500,8 +530,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       if (previous) revokeUrl(previous.previewUrl);
       return { ...current, [piece]: null };
     });
-    clearResult();
-  }, [clearResult, revokeUrl, trousersLinked]);
+  }, [revokeUrl, trousersLinked]);
 
   const reuseJacketOnTrousers = useCallback(() => {
     ++splitUploadTickets.current.trousers;
@@ -519,8 +548,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       });
       setTrousersLinked(true);
     }
-    clearResult();
-  }, [clearResult, revokeUrl, splitFabrics.jacket, trousersLinked]);
+  }, [revokeUrl, splitFabrics.jacket, trousersLinked]);
 
   const restoreLook = useCallback((look: RestoredLook) => {
     if (look.kind === "unsupported") return;
@@ -528,7 +556,8 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
     setTrousersLinked(false);
     setSplitFabrics(current => clearSplitFabrics(current, revokeUrl));
     setError(null);
-    clearResult();
+    // A restored Split look is a new draft beside this session's results, never one of them.
+    if (look.kind !== "split") clearResult();
     setReuseFabricForLower(false);
     setLowerFabric((current) => {
       revokeUrl(current?.previewUrl);
@@ -851,6 +880,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           onReset={startOver}
           isGenerating={isGenerating}
           fabricReferences={resultReferences}
+          notice={draftChanged ? "The outfit has changed since this result" : undefined}
         />
       ) : null}
 
