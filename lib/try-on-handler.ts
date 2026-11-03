@@ -423,6 +423,7 @@ async function handleHighResolutionRequest(
   }
   if (!user) return jsonError("Your session has expired. Please sign in again.", 401);
   let consumedSlots: UploadSlot[] | null = null;
+  let admissionLease: GenerationLease | null = null;
   try {
     const existingKey = parseIdempotencyKey(request);
     if (existingKey === "") return jsonError("Invalid idempotency key.", 400);
@@ -467,6 +468,23 @@ async function handleHighResolutionRequest(
     if (!slots) return jsonError(UPLOADS_UNAVAILABLE_MESSAGE, 409);
     const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
     if (required.some((role) => !slotByRole.has(role))) return jsonError("Uploaded images did not match the requested roles.", 400);
+    // Reject busy or rate-limited accounts before downloading full-resolution
+    // inputs. Keep this lease through preparation and the multipart handoff.
+    admissionLease = await acquireGenerationLock(user.username);
+    if (!admissionLease) {
+      if (existingKey) {
+        const replay = await replayOrBlockIdempotency(user.username, existingKey, state);
+        if (replay) return replay;
+      }
+      return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
+    }
+    if (existingKey) {
+      const replay = await replayOrBlockIdempotency(user.username, existingKey, state);
+      if (replay) return replay;
+    }
+    const rateLimit = await dependencies.rateLimit(user.username);
+    const rateHeaders = generationRateHeaders(rateLimit);
+    if (!rateLimit.allowed) return generationRateRejection(rateLimit, rateHeaders);
     const [person, fabric, outfit, lowerFabric, shirtFabric, waistcoatFabric] = await Promise.all([
       uploadSlotToFile(slotByRole.get("person")!),
       slotByRole.get("fabric") ? uploadSlotToFile(slotByRole.get("fabric")!) : Promise.resolve(undefined),
@@ -493,6 +511,8 @@ async function handleHighResolutionRequest(
     headers.delete("content-type");
     headers.delete("content-length");
     return await handleMultipartRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies, state, {
+      lease: admissionLease,
+      rateHeaders,
       claimUploads: async () => {
         consumedSlots = await consumeUploadSlots(user.username, requiredIds);
         return Boolean(consumedSlots);
@@ -511,6 +531,9 @@ async function handleHighResolutionRequest(
     // Consumed slots are single-use, so these temporary customer photos are never
     // needed again, whether or not the generation succeeded. Success keeps its own
     // copy. Unconsumed slots stay for a retry; expired ones are removed by cron.
+    if (admissionLease) {
+      await releaseGenerationLock(admissionLease).catch(() => console.error("generation_lock_release_failed", { route: "try-on" }));
+    }
     if (consumedSlots) await removeConsumedUploadObjects(consumedSlots);
   }
 }
@@ -532,7 +555,26 @@ export async function handleTryOnRequest(
   return response;
 }
 
+type GenerationRateLimit = Awaited<ReturnType<typeof checkGenerationRateLimit>>;
+
+function generationRateHeaders(rateLimit: GenerationRateLimit) {
+  return {
+    "X-RateLimit-Limit": String(rateLimit.limit),
+    "X-RateLimit-Remaining": String(rateLimit.remaining),
+    "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
+  };
+}
+
+function generationRateRejection(rateLimit: GenerationRateLimit, headers: HeadersInit) {
+  return jsonError("You've made several try-ons in a short period. Please wait a moment and try again.", 429, {
+    ...headers,
+    "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
+  });
+}
+
 type HighResolutionHandoff = {
+  lease: GenerationLease;
+  rateHeaders: HeadersInit;
   /** Atomically consumes the request's uploads. False when any was already used or expired. */
   claimUploads: () => Promise<boolean>;
 };
@@ -595,8 +637,8 @@ async function handleMultipartRequest(
 
   const startedAt = Date.now();
   let generationAttempted = false;
-  let lease: GenerationLease | null = null;
-  let rateHeaders: HeadersInit = {};
+  let lease: GenerationLease | null = handoff?.lease ?? null;
+  let rateHeaders: HeadersInit = handoff?.rateHeaders ?? {};
   try {
     // Only the private, server-built high-resolution handoff may exceed the
     // legacy HTTP limit. A browser header cannot select that trusted path.
@@ -806,57 +848,48 @@ async function handleMultipartRequest(
       if (blocked) return blocked;
     }
 
-    try {
-      lease = await acquireGenerationLock(user.username);
-    } catch (error) {
-      if (error instanceof GenerationGuardUnavailableError) {
-        console.error("generation_guard_unavailable", { requestId, route: "try-on" });
-        return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+    if (!handoff) {
+      try {
+        lease = await acquireGenerationLock(user.username);
+      } catch (error) {
+        if (error instanceof GenerationGuardUnavailableError) {
+          console.error("generation_guard_unavailable", { requestId, route: "try-on" });
+          return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+        }
+        throw error;
       }
-      throw error;
-    }
-    if (!lease) {
+      if (!lease) {
+        if (idempotencyKey) {
+          const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
+          if (blocked) return blocked;
+        }
+        return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
+      }
+
       if (idempotencyKey) {
         const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
         if (blocked) return blocked;
       }
-      return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
-    }
 
-    if (idempotencyKey) {
-      const blocked = await replayOrBlockIdempotency(user.username, idempotencyKey, state);
-      if (blocked) return blocked;
-    }
-
-    let rateLimit;
-    try {
-      rateLimit = await dependencies.rateLimit(user.username);
-    } catch (error) {
-      if (error instanceof RateLimitConfigurationError) {
-        console.error("rate_limit_configuration_error", { requestId, route: "try-on" });
-        return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+      let rateLimit;
+      try {
+        rateLimit = await dependencies.rateLimit(user.username);
+      } catch (error) {
+        if (error instanceof RateLimitConfigurationError) {
+          console.error("rate_limit_configuration_error", { requestId, route: "try-on" });
+          return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+        }
+        throw error;
       }
-      throw error;
-    }
-    rateHeaders = {
-      "X-RateLimit-Limit": String(rateLimit.limit),
-      "X-RateLimit-Remaining": String(rateLimit.remaining),
-      "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
-    };
-    if (!rateLimit.allowed) {
-      console.warn("try_on_rate_limited", {
-        requestId,
-        username: user.username,
-        blockedBy: rateLimit.blockedBy,
-      });
-      return jsonError(
-        "You've made several try-ons in a short period. Please wait a moment and try again.",
-        429,
-        {
-          ...rateHeaders,
-          "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))),
-        },
-      );
+      rateHeaders = generationRateHeaders(rateLimit);
+      if (!rateLimit.allowed) {
+        console.warn("try_on_rate_limited", {
+          requestId,
+          username: user.username,
+          blockedBy: rateLimit.blockedBy,
+        });
+        return generationRateRejection(rateLimit, rateHeaders);
+      }
     }
 
     if (handoff && !(await handoff.claimUploads())) {
@@ -1162,7 +1195,7 @@ async function handleMultipartRequest(
       rateHeaders,
     );
   } finally {
-    if (lease) {
+    if (lease && !handoff) {
       try {
         await releaseGenerationLock(lease);
       } catch (error) {

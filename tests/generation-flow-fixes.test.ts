@@ -45,6 +45,7 @@ type MockOptions = { failPut?: (path: string) => boolean; contentLength?: (path:
 function mockR2(t: { mock: { method: typeof import("node:test").mock.method } }, options: MockOptions = {}) {
   const objects = new Map<string, Uint8Array>();
   const deleted: string[] = [];
+  const reads: string[] = [];
   t.mock.method(globalThis, "fetch", async (input: string, init?: RequestInit) => {
     const path = new URL(input).pathname.replace("/test-bucket/", "");
     if (init?.method === "PUT") {
@@ -57,12 +58,13 @@ function mockR2(t: { mock: { method: typeof import("node:test").mock.method } },
       objects.delete(path);
       return new Response(null, { status: 204 });
     }
+    reads.push(path);
     const bytes = objects.get(path);
     if (!bytes) return new Response("<Error><Code>NoSuchKey</Code></Error>", { status: 404 });
     const length = options.contentLength ? options.contentLength(path) : String(bytes.byteLength);
     return new Response(Buffer.from(bytes), { headers: { "Content-Type": "image/png", ...(length === null ? {} : { "Content-Length": length }) } });
   });
-  return { objects, deleted };
+  return { objects, deleted, reads };
 }
 
 async function pngBytes() {
@@ -127,6 +129,11 @@ test("a busy account lock is a final not-started 409 and leaves the uploads reus
   assert.deepEqual(r2.deleted, []);
   for (const id of Object.values(ids)) assert.equal((await getUploadSlot(id))?.status, "uploaded");
 
+  const repeated = await handleTryOnRequest(tryOnRequest(ids, crypto.randomUUID()), {
+    authenticate: async () => USER, rateLimit: allowRate, generate: async () => { generated++; return result; }, recordUsage: async () => {},
+  });
+  assert.equal(repeated.status, 409);
+  assert.deepEqual(r2.reads, [], "busy requests must not download inputs, even on repeated retries");
   await releaseGenerationLock(otherDevice);
   const retried = await handleTryOnRequest(tryOnRequest(ids, crypto.randomUUID()), {
     authenticate: async () => USER, rateLimit: allowRate, generate: async () => { generated++; return result; }, recordUsage: async () => {},
@@ -143,6 +150,10 @@ test("a rate-limited request is not-started and keeps its uploads", async (t) =>
     authenticate: async () => USER, rateLimit: denyRate, generate: async () => result, recordUsage: async () => {},
   });
   assert.equal(response.status, 429);
+  assert.deepEqual(r2.reads, [], "rate-limited requests must not download inputs");
+  const released = await acquireGenerationLock(USER.username);
+  assert.ok(released, "rate rejection must release the preparation lease");
+  await releaseGenerationLock(released);
   assert.equal(response.headers.get(GENERATION_STATE_HEADER), "not-started");
   assert.deepEqual(r2.deleted, []);
   for (const id of Object.values(ids)) assert.equal((await getUploadSlot(id))?.status, "uploaded");
@@ -205,4 +216,48 @@ test("completion refuses a stored master whose size does not match, before buffe
 test("no route hands out a direct, unbounded storage upload URL", () => {
   assert.equal("POST" in uploadRoute, false);
   assert.equal(typeof uploadRoute.GET, "function");
+});
+
+
+test("preparation failure releases the account lock and preserves reusable uploads", async (t) => {
+  const r2 = mockR2(t);
+  const { ids, pathnames } = await uploadedSlots(r2.objects);
+  r2.objects.delete(pathnames[0]);
+  let generated = 0;
+  const response = await handleTryOnRequest(tryOnRequest(ids, crypto.randomUUID()), {
+    authenticate: async () => USER, rateLimit: allowRate, generate: async () => { generated++; return result; }, recordUsage: async () => {},
+  });
+  assert.equal(response.status, 404);
+  assert.equal(response.headers.get(GENERATION_STATE_HEADER), "not-started");
+  assert.equal(generated, 0);
+  for (const id of Object.values(ids)) assert.equal((await getUploadSlot(id))?.status, "uploaded");
+  const lease = await acquireGenerationLock(USER.username);
+  assert.ok(lease);
+  await releaseGenerationLock(lease);
+});
+
+test("the high-resolution handoff checks the rate limit only once and releases its lock", async (t) => {
+  const r2 = mockR2(t);
+  const { ids } = await uploadedSlots(r2.objects);
+  let checks = 0;
+  const key = crypto.randomUUID();
+  let generated = 0;
+  const dependencies = {
+    authenticate: async () => USER,
+    rateLimit: async () => { checks++; return allowRate(); },
+    generate: async () => { generated++; return result; },
+    recordUsage: async () => {},
+  };
+  const response = await handleTryOnRequest(tryOnRequest(ids, key), dependencies);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("X-RateLimit-Remaining"), "19");
+  assert.equal(checks, 1);
+  const replay = await handleTryOnRequest(tryOnRequest(ids, key), dependencies);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.headers.get("Idempotency-Replayed"), "true");
+  assert.equal(checks, 1);
+  assert.equal(generated, 1);
+  const lease = await acquireGenerationLock(USER.username);
+  assert.ok(lease);
+  await releaseGenerationLock(lease);
 });
