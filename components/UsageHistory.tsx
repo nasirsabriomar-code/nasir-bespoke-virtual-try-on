@@ -163,6 +163,10 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
   const [selectedEvent, setSelectedEvent] = useState<HistoryEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const detailsBackRef = useRef<HTMLButtonElement | null>(null);
+  const thumbnailRef = useRef<HTMLButtonElement | null>(null);
+  const listScrollRef = useRef(0);
 
   // Lock background scroll and handle Escape key while modal is open
   useEffect(() => {
@@ -182,7 +186,13 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
     }
 
     window.addEventListener("keydown", onKeyDown);
-    closeButtonRef.current?.focus();
+    if (selectedEvent) {
+      if (panelRef.current) panelRef.current.scrollTop = 0;
+      detailsBackRef.current?.focus({ preventScroll: true });
+    } else {
+      if (panelRef.current) panelRef.current.scrollTop = listScrollRef.current;
+      (thumbnailRef.current ?? closeButtonRef.current)?.focus({ preventScroll: true });
+    }
 
     return () => {
       document.body.style.overflow = originalOverflow;
@@ -194,6 +204,8 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
     const nextOpen = !isOpen;
     setIsOpen(nextOpen);
     if (!nextOpen || isLoading) return;
+    thumbnailRef.current = null;
+    listScrollRef.current = 0;
     setSelectedEvent(null);
 
     setIsLoading(true);
@@ -267,6 +279,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
               />
               <section
                 className="history-panel"
+                ref={panelRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="history-title"
@@ -302,7 +315,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                       <span>recorded uses · latest {Math.min(history.events.length, history.retained)} shown</span>
                     </div>
                     {history.events.length ? (
-                      <div className="history-table-wrap">
+                      <div className="history-table-wrap" hidden={Boolean(selectedEvent)}>
                         <table className="history-table">
                           <thead>
                             <tr>
@@ -324,7 +337,11 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                     <button
                                       type="button"
                                       className="history-thumbnail-button"
-                                      onClick={() => setSelectedEvent(event)}
+                                      onClick={click => {
+                                        listScrollRef.current = panelRef.current?.scrollTop ?? 0;
+                                        thumbnailRef.current = click.currentTarget;
+                                        setSelectedEvent(event);
+                                      }}
                                       aria-label={`Open details for ${formatLook(event)}`}
                                     >
                                       <img
@@ -357,7 +374,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                     ) : (
                       <p className="history-status">No try-on uses have been recorded yet.</p>
                     )}
-                    <label><input type="checkbox" checked={favouritesOnly} onChange={event => setFavouritesOnly(event.target.checked)} /> Favourites in loaded history</label>
+                    <label hidden={Boolean(selectedEvent)}><input type="checkbox" checked={favouritesOnly} onChange={event => setFavouritesOnly(event.target.checked)} /> Favourites in loaded history</label>
                     {selectedEvent ? (
                       <section className="generation-details" aria-label="Generation details">
                         <div className="generation-details-header">
@@ -367,11 +384,12 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                           </div>
                           <button
                             type="button"
-                            className="history-close"
+                            className="history-button"
+                            ref={detailsBackRef}
                             onClick={() => setSelectedEvent(null)}
                             aria-label="Close generation details"
                           >
-                            ×
+                            Back to history
                           </button>
                         </div>
                         <div className="generation-details-grid">
@@ -533,7 +551,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                         ) : null}
                       </section>
                     ) : null}
-                    {history.events.length < history.total ? (
+                    {!selectedEvent && history.events.length < history.total ? (
                       <button type="button" className="history-button" onClick={() => void loadMoreHistory()} disabled={isLoadingMore}>
                         {isLoadingMore ? "Loading…" : "Load earlier history"}
                       </button>

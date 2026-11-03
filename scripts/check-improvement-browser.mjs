@@ -50,7 +50,7 @@ try {
   const pageErrors = []; page.on("pageerror", error => pageErrors.push(error.message));
   const png = await sharp({ create: { width: 640, height: 960, channels: 3, background: "#26384d" } }).png().toBuffer();
   const cloth = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000"><defs><pattern id="p" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="#26384d"/><path d="M0 0H100V100" stroke="#ddd" stroke-width="4" fill="none"/></pattern></defs><rect width="1000" height="1000" fill="url(#p)"/></svg>')).png().toBuffer();
-  const generationId = randomUUID(); const slots = new Map();
+  const generationId = randomUUID(); const historyIds = [generationId, ...Array.from({ length: 58 }, () => randomUUID())]; const slots = new Map();
   let review = { decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" };
   const catalogue = {
     categories: [{ id: "suit", name: "Suits", description: "Synthetic local catalogue", sortOrder: 0 }, { id: "jackets", name: "Jackets", description: "Synthetic jacket", sortOrder: 1 }],
@@ -70,7 +70,7 @@ try {
     const path = url.pathname;
     if (path === "/api/level1-catalog") return json(route, catalogue);
     if (path === "/api/local-fixture.png" || /^\/api\/history\/[^/]+\/asset\//.test(path)) return route.fulfill({ contentType: "image/png", body: path.endsWith("/fabric") ? cloth : png });
-    if (path === "/api/history") return json(route, { events: [{ id: generationId, occurredAt: new Date().toISOString(), username: "assessment", status: "success", durationMs: 1000, provider: "fixture", model: "fixture", quality: "medium", device: { kind: "desktop", browser: "fixture", operatingSystem: "fixture" }, generation: { mode: "level1", categoryId: "suit", curatedDesignId: "SUIT_01_CLASSIC", curatedDesignName: "Synthetic suit" }, assets: { result: { contentType: "image/png" }, person: { contentType: "image/png" }, fabric: { contentType: "image/png" } }, review }], total: 1, retained: 1 });
+    if (path === "/api/history") return json(route, { events: historyIds.map((id, index) => ({ id, occurredAt: new Date().toISOString(), username: "assessment", status: "success", durationMs: 1000, provider: "fixture", model: "fixture", quality: "medium", device: { kind: "desktop", browser: "fixture", operatingSystem: "fixture" }, generation: { mode: "level1", categoryId: "suit", curatedDesignId: "SUIT_01_CLASSIC", curatedDesignName: "Synthetic suit" }, assets: { result: { contentType: "image/png" }, person: { contentType: "image/png" }, fabric: { contentType: "image/png" } }, review: index === 0 ? review : { decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" } })), total: 59, retained: 59 });
     if (path.endsWith("/review")) {
       if (request.method() === "GET") {
         if (failReviewLoad) return json(route, { error: "Synthetic feedback outage" }, 503);
@@ -141,14 +141,30 @@ try {
   passed("Fabric/result comparison, shared zoom and synchronized scrolling");
   await mkdir(output, { recursive: true }); await page.screenshot({ path: new URL("desktop.png", output).pathname, fullPage: true });
   await page.getByRole("button", { name: "History", exact: true }).filter({ visible: true }).first().click();
-  await page.getByRole("button", { name: "Open details for", exact: false }).click();
+  await page.getByRole("button", { name: "Open details for", exact: false }).first().click();
   const dialog = page.getByRole("dialog", { name: "Try-On History" });
+  const detailsBox = await dialog.locator(".generation-details").boundingBox();
+  assert.ok(detailsBox && detailsBox.y < 1000, "Selecting a thumbnail in 59-row history must bring details into the visible panel immediately");
+  await dialog.getByRole("button", { name: "Preview Generated men's try-on result", exact: true }).click();
+  const preview = page.getByRole("dialog", { name: "Preview", exact: true });
+  await preview.waitFor();
+  assert.ok(await page.evaluate(() => Boolean(document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest(".result-preview-root"))), "The image preview must appear above History");
+  await preview.getByRole("button", { name: "Close", exact: true }).click();
+  await dialog.getByRole("button", { name: "Close generation details", exact: true }).click();
+  await dialog.getByRole("button", { name: "Open details for", exact: false }).last().click();
+  const lastDetailsBox = await dialog.locator(".generation-details").boundingBox();
+  assert.ok(lastDetailsBox && lastDetailsBox.y < 1000, "A record at the bottom of long history must also open in view");
+  await dialog.getByRole("button", { name: "Close generation details", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll(".history-thumbnail-button")].at(-1) === document.activeElement, null, { timeout: 10000 });
+  assert.ok(await dialog.evaluate(element => element.scrollTop > 0), "Back to history restores the previous list position");
+  await dialog.getByRole("button", { name: "Open details for", exact: false }).first().click();
+  passed("59-record history opens details and full-size preview immediately; Back restores list position and focus");
   await dialog.getByLabel("Decision", { exact: false }).selectOption("rejected");
   await dialog.getByLabel("Save as favourite").check(); await dialog.getByLabel("Pattern too large", { exact: true }).check();
   await dialog.getByRole("button", { name: "Save feedback" }).click(); await dialog.getByText("Your feedback is saved.").waitFor();
   await dialog.getByRole("button", { name: "Close history", exact: true }).click();
   await page.getByRole("button", { name: "History", exact: true }).filter({ visible: true }).first().click();
-  await page.getByLabel("Favourites in loaded history").check(); await page.getByRole("button", { name: "Open details for", exact: false }).click();
+  await page.getByLabel("Favourites in loaded history").check(); await page.getByRole("button", { name: "Open details for", exact: false }).first().click();
   await page.waitForFunction(() => document.querySelector('.history-panel .generation-review select')?.value === "rejected", null, { timeout: 10000 });
   assert.equal(await dialog.getByLabel("Decision", { exact: false }).inputValue(), "rejected"); assert.equal(await dialog.getByLabel("Pattern too large", { exact: true }).isChecked(), true);
   await dialog.getByRole("button", { name: "Close history", exact: true }).click(); passed("Saved favourite/rejection reason survives closing and reloading History");
