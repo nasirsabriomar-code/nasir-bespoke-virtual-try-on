@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- private split catalogue photos must be requested with the session cookie. */
 
+import { useState } from "react";
 import type { Verdict } from "@/lib/rules/types";
 import type { SplitComponentOptionView } from "@/lib/split-outfit/types";
 
@@ -184,67 +185,78 @@ export function SplitComponentCard({
   verdict,
   isMultiSelect = false,
 }: SplitComponentCardProps) {
+  const [photoFailed, setPhotoFailed] = useState(false);
   const isRecommended = verdict?.status === "recommended";
   const isDiscouraged = verdict?.status === "discouraged";
   const reason = verdict?.status === "recommended" || verdict?.status === "discouraged" ? verdict.reason : undefined;
+  const showPhoto = option.reference?.status === "active" && option.reference.url && !photoFailed;
+  const hasDetails = Boolean(option.customer.description) || Boolean(option.customer.details?.length);
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      role={isMultiSelect ? "checkbox" : "radio"}
-      aria-checked={selected}
-      title={reason}
-      className={`split-component-card ${selected ? "is-selected" : ""} ${isRecommended ? "is-recommended" : ""} ${isDiscouraged ? "is-discouraged" : ""}`}
-      onClick={onSelect}
-    >
-      <div className="split-card-media">
-        {option.reference?.status === "active" && option.reference.url ? (
-          <img
-            className="split-card-photo"
-            src={option.reference.url}
-            alt={option.customer.name}
-          />
-        ) : (
-          <div className="split-card-silhouette-wrap">
-            {renderPlaceholderSilhouette(option.categoryId, option.id)}
-          </div>
-        )}
-        <span className="split-card-badge">{option.customer.imagePlaceholderLabel}</span>
-      </div>
-
-      <div className="split-card-body">
-        <div className="split-card-header">
-          <div className="split-card-title-group">
-            <strong className="split-card-name">{option.customer.name}</strong>
-            {option.customer.subtitle ? (
-              <span className="split-card-subtitle">{option.customer.subtitle}</span>
-            ) : null}
-          </div>
-
-          <div className="split-card-status-indicators">
-            {isRecommended ? (
-              <span className="split-tag split-tag-recommended">Recommended</span>
-            ) : isDiscouraged ? (
-              <span className="split-tag split-tag-discouraged">Unusual</span>
-            ) : null}
-
-            <span className={`split-select-indicator ${isMultiSelect ? "is-checkbox" : "is-radio"}`}>
-              {selected ? "✓" : ""}
-            </span>
-          </div>
+    <div className={`split-component-card ${selected ? "is-selected" : ""} ${isRecommended ? "is-recommended" : ""} ${isDiscouraged ? "is-discouraged" : ""}`}>
+      <button
+        type="button"
+        className="split-card-select"
+        disabled={disabled}
+        role={isMultiSelect ? "checkbox" : "radio"}
+        aria-checked={selected}
+        title={reason}
+        onClick={onSelect}
+      >
+        <div className="split-card-media">
+          {showPhoto ? (
+            <img
+              className="split-card-photo"
+              src={option.reference!.url}
+              alt=""
+              onError={() => setPhotoFailed(true)}
+            />
+          ) : (
+            // A missing or failed reference shows the drawn silhouette, never alt text over an empty box.
+            <div className="split-card-silhouette-wrap">
+              {renderPlaceholderSilhouette(option.categoryId, option.id)}
+            </div>
+          )}
         </div>
 
-        <p className="split-card-desc">{option.customer.description}</p>
+        <div className="split-card-body">
+          <div className="split-card-header">
+            <div className="split-card-title-group">
+              <strong className="split-card-name">{option.customer.name}</strong>
+              {option.customer.subtitle ? (
+                <span className="split-card-subtitle">{option.customer.subtitle}</span>
+              ) : null}
+            </div>
 
-        {option.customer.details && option.customer.details.length > 0 ? (
-          <ul className="split-card-details" aria-label="Key specifications">
-            {option.customer.details.map((detail, i) => (
-              <li key={i}>{detail}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </button>
+            <div className="split-card-status-indicators">
+              {isRecommended ? (
+                <span className="split-tag split-tag-recommended">Recommended</span>
+              ) : isDiscouraged ? (
+                <span className="split-tag split-tag-discouraged">Unusual</span>
+              ) : null}
+
+              <span className={`split-select-indicator ${isMultiSelect ? "is-checkbox" : "is-radio"}`} aria-hidden="true">
+                {selected ? "✓" : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      {hasDetails ? (
+        // Outside the select button so opening Details never changes the selection.
+        <details className="split-card-more">
+          <summary>Details</summary>
+          {option.customer.description ? <p className="split-card-desc">{option.customer.description}</p> : null}
+          {option.customer.details && option.customer.details.length > 0 ? (
+            <ul className="split-card-details" aria-label="Key specifications">
+              {option.customer.details.map((detail, i) => (
+                <li key={i}>{detail}</li>
+              ))}
+            </ul>
+          ) : null}
+        </details>
+      ) : null}
+    </div>
   );
 }

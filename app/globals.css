@@ -2947,3 +2947,50 @@ a:focus-visible {
   color: var(--atelier-text);
   font-size: 14px;
 }
+
+/* Split Outfit option card: select button plus a separate Details disclosure. */
+.split-card-select {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+.split-card-select:disabled { cursor: wait; }
+.split-card-select:focus-visible {
+  outline: 2px solid var(--atelier-gold);
+  outline-offset: -2px;
+}
+.split-card-more {
+  border-top: 1px solid var(--atelier-line);
+  padding: 0 16px;
+}
+.split-card-more > summary {
+  align-items: center;
+  color: var(--atelier-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  min-height: 44px;
+  text-transform: uppercase;
+}
+.split-card-more > summary:focus-visible {
+  outline: 2px solid var(--atelier-gold);
+  outline-offset: 2px;
+}
+.split-card-more[open] { padding-bottom: 14px; }
+.split-card-more .split-card-desc { color: var(--atelier-text); font-size: 13px; }
+.split-card-more .split-card-details li { color: var(--atelier-muted); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .split-component-card,
+  .split-component-card:hover,
+  .split-card-silhouette-wrap { transform: none; transition: none; }
+}
