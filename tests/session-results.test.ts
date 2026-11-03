@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addSessionResult, releaseSessionResults, submissionSwatches, SESSION_RESULT_LIMIT, type SessionResult } from "@/lib/session-results";
+import { addSessionResult, recoveryMatchesCustomer, referencesForSessionResult, releaseSessionResults, submissionSwatches, SESSION_RESULT_LIMIT, type SessionResult } from "@/lib/session-results";
 
 const item = (id: string, owned: string[] = []): SessionResult => ({ id, resultUrl: `r${id}`, originalUrl: `o${id}`, summary: { garment: "g", fabric: "f", shoes: "s" }, swatches: {}, ownedUrls: owned, recovered: false });
 
@@ -37,4 +37,21 @@ test("linked trousers without a history id share the jacket's owned url", () => 
 
 test("recovered results carry no swatches", () => {
   assert.deepEqual(submissionSwatches({ files: {}, trousersLinked: false, createUrl: () => "blob:never" }), { swatches: {}, ownedUrls: [] });
+});
+
+test("recovered results contribute no comparison references", () => {
+  assert.deepEqual(referencesForSessionResult({ ...item("r"), recovered: true, swatches: {} }), []);
+});
+
+test("comparison references come from the result's own swatches, linked trousers once", () => {
+  const refs = referencesForSessionResult({ ...item("s"), swatches: { jacket: "/a/fabric", trousers: "/a/fabric", shirt: "/a/shirt-fabric" }, summary: { garment: "g", fabric: "f", shoes: "s", pieces: [{ label: "Trousers", design: "N", source: "Linked jacket cloth", cloth: "linked-to-jacket" }] } });
+  assert.deepEqual(refs, [{ label: "Jacket fabric", url: "/a/fabric" }, { label: "Shirt fabric", url: "/a/shirt-fabric" }]);
+});
+
+test("a recovered result belongs to the current customer only when the photo matches", () => {
+  assert.equal(recoveryMatchesCustomer("blob:a", null), true);
+  assert.equal(recoveryMatchesCustomer(undefined, null), true);
+  assert.equal(recoveryMatchesCustomer("blob:a", "blob:a"), true);
+  assert.equal(recoveryMatchesCustomer("blob:a", "blob:b"), false);
+  assert.equal(recoveryMatchesCustomer(undefined, "blob:b"), false);
 });

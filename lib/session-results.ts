@@ -62,3 +62,29 @@ export function submissionSwatches(input: {
   if (input.trousersLinked && swatches.jacket) swatches.trousers = swatches.jacket;
   return { swatches, ownedUrls };
 }
+
+const REFERENCE_LABEL: Record<SwatchPiece, string> = {
+  jacket: "Jacket fabric",
+  trousers: "Trouser fabric",
+  shirt: "Shirt fabric",
+  waistcoat: "Waistcoat fabric",
+};
+
+/** Cloth shown beside one result in the staff comparison; linked trousers repeat the jacket, so they are listed once. */
+export function referencesForSessionResult(result: SessionResult): { label: string; url: string }[] {
+  const linked = result.summary.pieces?.some((piece) => piece.cloth === "linked-to-jacket") ?? false;
+  return (Object.keys(REFERENCE_LABEL) as SwatchPiece[]).flatMap((piece) => {
+    const url = result.swatches[piece];
+    if (!url || (piece === "trousers" && linked)) return [];
+    return [{ label: REFERENCE_LABEL[piece], url }];
+  });
+}
+
+/**
+ * A recovered result may only join this session when it was generated for the photo
+ * now on screen. After a reload there is no photo yet, so recovery is allowed.
+ */
+export function recoveryMatchesCustomer(pendingPersonToken: string | undefined, currentPersonToken: string | null): boolean {
+  if (!currentPersonToken) return true;
+  return pendingPersonToken === currentPersonToken;
+}

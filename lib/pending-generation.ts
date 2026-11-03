@@ -2,7 +2,8 @@ import type { PieceCloth, ResultSummary } from "@/lib/result-summary";
 const CLOTH_VALUES: readonly string[] = ["uploaded", "linked-to-jacket", "reference"];
 const PREFIX = "nasir-pending-generation-v1:";
 const TTL_MS = 15 * 60_000;
-export type PendingGeneration = { key: string; createdAt: number; summary: ResultSummary };
+/** personToken identifies the customer photo on screen when the job started (a page-local blob URL). */
+export type PendingGeneration = { key: string; createdAt: number; summary: ResultSummary; personToken?: string };
 export function pendingStorageKey(account: string) { return PREFIX + encodeURIComponent(account); }
 export function parsePendingGeneration(raw: string | null, now = Date.now()): PendingGeneration | null {
   try {
@@ -25,7 +26,8 @@ export function parsePendingGeneration(raw: string | null, now = Date.now()): Pe
       if (!Array.isArray(value.summary.accessories) || value.summary.accessories.length > 5 || value.summary.accessories.some((name: unknown) => typeof name !== "string" || name.length > 240)) return null;
       result.accessories = [...value.summary.accessories];
     }
-    return { key: value.key, createdAt: value.createdAt, summary: result };
+    if (value.personToken !== undefined && (typeof value.personToken !== "string" || value.personToken.length > 240)) return null;
+    return { key: value.key, createdAt: value.createdAt, summary: result, ...(value.personToken ? { personToken: value.personToken } : {}) };
   } catch { return null; }
 }
 export function clearPendingGenerations(storage: Pick<Storage, "length" | "key" | "removeItem">) {

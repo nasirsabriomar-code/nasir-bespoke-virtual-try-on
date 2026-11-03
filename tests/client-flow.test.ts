@@ -172,3 +172,9 @@ test("pending summary rejects an unknown cloth value or oversized accessories", 
   assert.equal(make({ garment: "g", fabric: "f", shoes: "s", pieces: [{ label: "Jacket", design: "C", source: "x", cloth: "silk" }] }), null);
   assert.equal(make({ garment: "g", fabric: "f", shoes: "s", accessories: ["a", "b", "c", "d", "e", "f"] }), null);
 });
+
+test("pending generation keeps the customer photo token", () => {
+  const now = Date.now();
+  const parsed = parsePendingGeneration(JSON.stringify({ key: "123e4567-e89b-42d3-a456-426614174000", createdAt: now - 1000, personToken: "blob:http://x/abc", summary: { garment: "g", fabric: "f", shoes: "s" } }), now);
+  assert.equal(parsed?.personToken, "blob:http://x/abc");
+});

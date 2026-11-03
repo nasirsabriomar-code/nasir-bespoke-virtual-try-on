@@ -20,7 +20,7 @@ import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorks
 import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
 import { classifyGenerationResponse, fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
 import { buildResultSummary, summaryDiffers, type ResultSummary } from "@/lib/result-summary";
-import { addSessionResult, releaseSessionResults, submissionSwatches, type SessionResult } from "@/lib/session-results";
+import { addSessionResult, recoveryMatchesCustomer, referencesForSessionResult, releaseSessionResults, submissionSwatches, type SessionResult } from "@/lib/session-results";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import { clearSplitFabrics, effectiveSplitFabrics } from "@/lib/split-outfit/client-fabrics";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
@@ -97,6 +97,8 @@ function getClientDeviceHint() {
 
 export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [person, setPerson] = useState<UploadedImage | null>(null);
+  const personTokenRef = useRef<string | null>(null);
+  useEffect(() => { personTokenRef.current = person?.previewUrl ?? null; }, [person]);
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
   const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
   const [storedSplitFabrics, setSplitFabrics] = useState<SplitPieceFabrics>({
@@ -233,17 +235,24 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       trackPending(null);
       generationKeyRef.current = null;
       if (recovered.kind === "failed") { setError(recovered.error); return; }
+      if (value.summary.pieces && !recoveryMatchesCustomer(value.personToken, personTokenRef.current)) {
+        // A Split result can be handed to the customer, so one made for an earlier photo is never shown here.
+        setError("The earlier try-on finished and is saved in History. It belongs to a previous customer photo, so it is not shown here.");
+        return;
+      }
+      const entry: SessionResult = { id: value.key, resultUrl: recovered.resultUrl, originalUrl: recovered.originalUrl, summary: value.summary, swatches: {}, ownedUrls: [], recovered: true };
       setResultUrl(recovered.resultUrl);
       setOriginalResultUrl(recovered.originalUrl);
       setResultSummary(value.summary);
+      setResultReferences(referencesForSessionResult(entry));
       setOutputSize(null);
+      setError(null);
       if (value.summary.pieces) {
         // A recovered Split result reopens Split Outfit at Review, where it can be shown to the customer.
         setMode("split");
         goToStep("review");
-        setSessionResults((current) => addSessionResult(current, { id: value.key, resultUrl: recovered.resultUrl, originalUrl: recovered.originalUrl, summary: value.summary, swatches: {}, ownedUrls: [], recovered: true }, revokeUrl));
+        setSessionResults((current) => addSessionResult(current, entry, revokeUrl));
       }
-      setError(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Recovery is unavailable.");
       if (error instanceof RecoveryAuthenticationError) window.location.replace("/login");
@@ -389,10 +398,10 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           trousersLinked: submittedTrousersLinked,
           createUrl: (file) => { const url = URL.createObjectURL(file); objectUrls.current.add(url); return url; },
         });
-        const labels = { jacket: "Jacket fabric", trousers: "Trouser fabric", shirt: "Shirt fabric", waistcoat: "Waistcoat fabric" } as const;
-        setResultReferences((Object.keys(labels) as (keyof typeof labels)[]).flatMap((piece) => swatches[piece] && !(piece === "trousers" && submittedTrousersLinked) ? [{ label: labels[piece], url: swatches[piece] }] : []));
         const owned = nextResultUrl.startsWith("blob:") ? [...ownedUrls, nextResultUrl] : ownedUrls;
-        setSessionResults((current) => addSessionResult(current, { id: historyId ?? idempotencyKeyForResult(), resultUrl: nextResultUrl, originalUrl: nextOriginalUrl, summary, swatches, ownedUrls: owned, recovered: false }, revokeUrl));
+        const entry: SessionResult = { id: historyId ?? idempotencyKeyForResult(), resultUrl: nextResultUrl, originalUrl: nextOriginalUrl, summary, swatches, ownedUrls: owned, recovered: false };
+        setResultReferences(referencesForSessionResult(entry));
+        setSessionResults((current) => addSessionResult(current, entry, revokeUrl));
         return;
       }
       setResultReferences(activeFabricReferences.map(item => {
@@ -447,7 +456,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           }
           : null;
       if (!requestBody) throw new Error("We couldn't create the try-on. Please try again.");
-      const pending = { key: idempotencyKey, createdAt: Date.now(), summary };
+      const pending: PendingGeneration = { key: idempotencyKey, createdAt: Date.now(), summary, personToken: person.previewUrl };
       trackPending(pending);
       const activeGuidance: FabricGuidance = {};
       for (const role of Object.keys(requestBody.uploads) as FabricRole[]) if (effectiveGuidance[role]) activeGuidance[role] = effectiveGuidance[role];
