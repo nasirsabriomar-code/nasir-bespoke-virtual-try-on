@@ -3299,3 +3299,11 @@ a:focus-visible {
   .show-customer { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .show-customer-card { border-left: 0; border-top: 1px solid var(--atelier-line); max-height: 42vh; }
 }
+
+/* Phones: let the empty upload box grow with its content so nothing spills past the frame. */
+@media (max-width: 640px) {
+  .atelier-shell .upload-dropzone,
+  .atelier-shell .level1-upload-grid .upload-dropzone { height: auto; min-height: 245px; }
+  .atelier-shell .upload-empty { padding: 32px 20px; }
+  .atelier-shell .upload-icon { height: 44px; margin-bottom: 14px; width: 44px; }
+}
