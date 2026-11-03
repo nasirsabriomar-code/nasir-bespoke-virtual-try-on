@@ -74,10 +74,10 @@ test("feedback validates fields, persists and is isolated between staff", async 
   assert.equal((await GET(new Request(url), context)).status, 401);
   const first = await cookie("staff-one");
   assert.equal((await PUT(new Request(url, { method: "PUT", headers: { cookie: first }, body: "{}" }), context)).status, 403);
-  const response = await PUT(new Request(url, { method: "PUT", headers: { cookie: first, origin: "http://localhost" }, body: JSON.stringify({ decision: "rejected", favourite: true, reasons: ["pattern-too-large"] }) }), context);
+  const response = await PUT(new Request(url, { method: "PUT", headers: { cookie: first, origin: "http://localhost" }, body: JSON.stringify({ decision: "rejected", favourite: true, reasons: ["pattern-too-large", "wrong-material", "changed-customer"] }) }), context);
   assert.equal(response.status, 200);
   const own = await (await GET(new Request(url, { headers: { cookie: first } }), context)).json();
-  assert.equal(own.favourite, true); assert.deepEqual(own.reasons, ["pattern-too-large"]);
+  assert.equal(own.favourite, true); assert.deepEqual(own.reasons, ["pattern-too-large", "wrong-material", "changed-customer"]);
   const other = await (await GET(new Request(url, { headers: { cookie: await cookie("staff-two") } }), context)).json();
   assert.equal(other.favourite, false); assert.equal(other.decision, "unreviewed");
 });
@@ -170,4 +170,12 @@ test("overlapping upload sets cannot consume the same slot or strand an unrelate
   assert.ok(first);
   assert.equal(await consumeUploadSlots("staff-one", [slots[1].id, slots[2].id]), null);
   assert.ok(await consumeUploadSlots("staff-one", [slots[2].id]));
+});
+
+
+test("submitted split fabric assignments survive recent history sanitization", async () => {
+  const flags = { jacket: true, trousers: false, shirt: true, waistcoat: false };
+  await recordUsageEvent({ id: crypto.randomUUID(), occurredAt: new Date().toISOString(), username: "staff-one", status: "success", device: { kind: "desktop", browser: "fixture", operatingSystem: "fixture" }, durationMs: 1, model: "fixture", provider: "fixture", quality: "medium", generation: { mode: "split", splitFamily: "suit", splitFabricSlots: flags } });
+  const history = await getUsageHistory();
+  assert.deepEqual(history.events[0].generation?.splitFabricSlots, flags);
 });

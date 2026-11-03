@@ -3,11 +3,12 @@
 import type { VisualTryOnMode } from "@/lib/split-outfit/types";
 
 type ModeSelectorProps = {
+  disabled?: boolean;
   mode: VisualTryOnMode;
   onModeChange: (mode: VisualTryOnMode) => void;
 };
 
-export function ModeSelector({ mode, onModeChange }: ModeSelectorProps) {
+export function ModeSelector({ mode, onModeChange, disabled = false }: ModeSelectorProps) {
   return (
     <section className="mode-selector-container" aria-label="Operating Mode Selection">
       <div className="mode-selector-heading">
@@ -22,6 +23,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps) {
       >
         <button
           type="button"
+          disabled={disabled}
           role="radio"
           aria-checked={mode === "full"}
           className={`mode-option-btn ${mode === "full" ? "is-active" : ""}`}
@@ -36,6 +38,7 @@ export function ModeSelector({ mode, onModeChange }: ModeSelectorProps) {
 
         <button
           type="button"
+          disabled={disabled}
           role="radio"
           aria-checked={mode === "split"}
           className={`mode-option-btn ${mode === "split" ? "is-active" : ""}`}

@@ -14,7 +14,12 @@ export function parsePendingGeneration(raw: string | null, now = Date.now()): Pe
       if (typeof text === "string") summary[field] = text;
     }
     if (!summary.garment || !summary.fabric || !summary.shoes) return null;
-    return { key: value.key, createdAt: value.createdAt, summary: summary as ResultSummary };
+    const result: ResultSummary = { garment: summary.garment, fabric: summary.fabric, shoes: summary.shoes, ...(summary.lower ? { lower: summary.lower } : {}), ...(summary.turban ? { turban: summary.turban } : {}) };
+    if (value.summary.pieces !== undefined) {
+      if (!Array.isArray(value.summary.pieces) || value.summary.pieces.length > 5 || value.summary.pieces.some((piece: Record<string, unknown>) => !piece || typeof piece !== "object" || ["label", "design", "source"].some(key => typeof piece[key] !== "string" || (piece[key] as string).length > 240))) return null;
+      result.pieces = value.summary.pieces.map((piece: { label: string; design: string; source: string }) => ({ label: piece.label, design: piece.design, source: piece.source }));
+    }
+    return { key: value.key, createdAt: value.createdAt, summary: result };
   } catch { return null; }
 }
 export function clearPendingGenerations(storage: Pick<Storage, "length" | "key" | "removeItem">) {

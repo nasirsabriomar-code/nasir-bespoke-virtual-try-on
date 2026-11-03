@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   buildSummaryFromView,
   optionsFor,
@@ -21,6 +21,8 @@ type SplitOutfitWorkspaceProps = {
   fabrics: SplitPieceFabrics;
   onFabricSelect: (piece: keyof SplitPieceFabrics, file: File) => void;
   onFabricRemove: (piece: keyof SplitPieceFabrics) => void;
+  trousersLinked: boolean;
+  fabricControls: (piece: keyof SplitPieceFabrics) => ReactNode;
   onReuseJacketOnTrousers: () => void;
 };
 
@@ -34,14 +36,16 @@ const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
   achkan: "Achkan",
 };
 
-export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating, fabrics, onFabricSelect, onFabricRemove, onReuseJacketOnTrousers }: SplitOutfitWorkspaceProps) {
+export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating, fabrics, trousersLinked, fabricControls, onFabricSelect, onFabricRemove, onReuseJacketOnTrousers }: SplitOutfitWorkspaceProps) {
   const [view, setView] = useState<SplitCatalogueView | null>(null);
+  const [retry, setRetry] = useState(0);
   const [viewError, setViewError] = useState<string | null>(null);
   const [notices, setNotices] = useState<RepairNotice[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/split-catalog?family=${encodeURIComponent(state.family)}`, { cache: "no-store" })
+    const controller = new AbortController();
+    fetch(`/api/split-catalog?family=${encodeURIComponent(state.family)}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("request_failed");
         return response.json() as Promise<SplitCatalogueView>;
@@ -55,8 +59,8 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
         if (cancelled) return;
         setViewError("We couldn't load this outfit family. Please try again.");
       });
-    return () => { cancelled = true; };
-  }, [state.family]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [state.family, retry]);
 
   // The fetched view lags one render behind a family switch — treat a view
   // for a stale family the same as "still loading" rather than rendering it.
@@ -89,6 +93,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
 
   const selectFamily = (family: SplitOutfitFamily) => {
     if (family === state.family) return;
+    setViewError(null);
     setNotices([]);
     onChange(() => ({
       family,
@@ -110,9 +115,10 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
           role="radio"
           aria-checked={state.family === family}
           className={`split-family-btn ${state.family === family ? "is-active" : ""}`}
+          disabled={isGenerating || view?.families?.find(item => item.id === family)?.configured === false}
           onClick={() => selectFamily(family)}
         >
-          {FAMILY_LABELS[family]}
+          {FAMILY_LABELS[family]}{view?.families?.find(item => item.id === family)?.configured === false ? " · Coming soon" : ""}
         </button>
       ))}
     </div>
@@ -122,7 +128,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
     return (
       <div className="split-outfit-workspace" aria-label="Split Outfit Customization Workspace">
         {familySelector}
-        <p className="split-workspace-status" role="alert">{viewError}</p>
+        <p className="split-workspace-status" role="alert">{viewError}</p><button type="button" onClick={() => { setViewError(null); setRetry(value => value + 1); }}>Retry loading catalogue</button>
       </div>
     );
   }
@@ -153,7 +159,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       {familySelector}
 
       {/* 01 — UPPER GARMENT */}
-      <section className="level1-flow" aria-label="Upper Garment Selection">
+      <section className="level1-flow" id="split-piece-jacket" tabIndex={-1} aria-label="Upper Garment Selection">
         <div className="level1-step-heading">
           <span>01</span>
           <div>
@@ -167,6 +173,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             .filter(({ verdict }) => verdict.status !== "incompatible")
             .map(({ option, verdict }) => (
               <SplitComponentCard
+                disabled={isGenerating}
                 key={option.id}
                 option={option}
                 selected={state.upperId === option.id}
@@ -177,6 +184,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
         </div>
         <SplitPieceFabricSlot
           piece="jacket"
+          controls={fabricControls("jacket")}
           fabric={fabrics.jacket}
           onSelect={(file) => onFabricSelect("jacket", file)}
           onRemove={() => onFabricRemove("jacket")}
@@ -185,7 +193,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       </section>
 
       {/* 02 — LOWER GARMENT */}
-      <section className="level1-flow" aria-label="Lower Garment Selection">
+      <section className="level1-flow" id="split-piece-trousers" tabIndex={-1} aria-label="Lower Garment Selection">
         <div className="level1-step-heading">
           <span>02</span>
           <div>
@@ -199,6 +207,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             .filter(({ verdict }) => verdict.status !== "incompatible")
             .map(({ option, verdict }) => (
               <SplitComponentCard
+                disabled={isGenerating}
                 key={option.id}
                 option={option}
                 selected={state.lowerId === option.id}
@@ -209,13 +218,14 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
         </div>
         <SplitPieceFabricSlot
           piece="trousers"
+          controls={fabricControls("trousers")}
           fabric={fabrics.trousers}
           onSelect={(file) => onFabricSelect("trousers", file)}
           onRemove={() => onFabricRemove("trousers")}
           disabled={isGenerating}
-          extra={fabrics.jacket ? (
+          extra={fabrics.jacket || trousersLinked ? (
             <button type="button" className="history-button" onClick={onReuseJacketOnTrousers} disabled={isGenerating}>
-              Use jacket fabric on trousers
+              {trousersLinked ? "Unlink trousers from jacket fabric" : "Link trousers to jacket fabric (replaces trouser cloth)"}
             </button>
           ) : null}
         />
@@ -234,13 +244,14 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
         <div className="split-inner-group">
           {/* Sub-section: Shirt */}
           <div className="split-subsection">
-            <h3 className="split-subsection-title">Dress Shirt</h3>
+            <h3 id="split-piece-shirt" tabIndex={-1} className="split-subsection-title">Dress Shirt</h3>
             <div className="split-cards-grid">
               {optionsFor(view, state, "inner-shirt")
                 .filter(({ verdict }) => verdict.status !== "incompatible")
                 .map(({ option, verdict }) => (
                   <SplitComponentCard
-                    key={option.id}
+                    disabled={isGenerating}
+                key={option.id}
                     option={option}
                     selected={state.shirtId === option.id}
                     onSelect={() => applyChange((prev) => ({ ...prev, shirtId: option.id }))}
@@ -250,6 +261,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             </div>
             <SplitPieceFabricSlot
               piece="shirt"
+          controls={fabricControls("shirt")}
               fabric={fabrics.shirt}
               onSelect={(file) => onFabricSelect("shirt", file)}
               onRemove={() => onFabricRemove("shirt")}
@@ -259,13 +271,14 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
 
           {/* Sub-section: Waistcoat */}
           <div className="split-subsection">
-            <h3 className="split-subsection-title">Waistcoat (Optional Layer)</h3>
+            <h3 id="split-piece-waistcoat" tabIndex={-1} className="split-subsection-title">Waistcoat (Optional Layer)</h3>
             <div className="split-cards-grid">
               {optionsFor(view, state, "inner-waistcoat")
                 .filter(({ verdict }) => verdict.status !== "incompatible")
                 .map(({ option, verdict }) => (
                   <SplitComponentCard
-                    key={option.id}
+                    disabled={isGenerating}
+                key={option.id}
                     option={option}
                     selected={state.waistcoatId === option.id}
                     onSelect={() => applyChange((prev) => ({ ...prev, waistcoatId: option.id }))}
@@ -276,6 +289,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             {state.waistcoatId && state.waistcoatId !== "SUIT_WAISTCOAT_NONE" ? (
               <SplitPieceFabricSlot
                 piece="waistcoat"
+          controls={fabricControls("waistcoat")}
                 fabric={fabrics.waistcoat}
                 onSelect={(file) => onFabricSelect("waistcoat", file)}
                 onRemove={() => onFabricRemove("waistcoat")}
@@ -287,7 +301,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       </section>
 
       {/* 04 — FOOTWEAR */}
-      <section className="level1-flow" aria-label="Footwear Selection">
+      <section className="level1-flow" id="split-piece-footwear" tabIndex={-1} aria-label="Footwear Selection">
         <div className="level1-step-heading">
           <span>04</span>
           <div>
@@ -301,6 +315,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             .filter(({ verdict }) => verdict.status !== "incompatible")
             .map(({ option, verdict }) => (
               <SplitComponentCard
+                disabled={isGenerating}
                 key={option.id}
                 option={option}
                 selected={state.footwearId === option.id}
@@ -312,7 +327,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       </section>
 
       {/* 05 — ACCESSORIES (MULTI-SELECT) */}
-      <section className="level1-flow" aria-label="Accessories Selection (Multi-Select)">
+      <section className="level1-flow" id="split-piece-accessories" tabIndex={-1} aria-label="Accessories Selection (Multi-Select)">
         <div className="level1-step-heading">
           <span>05</span>
           <div>
@@ -330,6 +345,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             .filter(({ verdict }) => verdict.status !== "incompatible")
             .map(({ option, verdict }) => (
               <SplitComponentCard
+                disabled={isGenerating}
                 key={option.id}
                 option={option}
                 selected={state.accessoryIds.includes(option.id)}
@@ -355,7 +371,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       <SplitMaterialsSection slots={summary.activeMaterialSlots} />
 
       {/* 07 — YOUR OUTFIT */}
-      <SplitOutfitReview summary={summary} fabrics={fabrics} onGenerate={onGenerate} isGenerating={isGenerating} />
+      <SplitOutfitReview summary={summary} fabrics={fabrics} trousersLinked={trousersLinked} onGenerate={onGenerate} isGenerating={isGenerating} />
     </div>
   );
 }

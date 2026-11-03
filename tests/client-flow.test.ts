@@ -114,3 +114,25 @@ test("#13 a Full Outfit result names the design and variation", () => {
   assert.equal(summary.fabric, "Uploaded fabric");
   assert.equal(summary.shoes, "Keep existing");
 });
+
+test("linked trousers track jacket replacements and removal without changing independent cloth", async () => {
+  const { effectiveSplitFabrics } = await import("@/lib/split-outfit/client-fabrics");
+  const jacket = { previewUrl: "blob:jacket" };
+  const trousers = { previewUrl: "blob:trousers" };
+  const stored = { jacket, trousers, shirt: null, waistcoat: null };
+  assert.equal(effectiveSplitFabrics(stored, false).trousers, trousers);
+  assert.equal(effectiveSplitFabrics(stored, true).trousers, jacket);
+  const replacement = { previewUrl: "blob:replacement" };
+  assert.equal(effectiveSplitFabrics({ ...stored, jacket: replacement }, true).trousers, replacement);
+  assert.equal(effectiveSplitFabrics({ ...stored, jacket: null }, true).trousers, null);
+  assert.equal(stored.trousers, trousers);
+});
+
+test("material totals count effective assignments and exclude absent waistcoat cloth", async () => {
+  const { effectiveSplitFabrics, fabricAssignmentCounts } = await import("@/lib/split-outfit/client-fabrics");
+  const cloth = { previewUrl: "blob:cloth" };
+  const stored = { jacket: cloth, trousers: null, shirt: null, waistcoat: cloth };
+  assert.deepEqual(fabricAssignmentCounts(stored, false), { total: 3, uploaded: 1, reference: 2 });
+  assert.deepEqual(fabricAssignmentCounts(effectiveSplitFabrics(stored, true), false), { total: 3, uploaded: 2, reference: 1 });
+  assert.deepEqual(fabricAssignmentCounts(effectiveSplitFabrics(stored, true), true), { total: 4, uploaded: 3, reference: 1 });
+});

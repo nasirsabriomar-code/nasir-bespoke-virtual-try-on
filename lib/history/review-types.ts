@@ -1,4 +1,4 @@
-export const REVIEW_REASONS = ["pattern-too-large", "pattern-too-small", "wrong-colour", "incorrect-construction", "changed-background", "other-quality"] as const;
+export const REVIEW_REASONS = ["pattern-too-large", "pattern-too-small", "wrong-colour", "incorrect-construction", "changed-background", "other-quality", "wrong-material", "changed-customer"] as const;
 export type ReviewReason = typeof REVIEW_REASONS[number];
 export type GenerationReview = { decision: "unreviewed" | "accepted" | "rejected"; favourite: boolean; reasons: ReviewReason[]; updatedAt: string };
 export function parseReview(value: unknown): Omit<GenerationReview, "updatedAt"> | null {

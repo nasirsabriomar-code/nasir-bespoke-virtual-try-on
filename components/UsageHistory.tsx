@@ -46,6 +46,7 @@ type HistoryEvent = {
     shoeStyleName?: string;
     turbanName?: string;
     shoeName?: string;
+    splitFabricSlots?: { jacket: boolean; trousers: boolean; shirt: boolean; waistcoat: boolean };
     splitFamily?: string;
     splitUpperId?: string;
     splitUpperName?: string;
@@ -499,6 +500,12 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             ) : null,
                           )}
                         </div>
+                        {selectedEvent.generation?.mode === "split" ? <section aria-label="Saved piece assignments"><h4>Submitted outfit</h4><dl className="result-summary">{[
+                          ["Jacket", selectedEvent.generation.splitUpperName, "jacket"],
+                          ["Trousers", selectedEvent.generation.splitLowerName, "trousers"],
+                          ["Shirt", selectedEvent.generation.splitShirtName, "shirt"],
+                          ...(selectedEvent.generation.splitWaistcoatId && selectedEvent.generation.splitWaistcoatId !== "SUIT_WAISTCOAT_NONE" ? [["Waistcoat", selectedEvent.generation.splitWaistcoatName, "waistcoat"]] : []),
+                        ].map(([label, name, piece]) => <div key={label}><dt>{label}</dt><dd>{name || "Design not recorded"} · {selectedEvent.generation?.splitFabricSlots ? selectedEvent.generation.splitFabricSlots[piece as "jacket" | "trousers" | "shirt" | "waistcoat"] ? "Uploaded cloth" : "Reference cloth" : "Material assignment not recorded"}</dd></div>)}<div><dt>Shoes</dt><dd>{selectedEvent.generation.splitFootwearName || "Design not recorded"} · Reference material</dd></div><div><dt>Accessories · Text instructions</dt><dd>{selectedEvent.generation.splitAccessoryNames?.join(", ") || "None recorded"}</dd></div></dl></section> : null}
                         <GenerationReview key={selectedEvent.id} generationId={selectedEvent.id} onSaved={review => setHistory(current => current ? { ...current, events: current.events.map(event => event.id === selectedEvent.id ? { ...event, review } : event) } : current)} />
                         <details><summary>Generation record</summary><p>Output: {selectedEvent.metadata?.outputWidth && selectedEvent.metadata?.outputHeight ? `${selectedEvent.metadata.outputWidth} × ${selectedEvent.metadata.outputHeight}` : "Not recorded"}. Reported effort: {selectedEvent.metadata?.reportedQuality ?? "Not provided"}. Processing: {selectedEvent.metadata?.provenance?.preprocessingVersion ?? "Legacy"}. Attempts: {selectedEvent.metadata?.provenance?.providerAttempts ?? "Not recorded"}.</p></details>
                         {selectedEvent.generation?.outfitSpecification ? (

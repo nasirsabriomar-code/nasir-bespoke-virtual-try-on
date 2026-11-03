@@ -208,6 +208,7 @@ export type SplitCatalogueSlotView = {
 };
 
 export type SplitCatalogueView = {
+  families?: { id: SplitOutfitFamily; configured: boolean }[];
   family: SplitOutfitFamily;
   slots: SplitCatalogueSlotView[];
 };

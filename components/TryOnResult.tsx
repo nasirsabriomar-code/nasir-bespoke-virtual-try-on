@@ -76,6 +76,7 @@ export function TryOnResult({
         {outputSize ? <div><dt>Master</dt><dd>{outputSize} PNG</dd></div> : null}
       </dl>
 
+      {summary.pieces ? <dl className="result-summary" aria-label="Submitted piece assignments">{summary.pieces.map(piece => <div key={piece.label}><dt>{piece.label}</dt><dd>{piece.design} · {piece.source}</dd></div>)}</dl> : null}
       <div className="result-actions">
         <a href={resultUrl.startsWith("blob:") ? resultUrl : `${resultUrl}${resultUrl.includes("?") ? "&" : "?"}download=1`} download={filename}>Download</a>
         <button type="button" onClick={onRegenerate} disabled={isGenerating}>
@@ -90,7 +91,7 @@ export function TryOnResult({
           Start Over
         </button>
       </div>
-      {resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)?.[1] ? <GenerationReview key={resultUrl} generationId={resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)![1]} /> : null}
+      {resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)?.[1] ? <GenerationReview key={resultUrl} generationId={resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)![1]} /> : <p>Persistent feedback is available for results saved to History. Download this unsaved image before leaving the page.</p>}
       <p className="result-disclaimer">AI visualization. Actual garment fit may vary.</p>
     </div>
   );

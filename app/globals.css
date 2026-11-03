@@ -2931,3 +2931,9 @@ a:focus-visible {
 .fabric-crop-source span { position: absolute; border: 2px solid #f3c66a; box-shadow: 0 0 0 1px #222; }
 .fabric-detail-preview { overflow: hidden; position: relative; }
 .fabric-detail-preview img { display: block; height: auto; }
+
+/* Contextual Split Outfit review. */
+.atelier-shell .split-review-swatch { width: 88px; height: 88px; object-fit: contain; display: block; margin: .6rem 0; }
+.atelier-shell [id^="split-piece-"] { scroll-margin-top: 2rem; }
+.atelier-shell .split-summary-card a { display: inline-block; margin-top: .5rem; text-decoration: underline; }
+.atelier-shell details.fabric-reference-controls > summary { cursor: pointer; padding: .75rem; }

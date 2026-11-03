@@ -6,6 +6,7 @@ import type { Verdict } from "@/lib/rules/types";
 import type { SplitComponentOptionView } from "@/lib/split-outfit/types";
 
 type SplitComponentCardProps = {
+  disabled?: boolean;
   option: SplitComponentOptionView;
   selected: boolean;
   onSelect: () => void;
@@ -177,6 +178,7 @@ function renderPlaceholderSilhouette(categoryId: string, optionId: string) {
 
 export function SplitComponentCard({
   option,
+  disabled = false,
   selected,
   onSelect,
   verdict,
@@ -189,6 +191,7 @@ export function SplitComponentCard({
   return (
     <button
       type="button"
+      disabled={disabled}
       role={isMultiSelect ? "checkbox" : "radio"}
       aria-checked={selected}
       title={reason}

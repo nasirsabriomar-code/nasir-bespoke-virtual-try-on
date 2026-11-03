@@ -20,7 +20,7 @@ import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterials
 import { classifyGenerationResponse, fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
 import { buildResultSummary, type ResultSummary } from "@/lib/result-summary";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
-import { clearSplitFabrics } from "@/lib/split-outfit/client-fabrics";
+import { clearSplitFabrics, effectiveSplitFabrics } from "@/lib/split-outfit/client-fabrics";
 import type { SplitOutfitState, VisualTryOnMode } from "@/lib/split-outfit/types";
 import type { Level1CatalogueView } from "@/lib/catalog/level1-types";
 import type { FabricRegion } from "@/lib/catalog/level1-prompt";
@@ -96,12 +96,14 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [person, setPerson] = useState<UploadedImage | null>(null);
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
   const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
-  const [splitFabrics, setSplitFabrics] = useState<SplitPieceFabrics>({
+  const [storedSplitFabrics, setSplitFabrics] = useState<SplitPieceFabrics>({
     jacket: null,
     trousers: null,
     shirt: null,
     waistcoat: null,
   });
+  const [trousersLinked, setTrousersLinked] = useState(false);
+  const splitFabrics = useMemo(() => effectiveSplitFabrics(storedSplitFabrics, trousersLinked), [storedSplitFabrics, trousersLinked]);
   const [mode, setMode] = useState<VisualTryOnMode>("full");
   const [splitOutfit, setSplitOutfit] = useState<SplitOutfitState>(DEFAULT_SPLIT_OUTFIT_STATE);
   const splitOutfitEnabled = true;
@@ -112,11 +114,15 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [designVariantId, setDesignVariantId] = useState<string | null>(null);
   const [backgroundControl, setBackgroundControl] = useState<BackgroundControl>({ mode: "prompt-only" });
   const [fabricGuidance, setFabricGuidance] = useState<FabricGuidance>({});
+  const effectiveGuidance = useMemo(() => mode === "split" && trousersLinked
+    ? { ...fabricGuidance, lowerFabric: fabricGuidance.fabric }
+    : fabricGuidance, [mode, trousersLinked, fabricGuidance]);
   const [fabricRegion, setFabricRegion] = useState<FabricRegion>("both");
   const [reuseFabricForLower, setReuseFabricForLower] = useState(false);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [originalResultUrl, setOriginalResultUrl] = useState<string | null>(null);
   const [outputSize, setOutputSize] = useState<string | null>(null);
+  const [resultReferences, setResultReferences] = useState<{ label: string; url: string }[]>([]);
   const [resultSummary, setResultSummary] = useState<ResultSummary | null>(null);
   const uploadController = useRef<AbortController | null>(null);
   const [generationStage, setGenerationStage] = useState("");
@@ -124,6 +130,8 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const objectUrls = useRef(new Set<string>());
+  const resultPreviewUrls = useRef(new Set<string>());
+  const splitUploadTickets = useRef({ jacket: 0, trousers: 0, shirt: 0, waistcoat: 0 });
   const generationKeyRef = useRef<string | null>(null);
   const pendingRef = useRef<PendingGeneration | null>(null);
   const [pendingGeneration, setPendingGeneration] = useState<PendingGeneration | null>(null);
@@ -179,10 +187,13 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   }, [revokeUrl]);
 
   const clearResult = useCallback(() => {
+    resultPreviewUrls.current.forEach(revokeUrl);
+    resultPreviewUrls.current.clear();
     setResultUrl((current) => {
       revokeUrl(current);
       return null;
     });
+    setResultReferences([]);
     setOriginalResultUrl(null);
     setOutputSize(null);
     setResultSummary(null);
@@ -332,13 +343,22 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
 
     // Captured now so the summary describes this look, not later selection changes.
     const summary = mode === "split"
-      ? buildResultSummary({ mode, splitOutfit, hasUploadedFabric: Object.values(splitFabrics).some(Boolean) })
+      ? buildResultSummary({ mode, splitOutfit, hasUploadedFabric: Object.values(splitFabrics).some(Boolean), fabrics: { jacket: Boolean(splitFabrics.jacket), trousers: Boolean(splitFabrics.trousers), shirt: Boolean(splitFabrics.shirt), waistcoat: Boolean(splitFabrics.waistcoat) }, trousersLinked })
       : buildResultSummary({ mode: "full", designName: selectedDesign?.name ?? "Curated design", variantName: selectedVariant?.name });
     const showResult = (nextResultUrl: string, nextOriginalUrl: string, nextOutputSize: string | null) => {
       setResultUrl(nextResultUrl);
       setOriginalResultUrl(nextOriginalUrl);
       setOutputSize(nextOutputSize);
       setResultSummary(summary);
+      const historyId = nextResultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)?.[1];
+      setResultReferences(activeFabricReferences.map(item => {
+        const asset = ({ fabric: "fabric", lowerFabric: "lower-fabric", shirtFabric: "shirt-fabric", waistcoatFabric: "waistcoat-fabric" } as const)[item.role];
+        if (historyId) return { label: item.label, url: `/api/history/${historyId}/asset/${asset}` };
+        const url = URL.createObjectURL(item.image.file);
+        objectUrls.current.add(url);
+        resultPreviewUrls.current.add(url);
+        return { label: item.label, url };
+      }));
     };
 
     try {
@@ -385,7 +405,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       const pending = { key: idempotencyKey, createdAt: Date.now(), summary };
       trackPending(pending);
       const activeGuidance: FabricGuidance = {};
-      for (const role of Object.keys(requestBody.uploads) as FabricRole[]) if (fabricGuidance[role]) activeGuidance[role] = fabricGuidance[role];
+      for (const role of Object.keys(requestBody.uploads) as FabricRole[]) if (effectiveGuidance[role]) activeGuidance[role] = effectiveGuidance[role];
       const requestWithGuidance = { ...requestBody, fabricGuidance: JSON.stringify(activeGuidance), backgroundControl: JSON.stringify(backgroundControl) };
       let response: Response;
       try {
@@ -448,14 +468,17 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [accountId, activeFabricReferences, trackPending, backgroundControl, fabricGuidance, categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit]);
+  }, [accountId, activeFabricReferences, trackPending, backgroundControl, effectiveGuidance, categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit, trousersLinked]);
 
   const selectSplitFabric = useCallback(async (piece: keyof SplitPieceFabrics, file: File) => {
+    const ticket = ++splitUploadTickets.current[piece];
     setError(null);
     try {
       const prepared = await prepareImage(file);
+      if (ticket !== splitUploadTickets.current[piece]) return;
       const role = ({ jacket: "fabric", trousers: "lowerFabric", shirt: "shirtFabric", waistcoat: "waistcoatFabric" } as const)[piece];
       setFabricGuidance(current => { const next = { ...current }; delete next[role]; return next; });
+      if (piece === "trousers") setTrousersLinked(false);
       const previewUrl = URL.createObjectURL(prepared);
       objectUrls.current.add(previewUrl);
       setSplitFabrics((current) => {
@@ -465,33 +488,45 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       });
       clearResult();
     } catch (selectionError: unknown) {
-      setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
+      if (ticket === splitUploadTickets.current[piece]) setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
     }
   }, [clearResult, revokeUrl]);
 
   const removeSplitFabric = useCallback((piece: keyof SplitPieceFabrics) => {
+    ++splitUploadTickets.current[piece];
+    if (piece === "trousers" && trousersLinked) setTrousersLinked(false);
     setSplitFabrics((current) => {
       const previous = current[piece];
       if (previous) revokeUrl(previous.previewUrl);
       return { ...current, [piece]: null };
     });
     clearResult();
-  }, [clearResult, revokeUrl]);
+  }, [clearResult, revokeUrl, trousersLinked]);
 
   const reuseJacketOnTrousers = useCallback(() => {
+    ++splitUploadTickets.current.trousers;
     const jacket = splitFabrics.jacket;
-    if (!jacket) return;
-    const previewUrl = URL.createObjectURL(jacket.file);
-    objectUrls.current.add(previewUrl);
-    setSplitFabrics((current) => {
-      if (current.trousers) revokeUrl(current.trousers.previewUrl);
-      return { ...current, trousers: { file: jacket.file, previewUrl } };
-    });
+    if (trousersLinked) {
+      const previewUrl = jacket ? URL.createObjectURL(jacket.file) : null;
+      if (previewUrl) objectUrls.current.add(previewUrl);
+      setSplitFabrics(current => ({ ...current, trousers: jacket && previewUrl ? { file: jacket.file, previewUrl } : null }));
+      setFabricGuidance(current => ({ ...current, lowerFabric: current.fabric }));
+      setTrousersLinked(false);
+    } else if (jacket) {
+      setSplitFabrics(current => {
+        if (current.trousers) revokeUrl(current.trousers.previewUrl);
+        return { ...current, trousers: null };
+      });
+      setTrousersLinked(true);
+    }
     clearResult();
-  }, [clearResult, revokeUrl, splitFabrics.jacket]);
+  }, [clearResult, revokeUrl, splitFabrics.jacket, trousersLinked]);
 
   const restoreLook = useCallback((look: RestoredLook) => {
     if (look.kind === "unsupported") return;
+    for (const piece of Object.keys(splitUploadTickets.current) as (keyof SplitPieceFabrics)[]) ++splitUploadTickets.current[piece];
+    setTrousersLinked(false);
+    setSplitFabrics(current => clearSplitFabrics(current, revokeUrl));
     setError(null);
     clearResult();
     setReuseFabricForLower(false);
@@ -513,6 +548,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   }, [clearResult, revokeUrl, updateSplitOutfit]);
 
   const startOver = useCallback(() => {
+    for (const piece of Object.keys(splitUploadTickets.current) as (keyof SplitPieceFabrics)[]) ++splitUploadTickets.current[piece];
     setError(null);
     clearResult();
     setDesignId(null);
@@ -532,6 +568,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       return null;
     });
     setSplitFabrics((current) => clearSplitFabrics(current, revokeUrl));
+    setTrousersLinked(false);
     setSplitOutfit(DEFAULT_SPLIT_OUTFIT_STATE);
     setFabricGuidance({});
     setBackgroundControl({ mode: "prompt-only" });
@@ -586,7 +623,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
             id="customer-photo"
             label={UPLOAD_HELP.person.label}
             description={UPLOAD_HELP.person.description}
-            guidance={UPLOAD_HELP.person.guidance}
+            guidance="Use one person in even light, with a clear face and the clothing area visible. Avoid crossed arms where possible. Include feet when changing shoes; cropped-away details cannot be preserved faithfully."
             file={person?.file ?? null}
             previewUrl={person?.previewUrl ?? null}
             onSelect={(file) => void changeImage("person", file)}
@@ -687,6 +724,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
 
       {splitOutfitEnabled ? (
         <ModeSelector
+          disabled={isGenerating}
           mode={mode}
           onModeChange={(nextMode) => {
             setMode(nextMode);
@@ -781,13 +819,20 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           onGenerate={generate}
           isGenerating={isGenerating}
           fabrics={splitFabrics}
+          trousersLinked={trousersLinked}
+          fabricControls={piece => {
+            const role = ({ jacket: "fabric", trousers: "lowerFabric", shirt: "shirtFabric", waistcoat: "waistcoatFabric" } as const)[piece];
+            const image = splitFabrics[piece];
+            if (piece === "trousers" && trousersLinked) return <p role="status">Fabric and pattern settings are linked to the jacket. Edit them in the jacket section, or unlink to choose separately.</p>;
+            return image ? <FabricReferenceControls key={role + image.previewUrl} label={`${piece} fabric`} previewUrl={image.previewUrl} value={effectiveGuidance[role]} onChange={value => setFabricGuidance(current => ({ ...current, [role]: value }))} disabled={isGenerating} /> : null;
+          }}
           onFabricSelect={(piece, file) => void selectSplitFabric(piece, file)}
           onFabricRemove={removeSplitFabric}
           onReuseJacketOnTrousers={reuseJacketOnTrousers}
         />
       )}
-      {person ? <BackgroundControls previewUrl={person.previewUrl} value={backgroundControl} onChange={setBackgroundControl} disabled={isGenerating} /> : null}
-      {activeFabricReferences.map(item => <FabricReferenceControls key={item.role + item.image.previewUrl} label={item.label} previewUrl={item.image.previewUrl} value={fabricGuidance[item.role]} onChange={value => setFabricGuidance(current => ({ ...current, [item.role]: value }))} disabled={isGenerating} />)}
+      {person ? <details className="fabric-reference-controls"><summary>Advanced · Background preservation: {backgroundControl.mode === "prompt-only" ? "Prompt only" : backgroundControl.mode === "masked" ? "Garment mask" : "Preserve outside region"}</summary><BackgroundControls previewUrl={person.previewUrl} value={backgroundControl} onChange={setBackgroundControl} disabled={isGenerating} /></details> : null}
+      {mode === "full" ? activeFabricReferences.map(item => <FabricReferenceControls key={item.role + item.image.previewUrl} label={item.label} previewUrl={item.image.previewUrl} value={fabricGuidance[item.role]} onChange={value => setFabricGuidance(current => ({ ...current, [item.role]: value }))} disabled={isGenerating} />) : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {pendingGeneration && !isGenerating ? <section aria-label="Pending generation"><p>We need to check whether the previous generation finished before starting another paid run.</p><button type="button" onClick={() => void reconcilePending(pendingGeneration)}>Check generation again</button></section> : null}
 
@@ -805,7 +850,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           onRegenerate={generate}
           onReset={startOver}
           isGenerating={isGenerating}
-          fabricReferences={activeFabricReferences.map(item => ({ label: item.label, url: item.image.previewUrl }))}
+          fabricReferences={resultReferences}
         />
       ) : null}
 

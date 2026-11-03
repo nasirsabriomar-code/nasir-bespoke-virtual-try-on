@@ -62,20 +62,22 @@ try {
       ] },
     ],
   };
-  let failReviewLoad = true; let generations = 0; let statuses = 0; let submitted; let cancelMode = false; let heldChunk = false; let statusMode = "complete";
+  let failSplitCatalogue = true; let failReviewSave = false; let splitSuccess = false; let failReviewLoad = true; let generations = 0; let statuses = 0; let submitted; let cancelMode = false; let heldChunk = false; let statusMode = "complete";
   const json = (route, value, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
   await page.route("**/*", async route => {
     const request = route.request(); const url = new URL(request.url());
     if (url.origin !== origin) return route.abort("blockedbyclient");
     const path = url.pathname;
+    if (path === "/api/split-catalog" && failSplitCatalogue) { return json(route, { error: "Synthetic catalogue outage" }, 503); }
     if (path === "/api/level1-catalog") return json(route, catalogue);
-    if (path === "/api/local-fixture.png" || /^\/api\/history\/[^/]+\/asset\//.test(path)) return route.fulfill({ contentType: "image/png", body: path.endsWith("/fabric") ? cloth : png });
+    if (path.startsWith("/api/split-catalog-assets/") || path === "/api/local-fixture.png" || /^\/api\/history\/[^/]+\/asset\//.test(path)) return route.fulfill({ contentType: "image/png", body: path.endsWith("/fabric") ? cloth : png });
     if (path === "/api/history") return json(route, { events: historyIds.map((id, index) => ({ id, occurredAt: new Date().toISOString(), username: "assessment", status: "success", durationMs: 1000, provider: "fixture", model: "fixture", quality: "medium", device: { kind: "desktop", browser: "fixture", operatingSystem: "fixture" }, generation: { mode: "level1", categoryId: "suit", curatedDesignId: "SUIT_01_CLASSIC", curatedDesignName: "Synthetic suit" }, assets: { result: { contentType: "image/png" }, person: { contentType: "image/png" }, fabric: { contentType: "image/png" } }, review: index === 0 ? review : { decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" } })), total: 59, retained: 59 });
     if (path.endsWith("/review")) {
       if (request.method() === "GET") {
         if (failReviewLoad) return json(route, { error: "Synthetic feedback outage" }, 503);
         return json(route, review);
       }
+      if (failReviewSave) return json(route, { error: "Synthetic feedback save failure" }, 503);
       review = { ...request.postDataJSON(), updatedAt: new Date().toISOString() }; return json(route, review);
     }
     if (path === "/api/try-on/uploads") {
@@ -99,6 +101,7 @@ try {
     }
     if (path === "/api/try-on") {
       generations++; submitted = request.postDataJSON();
+      if (splitSuccess) return json(route, { resultUrl: `/api/history/${generationId}/asset/result`, originalUrl: `/api/history/${generationId}/asset/person` });
       // The client must recover this original key; never resubmit generation.
       return json(route, { error: "Synthetic proxy failure" }, 503);
     }
@@ -120,6 +123,7 @@ try {
   await controls.getByLabel("Use full swatch plus selected detail").check();
   await controls.getByLabel("Measured repeat width (cm, optional)").fill("4");
   await controls.getByRole("img", { name: "Upper fabric selected fabric detail" }).waitFor();
+  await page.locator("details").filter({ hasText: "Advanced · Background preservation" }).locator("summary").click();
   const background = page.getByRole("region", { name: "Background preservation controls" });
   await background.getByLabel("Preservation method").selectOption("composite");
   await page.getByRole("button", { name: "Generate Try-On", exact: true }).click();
@@ -213,6 +217,77 @@ try {
   statusMode = "unauthenticated"; await page.reload(); await page.waitForURL(origin + "/login");
   assert.ok(await page.evaluate(() => sessionStorage.getItem("nasir-pending-generation-v1:assessment")));
   assert.equal(generations, 1); passed("Expired authentication redirects to login while retaining minimal job metadata for later recovery");
+  statusMode = "complete"; cancelMode = false;
+  await page.getByLabel("Username").fill("assessment"); await page.getByLabel("Password").fill(password);
+  await Promise.all([page.waitForURL(origin + "/"), page.getByRole("button", { name: "Sign In", exact: true }).click()]);
+  await page.getByRole("radio", { name: /SPLIT OUTFIT/ }).click();
+  await page.getByRole("button", { name: "Retry loading catalogue", exact: true }).waitFor();
+  failSplitCatalogue = false;
+  await page.getByRole("button", { name: "Retry loading catalogue", exact: true }).click();
+  await page.getByRole("button", { name: "Generate Split Try-On", exact: true }).waitFor();
+  assert.equal(await page.getByRole("radio", { name: "Sherwani · Coming soon", exact: true }).isEnabled(), false);
+  await page.locator("#customer-photo").setInputFiles({ name: "split-person.png", mimeType: "image/png", buffer: png });
+  await page.locator("#split-fabric-jacket").setInputFiles({ name: "split-cloth.png", mimeType: "image/png", buffer: cloth });
+  const jacketSettings = page.getByRole("region", { name: "jacket fabric reference controls", exact: true });
+  await jacketSettings.getByLabel("Use full swatch plus selected detail").check();
+  await jacketSettings.getByLabel("Measured repeat width (cm, optional)").fill("4");
+  await page.getByRole("button", { name: /Link trousers to jacket/ }).click();
+  await page.getByText("2 uploaded cloth / 1 reference cloth.", { exact: false }).waitFor();
+  const imageSource = label => page.getByRole("img", { name: label, exact: true }).getAttribute("src");
+  assert.equal(await imageSource("Jacket fabric preview"), await imageSource("Trouser fabric preview"));
+  await page.locator("#split-fabric-jacket").setInputFiles({ name: "split-replacement.png", mimeType: "image/png", buffer: cloth });
+  await page.getByRole("img", { name: "Jacket fabric preview", exact: true }).waitFor();
+  assert.equal(await imageSource("Jacket fabric preview"), await imageSource("Trouser fabric preview"));
+  await page.getByRole("button", { name: "Unlink trousers from jacket fabric", exact: true }).click();
+  assert.notEqual(await imageSource("Jacket fabric preview"), await imageSource("Trouser fabric preview"));
+  await page.getByRole("button", { name: /Link trousers to jacket/ }).click();
+  const jacketSection = page.getByRole("region", { name: "Upper Garment Selection", exact: true });
+  await jacketSection.getByRole("button", { name: "Remove", exact: true }).click();
+  assert.equal(await page.getByRole("img", { name: "Trouser fabric preview", exact: true }).count(), 0);
+  await page.locator("#split-fabric-jacket").setInputFiles({ name: "split-final.png", mimeType: "image/png", buffer: cloth });
+  await jacketSettings.getByLabel("Use full swatch plus selected detail").check();
+  await jacketSettings.getByLabel("Measured repeat width (cm, optional)").fill("4");
+  assert.equal(await page.getByRole("region", { name: "trousers fabric reference controls", exact: true }).count(), 0);
+  await page.getByRole("link", { name: "Edit trousers", exact: true }).click();
+  assert.ok((await page.locator("#split-piece-trousers").boundingBox()).y < 844);
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await mkdir(output, { recursive: true });
+  await page.getByRole("region", { name: "Review your modular outfit recipe", exact: true }).screenshot({ path: new URL("split-review-desktop.png", output).pathname });
+  await page.screenshot({ path: new URL("split-desktop.png", output).pathname, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.getByRole("region", { name: "Review your modular outfit recipe", exact: true }).screenshot({ path: new URL("split-review-mobile.png", output).pathname, style: ".atelier-mobile-header, nextjs-portal { visibility: hidden !important; }" });
+  await page.screenshot({ path: new URL("split-mobile.png", output).pathname, fullPage: true });
+  passed("Split fabric linking follows replacements/removal, unlink owns its preview, accurate counts and contextual controls fit desktop/mobile");
+  splitSuccess = true;
+  await page.getByRole("button", { name: "Generate Split Try-On", exact: true }).click();
+  await page.getByRole("heading", { name: "Your Try-On", exact: true }).waitFor();
+  assert.equal(submitted.selectionMode, "split");
+  assert.equal(slots.get(submitted.uploads.fabric).filename, "split-final.png");
+  assert.equal(slots.get(submitted.uploads.lowerFabric).filename, "split-final.png");
+  assert.deepEqual(JSON.parse(submitted.fabricGuidance).fabric, JSON.parse(submitted.fabricGuidance).lowerFabric);
+  await page.getByRole("definition").filter({ hasText: "Linked jacket cloth" }).waitFor();
+  await page.getByLabel("Wrong fabric or material", { exact: true }).check();
+  await page.getByLabel("Customer appearance changed", { exact: true }).check();
+  await page.getByRole("button", { name: "Needs improvement", exact: true }).click();
+  await page.getByText("Changes not saved. Choose Save feedback to store them.", { exact: true }).waitFor();
+  failReviewSave = true;
+  await page.getByRole("button", { name: "Save feedback", exact: true }).click();
+  await page.getByText("Synthetic feedback save failure", { exact: true }).waitFor();
+  assert.equal(review.reasons.includes("wrong-material"), false);
+  failReviewSave = false;
+  await page.getByRole("button", { name: "Save feedback", exact: true }).click();
+  await page.getByText("Your feedback is saved.", { exact: true }).waitFor();
+  assert.ok(review.reasons.includes("wrong-material") && review.reasons.includes("changed-customer"));
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.getByRole("button", { name: "History", exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Open details for", exact: false }).first().click();
+  await page.waitForFunction(() => document.querySelector(".history-panel .generation-review select")?.value === "rejected");
+  assert.equal(await page.getByRole("dialog", { name: "Try-On History" }).getByLabel("Wrong fabric or material", { exact: true }).isChecked(), true);
+  await page.getByRole("dialog", { name: "Try-On History" }).getByRole("button", { name: "Close history", exact: true }).click();
+  await page.getByRole("button", { name: "Start Over", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "Unlink trousers from jacket fabric", exact: true }).count(), 0);
+  passed("Split request matches displayed linked assignments, submitted sources survive, feedback round-trips through History, and reset clears the link");
   assert.deepEqual(pageErrors, []);
   await writeFile(new URL("results.json", output), JSON.stringify({ checkedAt: new Date().toISOString(), scope: "Loopback browser interactions with synthetic service fixtures; real local authentication", paidImageCalls: 0, checks, pageErrors }, null, 2));
   console.log(`Passed ${checks.length} local browser workflow checks; screenshots/results in .cache/improvement-browser. No paid calls or live storage services used.`);

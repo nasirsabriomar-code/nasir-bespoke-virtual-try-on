@@ -1,6 +1,7 @@
 import "server-only";
 
 import { optionsForSlot } from "./compatibility";
+import { SPLIT_OUTFIT_FAMILIES } from "./types";
 import { SPLIT_SLOTS } from "./catalogue";
 import type {
   SplitCatalogueView,
@@ -42,6 +43,7 @@ function toOptionView(option: SplitComponentOption): SplitComponentOptionView {
 export function getSplitCatalogueView(family: SplitOutfitFamily): SplitCatalogueView {
   return {
     family,
+    families: SPLIT_OUTFIT_FAMILIES.map(id => ({ id, configured: SPLIT_SLOTS.filter(slot => slot.required).every(slot => optionsForSlot(id, slot.id).length > 0) })),
     slots: SPLIT_SLOTS.map((slot) => ({
       id: slot.id,
       multi: slot.multi,

@@ -48,6 +48,7 @@ export function SplitPieceFabricSlot({
   onRemove,
   disabled = false,
   extra,
+  controls,
 }: {
   piece: keyof SplitPieceFabrics;
   fabric: PieceFabric;
@@ -55,12 +56,13 @@ export function SplitPieceFabricSlot({
   onRemove: () => void;
   disabled?: boolean;
   extra?: ReactNode;
+  controls?: ReactNode;
 }) {
   return (
     <div className="split-inline-fabric">
       <p className="split-inline-fabric-copy">
         {fabric
-          ? "This piece will be cut from the cloth in the photograph — exact colour, shade, and texture."
+          ? "This piece will be cut from the cloth in the photograph — aiming to reproduce its colour, pattern, and texture. Inspect the generated result."
           : EMPTY_HELP[piece]}
       </p>
       {extra}
@@ -68,13 +70,14 @@ export function SplitPieceFabricSlot({
         id={`split-fabric-${piece}`}
         label={PIECE_LABEL[piece]}
         description="Photograph or upload the cloth for this piece."
-        guidance="Capture the colour, pattern, texture, and finish clearly. Click the image to replace it."
+        guidance="Lay cloth flat in even light. Avoid folds and glare; include enough area to show the repeat. Use a representative detail and measured repeat dimensions when available."
         file={fabric?.file ?? null}
         previewUrl={fabric?.previewUrl ?? null}
         onSelect={onSelect}
         onRemove={onRemove}
         disabled={disabled}
       />
+      {controls}
     </div>
   );
 }

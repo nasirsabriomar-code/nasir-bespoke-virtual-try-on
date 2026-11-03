@@ -231,6 +231,9 @@ function parseGenerationMetadata(value: unknown): UsageEvent["generation"] | und
     ...(optionalString("shoeId") ? { shoeId: optionalString("shoeId") } : {}),
     ...(optionalString("shoeName") ? { shoeName: optionalString("shoeName") } : {}),
     ...(outfitSpecification ? { outfitSpecification } : {}),
+    ...(isSplitMode && record.splitFabricSlots && typeof record.splitFabricSlots === "object" && !Array.isArray(record.splitFabricSlots)
+      && ["jacket", "trousers", "shirt", "waistcoat"].every(key => typeof (record.splitFabricSlots as Record<string, unknown>)[key] === "boolean")
+      ? { splitFabricSlots: Object.fromEntries(["jacket", "trousers", "shirt", "waistcoat"].map(key => [key, (record.splitFabricSlots as Record<string, boolean>)[key]])) as NonNullable<NonNullable<UsageEvent["generation"]>["splitFabricSlots"]> } : {}),
     ...(isSplitMode && optionalString("splitFamily") ? { splitFamily: optionalString("splitFamily") } : {}),
     ...(isSplitMode && optionalString("splitUpperId") ? { splitUpperId: optionalString("splitUpperId") } : {}),
     ...(isSplitMode && optionalString("splitUpperName") ? { splitUpperName: optionalString("splitUpperName") } : {}),
