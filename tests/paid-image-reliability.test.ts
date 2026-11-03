@@ -253,3 +253,34 @@ test("#3 greyscale construction references keep their upright orientation", asyn
   assert.equal(metadata.width, 1200);
   assert.equal(metadata.height, 1600);
 });
+
+test("large uploaded originals pass the trusted JSON handoff without the external multipart cap", async (t) => {
+  const { randomBytes, createHash } = await import("node:crypto");
+  const { MAX_REQUEST_BYTES } = await import("@/lib/validation");
+  const { objects } = mockR2(t);
+  const bytes = await sharp(randomBytes(1600 * 900 * 3), { raw: { width: 1600, height: 900, channels: 3 } }).png().toBuffer();
+  assert.ok(bytes.length > MAX_REQUEST_BYTES);
+  const uploads: Record<string, string> = {};
+  for (const role of ["person", "fabric", "outfit"] as const) {
+    const slot = await createUploadSlot({ username: USER.username, role, filename: "synthetic.png", contentType: "image/png", bytes: bytes.length });
+    objects.set(slot.pathname, bytes);
+    await markUploadComplete(slot.id, { checksum: createHash("sha256").update(bytes).digest("hex"), width: 1600, height: 900 });
+    uploads[role] = slot.id;
+  }
+  let generated = 0;
+  const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
+    method: "POST", headers: headers({ "content-type": "application/json" }), body: JSON.stringify({ selectionMode: "outfit", uploads }),
+  }), {
+    authenticate: async () => USER, rateLimit: allowRate,
+    generate: async input => {
+      generated++;
+      assert.deepEqual(Buffer.from(await input.person.file.arrayBuffer()), bytes);
+      assert.deepEqual(Buffer.from(await input.fabric!.file.arrayBuffer()), bytes);
+      return result;
+    },
+    recordUsage: async () => {},
+  });
+  assert.equal(response.status, 200);
+  assert.equal(generated, 1);
+  assert.match((await response.json()).resultUrl, /^\/api\/history\//);
+});

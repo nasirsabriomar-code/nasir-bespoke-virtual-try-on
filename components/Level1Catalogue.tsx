@@ -12,6 +12,12 @@ type Level1CatalogueProps = {
   onDesignChange: (designId: string, variantId?: string) => void;
 };
 
+function unavailableLabel(reason?: "storage-unavailable" | "missing" | "unapproved") {
+  if (reason === "storage-unavailable") return "References temporarily unavailable. Try again shortly.";
+  if (reason === "unapproved") return "Reference awaiting approval";
+  return "Reference image unavailable";
+}
+
 export function Level1Catalogue({
   catalogue,
   categoryId,
@@ -159,7 +165,7 @@ export function Level1Catalogue({
                 </div>
                 <p className="level1-card-description">{design.description}</p>
                 <p className="level1-card-intent">{design.intent}</p>
-                {!ready ? <span className="level1-card-state">Reference unavailable</span> : null}
+                {!ready ? <span className="level1-card-state">{unavailableLabel(design.generation.unavailabilityReason)}</span> : null}
               </div>
             </div>
           );
@@ -219,12 +225,14 @@ export function Level1Catalogue({
                 <button
                   type="button"
                   className={`level1-viewer-select-btn${designId === inspectingDesign.id ? " is-selected" : ""}`}
+                  disabled={inspectingDesign.generation.state !== "ready" && !inspectingDesign.variants?.some(variant => variant.generation.state === "ready")}
                   onClick={() => {
-                    onDesignChange(inspectingDesign.id);
+                    if (inspectingDesign.variants?.length) setChoosingVariantDesign(inspectingDesign);
+                    else if (inspectingDesign.generation.state === "ready") onDesignChange(inspectingDesign.id);
                     setInspectingDesign(null);
                   }}
                 >
-                  {designId === inspectingDesign.id ? "✓ Selected for Try-On" : "Select this Look"}
+                  {inspectingDesign.variants?.length ? "Choose a reference" : designId === inspectingDesign.id ? "✓ Selected for Try-On" : "Select this Look"}
                 </button>
               </div>
             </div>
@@ -296,14 +304,14 @@ export function Level1Catalogue({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={option.cardImage.url} alt={`${option.name} reference`} className="level1-variant-image" />
                       ) : (
-                        <span className="level1-variant-placeholder">Reference awaiting approval</span>
+                        <span className="level1-variant-placeholder">{unavailableLabel(option.generation.unavailabilityReason)}</span>
                       )}
                     </span>
                     <span className="level1-variant-option-body">
                       <span className="level1-variant-option-title">{option.name}</span>
                       <span className="level1-variant-option-description">{option.description}</span>
                       <span className={`level1-variant-option-state${selected ? " is-selected" : ""}`}>
-                        {selected ? "Selected" : ready ? "Use this reference" : "Awaiting approved reference"}
+                        {selected ? "Selected" : ready ? "Use this reference" : unavailableLabel(option.generation.unavailabilityReason)}
                       </span>
                     </span>
                   </button>

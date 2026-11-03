@@ -37,16 +37,40 @@ test("chunk uploads preserve a large original, enforce ownership and reject malf
   await assert.rejects(writeUploadChunk("owner",slot.id,1,part(bytes)), /too large/);
   await assert.rejects(completeUploadForUser("owner",slot.id), /incomplete/);
   for(let index=0; index < Math.ceil(bytes.length/UPLOAD_CHUNK_BYTES); index++) {
-    await writeUploadChunk("owner",slot.id,index,part(bytes.subarray(index*UPLOAD_CHUNK_BYTES,(index+1)*UPLOAD_CHUNK_BYTES)));
+    await Promise.all([0, 1].map(() => writeUploadChunk("owner",slot.id,index,part(bytes.subarray(index*UPLOAD_CHUNK_BYTES,(index+1)*UPLOAD_CHUNK_BYTES)))));
   }
-  const completed = await completeUploadForUser("owner",slot.id);
+  const [completed, duplicate] = await Promise.all([completeUploadForUser("owner",slot.id), completeUploadForUser("owner",slot.id)]);
+  assert.equal(duplicate.checksum, completed.checksum);
   assert.equal(completed.checksum,createHash("sha256").update(bytes).digest("hex"));
   assert.equal(completed.width,1600);
   assert.equal(completed.height,900);
   assert.deepEqual(Buffer.from(objects.get("/test-bucket/"+slot.pathname)!.bytes),bytes);
   assert.equal(objects.size,1);
   await assert.rejects(writeUploadChunk("owner",slot.id,0,part(bytes.subarray(0,10))), /already complete/);
-  await markUploadComplete(slot.id, {});
+  assert.equal((await markUploadComplete(slot.id, { checksum: "must-not-overwrite" }))?.checksum, completed.checksum);
+});
+
+test("a part whose body finishes after slot completion cannot recreate discarded chunks", async (t) => {
+  delete process.env.DATABASE_URL;
+  process.env.R2_ACCOUNT_ID = "a".repeat(32); process.env.R2_BUCKET_NAME = "test-bucket"; process.env.R2_ACCESS_KEY_ID = "test-access"; process.env.R2_SECRET_ACCESS_KEY = "test-secret";
+  const objects = new Map<string, Uint8Array>();
+  t.mock.method(globalThis, "fetch", async (input: string, init?: RequestInit) => {
+    const path = new URL(input).pathname;
+    if (init?.method === "PUT") { objects.set(path, new Uint8Array(init.body as Uint8Array)); return new Response(null, { status: 200 }); }
+    if (init?.method === "DELETE") { objects.delete(path); return new Response(null, { status: 204 }); }
+    return objects.has(path) ? new Response(Buffer.from(objects.get(path)!)) : new Response(null, { status: 404 });
+  });
+  const bytes = await sharp({ create: { width: 64, height: 64, channels: 3, background: "navy" } }).png().toBuffer();
+  const slot = await createUploadSlot({ username: "owner", role: "fabric", filename: "fixture.png", contentType: "image/png", bytes: bytes.length });
+  let release!: () => void; let reading!: () => void;
+  const hasReader = new Promise<void>(resolve => { reading = resolve; });
+  const body = new ReadableStream<Uint8Array>({ pull(controller) { reading(); return new Promise<void>(resolve => { release = () => { controller.enqueue(bytes); controller.close(); resolve(); }; }); } });
+  const delayed = writeUploadChunk("owner", slot.id, 0, new Request("http://localhost/upload", { method: "PUT", body, duplex: "half" } as RequestInit));
+  await hasReader;
+  await writeUploadChunk("owner", slot.id, 0, new Request("http://localhost/upload", { method: "PUT", body: bytes }));
+  await completeUploadForUser("owner", slot.id); release();
+  await assert.rejects(delayed, /already complete/); assert.equal(objects.size, 1);
+  assert.deepEqual(Buffer.from(objects.get("/test-bucket/" + slot.pathname)!), bytes);
 });
 
 test("R2 signing correctly encodes spaces and reserved characters; 403 is not treated as missing", async (t) => {
@@ -60,4 +84,15 @@ test("R2 signing correctly encodes spaces and reserved characters; 403 is not tr
   assert.ok(!url.includes("+"));
   t.mock.method(globalThis,"fetch",async () => new Response("<Error><Code>AccessDenied</Code></Error>",{status:403}));
   await assert.rejects(r2Get("missing.png"),error => error instanceof R2RequestError && error.status===403 && error.code==="AccessDenied");
+});
+
+test("expired slots reject both late chunks and completion before storage access", async (t) => {
+  delete process.env.DATABASE_URL;
+  const slot = await createUploadSlot({ username: "owner", role: "fabric", filename: "expired.png", contentType: "image/png", bytes: 10 });
+  slot.expiresAt = new Date(Date.now() - 1000).toISOString();
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; throw new Error("Must not access storage"); });
+  await assert.rejects(writeUploadChunk("owner", slot.id, 0, new Request("http://localhost/upload", { method: "PUT", body: new Uint8Array(10) })), /expired/);
+  await assert.rejects(completeUploadForUser("owner", slot.id), /expired/);
+  assert.equal(calls, 0);
 });

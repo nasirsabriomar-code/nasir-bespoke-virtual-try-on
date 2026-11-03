@@ -5,7 +5,7 @@ import { POST as login } from "@/app/api/auth/login/route";
 import { GET as readAsset } from "@/app/api/history/[id]/asset/[asset]/route";
 import { GET as cleanupUploads } from "@/app/api/cron/cleanup-uploads/route";
 import { GET as readStatus } from "@/app/api/try-on/status/route";
-import { activateSession, isSessionActive, resetMemorySessionsForTests } from "@/lib/auth/session-store";
+import { activateSession, isSessionActive, resetMemorySessionsForTests, SessionStoreConfigurationError } from "@/lib/auth/session-store";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
 import { writeIdempotencyRecord } from "@/lib/generation-guard";
 import { migrateGenerationAsset } from "@/lib/history/migrate-generation-assets";
@@ -48,14 +48,14 @@ test("#8 a session deleted from Redis is rejected even if this instance remember
   assert.equal(await isSessionActive("session-1", "showroom"), false);
 });
 
-test("#8 a Redis outage still uses this instance's session record", async (t) => {
+test("#8 a Redis outage cannot fall back to this instance's session record", async (t) => {
   await activateSession("session-2", "showroom", 600);
   process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
   process.env.UPSTASH_REDIS_REST_TOKEN = "token";
   setNodeEnv("production");
   t.after(() => setNodeEnv("test"));
   t.mock.method(globalThis, "fetch", async () => { throw new TypeError("network down"); });
-  assert.equal(await isSessionActive("session-2", "showroom"), true);
+  await assert.rejects(isSessionActive("session-2", "showroom"), SessionStoreConfigurationError);
 });
 
 test("#9 a client-supplied cf-connecting-ip cannot change the login identity", () => {

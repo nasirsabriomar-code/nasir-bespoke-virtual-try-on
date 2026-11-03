@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchWithTimeout, recoverGeneration } from "@/lib/generation-recovery";
+import { fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
 import { buildResultSummary } from "@/lib/result-summary";
 import { DEFAULT_SPLIT_OUTFIT_STATE, SUIT_FOOTWEAR_OPTIONS, SUIT_LOWER_OPTIONS, SUIT_UPPER_OPTIONS } from "@/lib/split-outfit/catalogue";
 import { clearSplitFabrics } from "@/lib/split-outfit/client-fabrics";
@@ -30,6 +30,11 @@ test("#5 a request that answers in time returns its response", async (t) => {
   assert.equal(await response.text(), "ok");
 });
 
+test("generation response bodies remain covered by the request deadline", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(new ReadableStream({ start() { /* Synthetic hung response body. */ } })));
+  await assert.rejects(fetchWithTimeout("/api/try-on", { method: "POST" }, 10), { name: "AbortError" });
+});
+
 function statusSequence(...states: unknown[]) {
   let index = 0;
   return async () => states[Math.min(index++, states.length - 1)];
@@ -52,6 +57,13 @@ test("#6 a recorded failure ends recovery with the server's message", async () =
     wait: noWait,
   });
   assert.deepEqual(recovered, { kind: "failed", error: "We couldn't create the try-on." });
+});
+
+test("expired authentication ends recovery immediately instead of looking like a status outage", async (t) => {
+  let reads = 0;
+  t.mock.method(globalThis, "fetch", async () => { reads++; return Response.json({ error: "Sign in again" }, { status: 401 }); });
+  await assert.rejects(recoverGeneration("fixture-key", undefined, { totalTimeoutMs: 100 }), RecoveryAuthenticationError);
+  assert.equal(reads, 1);
 });
 
 test("#6 a request the server never saw stops quickly instead of polling for minutes", async () => {

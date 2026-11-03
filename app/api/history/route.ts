@@ -1,3 +1,4 @@
+import { getGenerationReviews } from "@/lib/history/reviews";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { getUsageHistory, redactUsageHistoryForClient } from "@/lib/usage-history";
@@ -28,7 +29,9 @@ export async function GET(request: Request) {
     const history = isPermanentHistoryConfigured()
       ? await getPermanentHistory(rawLimit, Number.isFinite(offset) ? Math.max(0, offset) : 0)
       : await getUsageHistory(rawLimit);
-    return Response.json(redactUsageHistoryForClient(history), { status: 200, headers: JSON_HEADERS });
+    let reviews: Awaited<ReturnType<typeof getGenerationReviews>> = {};
+    try { reviews = await getGenerationReviews(history.events.map(event => event.id), user.username); } catch { console.error("history_feedback_unavailable"); }
+    return Response.json(redactUsageHistoryForClient({ ...history, events: history.events.map(event => ({ ...event, review: reviews[event.id] })) }), { status: 200, headers: JSON_HEADERS });
   } catch (error) {
     if (error instanceof AuthConfigurationError) {
       console.error("history_auth_configuration_error");

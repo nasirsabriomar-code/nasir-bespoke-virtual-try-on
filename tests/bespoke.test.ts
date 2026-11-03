@@ -43,6 +43,16 @@ test("three-piece double-breasted suit creates a complete controlled outfit spec
   assert.match(prompt, /6×2 double-breasted/);
   assert.match(prompt, /WAISTCOAT:/);
   assert.match(prompt, /Do not omit the waistcoat/);
+  assert.match(prompt, /\[HIGH\]/);
+  assert.match(prompt, /without overriding identity, body, pose, camera/);
+});
+
+test("compiler preserves selected constraints beyond the former arbitrary sixteen-rule cap", () => {
+  const configuration = resolveBespokeConfiguration(profile, { profileId: profile.id, selections: selections({ "suit-composition": "suit-two-piece", "shoe-family": "shoes-oxford", "turban-family": "turban-none" }) });
+  const option = configuration.options.find(entry => entry.option.priority === "high")!;
+  option.option = { ...option.option, negativeConstraints: Array.from({ length: 20 }, (_, index) => `Controlled constraint ${index}.`) };
+  const prompt = compileVisualizationPrompt("BASE", buildOutfitSpecification(catalogSelection, configuration), configuration);
+  assert.match(prompt, /Controlled constraint 19\./);
 });
 
 test("two-piece suit removes inactive waistcoat configuration from the resolved specification", () => {

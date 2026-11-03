@@ -5,6 +5,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { restoreLookFromGeneration, type RestoredLook } from "@/lib/history/restore-look";
+import { GenerationReview } from "@/components/GenerationReview";
+import type { GenerationReview as Review } from "@/lib/history/review-types";
 import { ZoomableImage } from "@/components/ZoomableImage";
 
 const emptySubscribe = () => () => {};
@@ -23,6 +25,8 @@ type HistoryEvent = {
   provider: string;
   model: string;
   quality: string;
+  review?: Review;
+  metadata?: { reportedQuality?: string; requestedSize?: string; outputWidth?: number; outputHeight?: number; provenance?: { promptVersion?: string; preprocessingVersion?: string; providerAttempts?: number } };
   generation?: {
     mode: "catalog" | "outfit" | "level1" | "split";
     categoryId?: string;
@@ -151,6 +155,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
     () => true,
     () => false,
   );
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -188,7 +193,8 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
   async function openHistory() {
     const nextOpen = !isOpen;
     setIsOpen(nextOpen);
-    if (!nextOpen || history || isLoading) return;
+    if (!nextOpen || isLoading) return;
+    setSelectedEvent(null);
 
     setIsLoading(true);
     setError(null);
@@ -311,7 +317,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             </tr>
                           </thead>
                           <tbody>
-                            {history.events.map((event) => (
+                            {history.events.filter(event => !favouritesOnly || event.review?.favourite).map((event) => (
                               <tr key={event.id}>
                                 <td data-label="Preview">
                                   {event.assets?.result ? (
@@ -351,6 +357,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                     ) : (
                       <p className="history-status">No try-on uses have been recorded yet.</p>
                     )}
+                    <label><input type="checkbox" checked={favouritesOnly} onChange={event => setFavouritesOnly(event.target.checked)} /> Favourites in loaded history</label>
                     {selectedEvent ? (
                       <section className="generation-details" aria-label="Generation details">
                         <div className="generation-details-header">
@@ -474,6 +481,8 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             ) : null,
                           )}
                         </div>
+                        <GenerationReview key={selectedEvent.id} generationId={selectedEvent.id} onSaved={review => setHistory(current => current ? { ...current, events: current.events.map(event => event.id === selectedEvent.id ? { ...event, review } : event) } : current)} />
+                        <details><summary>Generation record</summary><p>Output: {selectedEvent.metadata?.outputWidth && selectedEvent.metadata?.outputHeight ? `${selectedEvent.metadata.outputWidth} × ${selectedEvent.metadata.outputHeight}` : "Not recorded"}. Reported effort: {selectedEvent.metadata?.reportedQuality ?? "Not provided"}. Processing: {selectedEvent.metadata?.provenance?.preprocessingVersion ?? "Legacy"}. Attempts: {selectedEvent.metadata?.provenance?.providerAttempts ?? "Not recorded"}.</p></details>
                         {selectedEvent.generation?.outfitSpecification ? (
                           <section className="generation-specification" aria-label="Saved outfit specification">
                             <p className="history-eyebrow">SAVED OUTFIT SPECIFICATION</p>

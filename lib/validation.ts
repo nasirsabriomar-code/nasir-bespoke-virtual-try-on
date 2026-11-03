@@ -1,4 +1,4 @@
-// Originals are uploaded directly to private Blob storage. This limit protects
+// Originals are uploaded in chunks to private R2 storage. This limit protects
 // the server-to-model handoff; it never causes browser-side resizing or
 // recompression.
 export const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
@@ -85,7 +85,7 @@ export function detectImageDimensions(bytes: Uint8Array, mime: SupportedImageMim
       return { width, height };
     }
     if (kind === "VP8 " && bytes.length >= 30 && bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) {
-      return { width: readUint16(bytes, 26) & 0x3fff, height: readUint16(bytes, 28) & 0x3fff };
+      return { width: (bytes[26] | (bytes[27] << 8)) & 0x3fff, height: (bytes[28] | (bytes[29] << 8)) & 0x3fff };
     }
     if (kind === "VP8L" && bytes.length >= 25 && bytes[20] === 0x2f) {
       const bits = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24);

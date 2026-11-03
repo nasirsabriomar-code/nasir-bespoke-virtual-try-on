@@ -1,0 +1,19 @@
+================================================================================
+Shannon Pentest - Scan Log
+================================================================================
+Workflow ID: bespoke-local-20261102-scan_shannon-1793636659523
+Target URL:  http://host.docker.internal:3147
+Started:     2026-11-02T16:24:20.951Z
+================================================================================
+
+================================================================================
+Scan FAILED
+────────────────────────────────────────
+Workflow ID: bespoke-local-20261102-scan_shannon-1793636659523
+Status:      failed
+Duration:    18.6s
+Total Cost:  $0.0000
+Agents:      0 ran, 0 skipped
+Error:       The AI provider declined the security workload; your organization needs cyber-access approval.
+             PROVIDER_CYBER_ACCESS_REQUIRED
+================================================================================

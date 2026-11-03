@@ -1,3 +1,4 @@
+import { orderGenerationImages } from "./image-layout";
 import type { CatalogSelection } from "@/lib/catalog/types";
 
 const NASIR_MENS_INSTRUCTION = `
@@ -8,34 +9,34 @@ Create one photorealistic edit of the male customer in the supplied person photo
 
 const EDIT_PRIORITY_MODULE = `
 EDIT PRIORITY (non-negotiable):
-This is an edit of Image 1, not a new fashion editorial, catalog photograph, or studio portrait. Image 1 remains the complete scene and the only source for the subject, composition, camera, lighting, and environment. If any other image conflicts with Image 1, Image 1 wins. The final image must still be recognizably the same photograph of the same person in the same place.
+This is an edit of Image 1, not a new fashion editorial, catalog photograph, or studio portrait. Image 1 remains the complete scene and the only source for the subject, composition, camera, lighting, and environment. Image 1 controls identity, body, pose and scene; selected construction controls the changed clothing geometry, assigned cloth controls its base material, and selected accessory references control only their named accessories. The final image must still be recognizably the same photograph of the same person in the same place.
 `.trim();
 
 const PERSON_MODULE = `
 PERSON IMAGE AUTHORITY:
-Image 1 is the male customer/person and the base photograph. Preserve identity, face, skin tone, hairstyle, facial hair, age appearance, body shape, proportions, pose, posture, expression, hands, camera perspective, framing, lighting, shadows, and background. Do not slim, broaden, beautify, age, reshape, or replace the person. Keep the original background except for minimal reconstruction around the clothing edit.
+Image 1 is the male customer/person and the base photograph. Preserve identity, face, skin tone, hairstyle, facial hair, age appearance, body shape, proportions, pose, posture, expression, hands, camera perspective, framing, scene lighting and unaffected background. Do not slim, broaden, beautify, age, reshape, or replace the person. Keep the original background except for minimal reconstruction around the clothing edit.
 `.trim();
 
 function fabricModule(imageNumber: number) {
   return `
 FABRIC IMAGE AUTHORITY:
-Image ${imageNumber} is the physical showroom fabric photograph. Treat it as the source of truth only for colour, pattern, visible weave, texture, sheen, motif, checks, stripes, shade, finish, and material character. Apply the photographed fabric to the selected garment pieces faithfully. Ignore any person, body, styling, scene, or garment construction visible in Image ${imageNumber}. Do not arbitrarily invent a different fabric.
+Image ${imageNumber} is the physical showroom fabric photograph. Treat it as the source of truth only for colour, pattern, visible weave, texture, sheen, motif, checks, stripes, shade, finish, and material character. Apply it faithfully to assigned base panels, with explicitly selected facings, trim and embroidery confined to their specified details. Ignore any person, body, styling, scene, or garment construction visible in Image ${imageNumber}. Do not arbitrarily invent a different fabric.
 `.trim();
 }
 
 const OUTFIT_MODULE = `
 OUTFIT IMAGE AUTHORITY:
-Image 2 is the customer-supplied outfit photograph. Treat it only as the authoritative construction and style source for the clothing: garment category, silhouette, cut, length, collar or lapels, pockets, seams, closures, button layout, cuffs, vents, layering, and proportion. Do not copy its wearer, face, body, pose, hair, hands, footwear, accessories, lighting, background, camera, or location. The fabric in Image 3 overrides Image 2's colour, weave, texture, pattern, and surface finish.
+Image 2 is the customer-supplied outfit photograph. Treat it only as the authoritative construction and style source for the clothing: garment category, silhouette, cut, length, collar or lapels, pockets, seams, closures, button layout, cuffs, vents, layering, and proportion. Do not copy its wearer, face, body, pose, hair, hands, footwear, accessories, lighting, background, camera, or location. The fabric in Image 3 controls base-panel colour, weave, texture, pattern and surface finish; retain explicitly selected local facings, trim and embroidery.
 `.trim();
 
 const REFERENCE_IMAGE_MODULE = `
 REFERENCE IMAGE HANDLING (critical):
-Any controlled reference image after the uploaded customer, fabric, and optional outfit is a garment or accessory construction reference only. Extract only the selected garment/accessory design, silhouette, construction, and visible details from it. Ignore and do not reproduce every reference image's person, face, hair, skin, body proportions, pose, hands, footwear, lighting, props, architecture, floor, wall, or background. Never substitute a reference person or scene for the customer. A reference may be a crop from a worn garment; treat the crop as a design sheet, not as a second subject or location.
+Any controlled reference image after the uploaded customer, fabric, and optional outfit is a garment or accessory construction reference only. Extract only the selected garment/accessory design, silhouette, construction, and visible details from it. Ignore and do not reproduce every reference image's person, face, hair, skin, body proportions, pose, hands, unselected footwear, lighting, props, architecture, floor, wall, or background. Never substitute a reference person or scene for the customer. A reference may be a crop from a worn garment; treat the crop as a design sheet, not as a second subject or location.
 `.trim();
 
 const REALISM_MODULE = `
 REALISM AND SAFETY:
-Transfer garment design and construction onto the supplied customer; do not copy the reference model or person. Preserve physically credible tailoring, shoulder placement, armholes, sleeves, folds, gravity, compression, tension, overlaps, closures, waist behavior, trouser break, and hem behavior. Preserve anatomically correct hands and limbs. Do not add extra garments, random accessories, duplicate clothing, invented embroidery, changed buttons, altered facial identity, a different hairstyle, a different body shape, or any background, room, floor, wall, or camera change. Return only one finished photograph with no text, border, collage, split screen, or explanation.
+Transfer garment design and construction onto the supplied customer; do not copy the reference model or person. Preserve physically credible tailoring, shoulder placement, armholes, sleeves, folds, gravity, compression, tension, overlaps, closures, waist behavior, trouser break, and hem behavior. Preserve anatomically correct hands and limbs. Do not add extra garments, random accessories, duplicate clothing, unselected embroidery, unselected button changes, altered facial identity, a different hairstyle, a different body shape, or any unrelated background, room, floor, wall, or camera change. Return only one finished photograph with no text, border, collage, split screen, or explanation.
 `.trim();
 
 export function buildTryOnPrompt(selection: CatalogSelection | undefined, options: { outfitProvided: boolean; bespokeReferenceCount?: number }) {
@@ -60,24 +61,20 @@ export function buildTryOnPrompt(selection: CatalogSelection | undefined, option
     selection?.shoeStyle ? `SELECTED SHOE STYLE:\n${selection.shoeStyle.name}. ${selection.shoeStyle.promptInstruction}` : "",
   ].filter(Boolean);
 
-  const roles = [
-    "IMAGE ROLE MAPPING (critical):",
-    "Image 1 — male customer/person photograph.",
-    ...(options.outfitProvided ? ["Image 2 — customer-supplied outfit construction and style photograph.", "Image 3 — physical showroom fabric photograph."] : ["Image 2 — physical showroom fabric photograph."]),
+  const referenceDescriptions = [
+    ...(hasUpperReference ? ["selected upper or complete men's garment blueprint."] : []),
+    ...(hasLowerReference ? ["independently selected men's lower-garment blueprint."] : []),
+    ...(hasSubtypeReference ? ["selected men's suit subtype blueprint."] : []),
+    ...(hasUpperStyleReference ? ["selected men's upper style reference."] : []),
+    ...(hasLowerStyleReference ? ["selected men's lower style reference."] : []),
+    ...(selection?.turban.aiReferences.length ? ["selected men's turban reference."] : []),
+    ...(hasTurbanStyleReference ? ["selected men's turban style reference."] : []),
+    ...(selection?.shoes.aiReferences.length ? ["selected men's shoe reference."] : []),
+    ...(hasShoeStyleReference ? ["selected men's shoe style reference."] : []),
+    ...Array.from({ length: options.bespokeReferenceCount ?? 0 }, () => "controlled bespoke visual-detail reference."),
   ];
-  let nextIndex = options.outfitProvided ? 4 : 3;
-  if (hasUpperReference) roles.push(`Image ${nextIndex++} — selected upper or complete men's garment blueprint.`);
-  if (hasLowerReference) roles.push(`Image ${nextIndex++} — independently selected men's lower-garment blueprint.`);
-  if (hasSubtypeReference) roles.push(`Image ${nextIndex++} — selected men's suit subtype blueprint.`);
-  if (hasUpperStyleReference) roles.push(`Image ${nextIndex++} — selected men's upper style reference.`);
-  if (hasLowerStyleReference) roles.push(`Image ${nextIndex++} — selected men's lower style reference.`);
-  if (selection?.turban.aiReferences.length) roles.push(`Image ${nextIndex++} — selected men's turban reference.`);
-  if (hasTurbanStyleReference) roles.push(`Image ${nextIndex++} — selected men's turban style reference.`);
-  if (selection?.shoes.aiReferences.length) roles.push(`Image ${nextIndex++} — selected men's shoe reference.`);
-  if (hasShoeStyleReference) roles.push(`Image ${nextIndex++} — selected men's shoe style reference.`);
-  for (let index = 0; index < (options.bespokeReferenceCount ?? 0); index += 1) {
-    roles.push(`Image ${nextIndex++} — controlled bespoke visual-detail reference.`);
-  }
+  const layout = orderGenerationImages("catalog", "male customer/person photograph.", options.outfitProvided ? "customer-supplied outfit construction and style photograph." : undefined, ["physical showroom fabric photograph."], referenceDescriptions);
+  const roles = ["IMAGE ROLE MAPPING (critical):", ...layout.map((description, index) => `Image ${index + 1} — ${description}`)];
 
   return [
     NASIR_MENS_INSTRUCTION,

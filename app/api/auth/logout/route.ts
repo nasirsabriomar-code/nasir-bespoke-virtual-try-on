@@ -33,8 +33,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = NextResponse.redirect(new URL("/login", request.url), 303);
-  response.headers.set("Cache-Control", "no-store, private");
+  // Next's internal request URL can differ from the browser's host behind a
+  // proxy or on loopback. A relative redirect stays on the authenticated origin.
+  const response = new NextResponse(null, { status: 303, headers: { Location: "/login", "Cache-Control": "no-store, private" } });
   response.cookies.set(getSessionCookieName(), "", {
     ...getSessionCookieOptions(),
     maxAge: 0,

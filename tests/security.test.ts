@@ -128,6 +128,7 @@ test("login accepts valid credentials, rejects invalid credentials, and logout c
     headers: sameOriginHeaders({ cookie }),
   }));
   assert.equal(signedOut.status, 303);
+  assert.equal(signedOut.headers.get("location"), "/login");
   assert.match(signedOut.headers.get("set-cookie") ?? "", /Max-Age=0/i);
 
   const token = decodeURIComponent(cookie.slice(cookie.indexOf("=") + 1));

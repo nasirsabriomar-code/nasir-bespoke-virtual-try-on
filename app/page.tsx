@@ -7,13 +7,8 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const cookieStore = await cookies();
-  const tokenUser = await getCurrentUserFromToken(cookieStore.get(getSessionCookieName())?.value);
-  const devFallbackUser =
-    !tokenUser && process.env.NODE_ENV === "development"
-      ? { username: "showroom", displayName: "Showroom Staff" }
-      : null;
-  const user = tokenUser ?? devFallbackUser;
+  const user = await getCurrentUserFromToken(cookieStore.get(getSessionCookieName())?.value);
   if (!user) redirect("/login");
 
-  return <TryOnApp displayName={user.displayName} />;
+  return <TryOnApp displayName={user.displayName} accountId={user.username} />;
 }

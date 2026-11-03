@@ -1,3 +1,4 @@
+import { imageRoleLayout } from "@/lib/tryon/image-layout";
 import type { ResolvedSplitOutfit } from "./generation";
 
 export type SplitFabricPresence = {
@@ -37,20 +38,12 @@ export function hasPhotographedWaistcoat(resolved: ResolvedSplitOutfit) {
  */
 export function buildSplitImageMap(resolved: ResolvedSplitOutfit, fabrics: SplitFabricPresence): SplitImageMap {
   const hasWaistcoat = hasPhotographedWaistcoat(resolved);
-  let n = 1;
+  const layout = imageRoleLayout("split", ["jacket", "trousers", "shirt", ...(hasWaistcoat ? ["waistcoat"] : []), "shoes"], ["jacket", "trousers", "shirt", "waistcoat"].filter(piece => (piece !== "waistcoat" || hasWaistcoat) && fabrics[piece as keyof SplitFabricPresence]).map(piece => piece + "Fabric"));
+  const position = (role: string) => layout.indexOf(role) + 1;
   const person = 1 as const;
-  n += 1;
-
-  const jacket = n++;
-  const trousers = n++;
-  const shirt = n++;
-  const waistcoat = hasWaistcoat ? n++ : null;
-  const shoes = n++;
-
-  const jacketFabric = fabrics.jacket ? n++ : null;
-  const trouserFabric = fabrics.trousers ? n++ : null;
-  const shirtFabric = fabrics.shirt ? n++ : null;
-  const waistcoatFabric = hasWaistcoat && fabrics.waistcoat ? n++ : null;
+  const jacket = position("jacket"), trousers = position("trousers"), shirt = position("shirt"), shoes = position("shoes");
+  const waistcoat = hasWaistcoat ? position("waistcoat") : null;
+  const jacketFabric = position("jacketFabric") || null, trouserFabric = position("trousersFabric") || null, shirtFabric = position("shirtFabric") || null, waistcoatFabric = position("waistcoatFabric") || null;
 
   return {
     hasWaistcoat,
@@ -62,7 +55,7 @@ export function buildSplitImageMap(resolved: ResolvedSplitOutfit, fabrics: Split
       waistcoat: waistcoatFabric,
     },
     construction: { jacket, trousers, shirt, waistcoat, shoes },
-    totalImages: n - 1,
+    totalImages: layout.length,
   };
 }
 
@@ -70,7 +63,7 @@ const CLOTH_TRAITS = "exact colour, shade, texture, weave, yarn, nap, pile, slub
 
 export function fabricFidelityOverride(piece: string, fabricImage: number, constructionImage: number) {
   const trousersExtra = piece === "trousers"
-    ? ` Image ${constructionImage} is a complete pair of trousers used only as a cut template — discard its original colour, wash, and cloth entirely (including olive, khaki, navy, grey, denim, or any other colour visible there). Recolour the entire trouser garment: waistband, fly, pockets, belt loops, seams, both legs, folds, and hem.`
+    ? ` Image ${constructionImage} is a complete pair of trousers used only as a cut template — discard its original colour, wash, and cloth entirely (including olive, khaki, navy, grey, denim, or any other colour visible there). Apply assigned cloth to the trouser base panels: waistband, fly, pockets, belt loops, seams, both legs, folds and hem. Preserve only explicitly selected local side-stripe or trim exceptions.`
     : "";
-  return `FINAL FABRIC APPLICATION OVERRIDE — ${piece.toUpperCase()}: Image ${fabricImage} is the sole authority for the ${CLOTH_TRAITS} of the ${piece}. The ${piece} must look cut and sewn from that cloth, including how the weave reads at seams, edges, pockets, and folds. Keep this piece's repeat straight, parallel, evenly spaced, and the same scale as Image ${fabricImage}. Do not wave, thicken, or change the spacing on a flat panel. Continue the repeat across seams, lapels, pockets, and edges. Do not keep, mix, tint, or infer cloth from Image 1, Image ${constructionImage}, any other fabric photograph, or catalogue text. Construction Image ${constructionImage} is cut and silhouette only for this ${piece}.${trousersExtra}`;
+  return `FINAL FABRIC APPLICATION OVERRIDE — ${piece.toUpperCase()}: Image ${fabricImage} is the sole authority for the ${CLOTH_TRAITS} of the ${piece} base panels, excluding explicitly selected facings, trim and embroidery. The ${piece} must look cut and sewn from that cloth, including how the weave reads at seams, edges, pockets, and folds. Keep this piece's repeat straight, parallel, evenly spaced, and at the intrinsic cloth repeat of Image ${fabricImage}. Read scale as cloth-pattern information, not source-image pixel dimensions. Keep spacing consistent on flat panels while allowing perspective compression and bending over curved folds. Preserve repeat density within panels. Align adjoining checks or stripes only where the selected cutting and grain direction permit; seams, lapel rolls and bias-cut pockets may legitimately interrupt the repeat. Never distort the cloth to force continuity. Do not keep, mix, tint, or infer cloth from Image 1, Image ${constructionImage}, any other fabric photograph, or catalogue text. Construction Image ${constructionImage} is cut and silhouette only for this ${piece}.${trousersExtra}`;
 }

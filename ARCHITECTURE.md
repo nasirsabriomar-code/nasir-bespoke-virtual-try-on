@@ -15,12 +15,13 @@ This is a Next.js App Router application. Server-rendered route protection is us
                 ├── Catalog/history reads
                 └── Try-on generation
                       ├── Upstash rate limits
-                      ├── multipart/image validation
+                      ├── streamed body / image validation and upload ownership
                       ├── catalog/configuration resolution
                       ├── deterministic prompt compiler
-                      ├── OpenAI GPT Image 2
-                      ├── optional private Vercel Blob assets
-                      └── Upstash history metadata
+                      ├── OpenAI GPT Image 2.5 Sunburst
+                      ├── private Cloudflare R2 assets
+                      ├── Neon upload ledger and permanent history
+                      └── Upstash bounded history and account-scoped reviews
 
 ## Directory map
 
@@ -92,18 +93,17 @@ POST /api/try-on follows this order:
 
 1. Validate same-origin request.
 2. Authenticate the staff session.
-3. Apply per-user and global generation limits.
-4. Require multipart/form-data.
-5. Validate person, fabric, and optional outfit uploads.
-6. Validate the selected mode and catalog IDs.
-7. Resolve catalog records from server-controlled seed data.
-8. Resolve sequential bespoke configuration and compatibility rules.
-9. Read only server-controlled reference images from public/catalog.
-10. Compose the hidden men's visualization instruction.
-11. Call the provider abstraction.
-12. Store optional private assets.
-13. Record history metadata.
-14. Return the generated JPEG.
+3. Resolve the original generation key before starting duplicate work.
+4. Enforce actual streamed body limits. JSON high-resolution requests reference owned, validated, unexpired upload slots; only the server can select the trusted internal handoff.
+5. Validate images, controlled fabric/background settings, selected mode and catalogue IDs.
+6. Resolve catalogue/configuration compatibility and generation readiness.
+7. Acquire the generation guard and apply per-user/global limits.
+8. Read only server-resolved private catalogue references.
+9. Compose the hidden men's visualization instruction and prepare image roles, crops and optional mask.
+10. Call the provider abstraction with paid retries disabled.
+11. Save the private result first, then input/reference copies where possible.
+12. Record permanent history, bounded metadata and idempotency outcome.
+13. Return authenticated permanent result URLs for the full-resolution workflow (legacy multipart callers receive image bytes).
 
 ## AI provider abstraction
 
@@ -111,17 +111,21 @@ The frontend is not coupled to OpenAI. lib/tryon/index.ts selects the configured
 
 The current provider calls the official SDK image edit operation with:
 
-- model: gpt-image-2
-- quality: server-controlled low, medium, or high, default medium
-- size: auto
-- output: one JPEG, compression 90
-- timeout: 165 seconds at the client/request boundary
+- model: gpt-image-2.5-sunburst
+- quality: fixed medium in the current provider
+- size: aspect-preserving custom dimensions within supported edge/pixel limits, with a size-rejection fallback
+- output: one opaque PNG
+- provider timeout: 165 seconds; route maxDuration: 300 seconds; browser request deadline: 285 seconds
 - retries: disabled in the current client
 
 Image order is explicit:
 
-    Catalog mode:  person, fabric, selected references...
-    Outfit mode:   person, outfit, fabric, selected references...
+    Person first, then optional outfit.
+    Full/Split: construction references, then active fabric roles.
+    Legacy catalogue/outfit: fabrics, then construction references.
+    Opt-in fabric-detail images append after all existing base inputs.
+
+The server builds image-index guidance from the actual parts array. Full swatches supply pattern context; appended detail crops supply weave/edge evidence. Optional centimetre repeats are guidance, not physical-fit guarantees. Prompt and input-count bounds are enforced before the SDK call. An opt-in mask is always PNG, matching the first person's normalized PNG dimensions, including compatibility fallbacks. Composite mode blends generated pixels inside the approved rectangle and retains the normalized original outside it. The original may be resampled to the output canvas.
 
 ## Prompt architecture
 
@@ -148,9 +152,9 @@ The resolved configuration becomes the source of truth for both the prompt and h
 
 ## Storage and history
 
-Upstash Redis stores session state, rate-limit state, and bounded history metadata. Vercel Blob is optional. If NASIR_BLOB_READ_WRITE_TOKEN is configured, person, outfit, fabric, selected references, and result images are uploaded as private Blob objects and served through the authenticated asset route.
+Upstash Redis stores authoritative session state, rate limits, bounded recent history and account-isolated feedback. Cloudflare R2 stores private catalogue references, chunk uploads, customer inputs and PNG results; authenticated routes proxy assets. Neon PostgreSQL stores upload ownership/status/checksums and permanent generation records. These paths do not use Vercel Blob.
 
-History currently keeps the latest bounded metadata records and an all-time counter. Image deletion and retention are not yet coupled to history expiry; see SECURITY.md.
+Permanent history is paginated; bounded Redis history is a fallback. Abandoned uploads have a cleanup path. Completed images and review keys have no automatic deletion lifecycle yet; see SECURITY.md.
 
 ## Deployment
 
@@ -158,4 +162,12 @@ Vercel builds with:
 
     npm run build:next
 
-The production deployment must contain server-only values for OpenAI, authentication, Upstash, and optional Blob storage. Do not expose them through NEXT_PUBLIC_* variables.
+The production deployment must contain server-only values for OpenAI, authentication, Upstash, R2 and Neon. Do not expose them through NEXT_PUBLIC_* variables.
+
+## Staff review metadata and browser continuity
+
+`GET/PUT /api/history/[id]/review` authenticates the caller, verifies the generation exists under the shared-staff history policy and stores only the caller's review. PUT requires the origin check and a 4 KB bounded body. Reviews/favourites use Redis metadata keys scoped to a hashed username and generation ID; local development uses process memory. A feedback-store failure does not hide generation history. No SQL migration is introduced for reviews.
+
+Pending generation keys and bounded look summaries survive a tab refresh in account-scoped session storage. No photo bytes or session tokens are persisted for recovery. Logout clears this tracking. Upload checkpoints contain only a content fingerprint, slot ID, expiry and next acknowledged chunk. Client retries reuse the same slot/index; server completion cannot revive consumed slots.
+
+Catalogue readiness uses a 30-second, bounded process-local cache keyed by storage realm and path. Writes invalidate matching entries in that process; other processes expire within the TTL. Errors are not cached as absent assets. Generation still reads actual references and fails closed when they cannot be loaded.

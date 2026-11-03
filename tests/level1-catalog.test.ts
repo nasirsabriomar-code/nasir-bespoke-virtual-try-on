@@ -307,9 +307,9 @@ test("prompt compiler creates valid deterministic prompts for all designs", asyn
     assert.match(prompt, /Image 3 is authoritative only for (the )?base colour/i);
     assert.match(prompt, /SCENE LOCK — CRITICAL/);
     assert.match(prompt, /PATTERN GEOMETRY — CRITICAL/);
-    assert.match(prompt, /Dark or black lines stay dark or black/);
-    assert.match(prompt, /Do not recolour lines red/);
-    assert.match(prompt, /must not wave, thicken, or redraw stripes/);
+    assert.match(prompt, /without contamination from the room or previous clothes/);
+    assert.match(prompt, /Copy the ground and line colours from the assigned cloth, including coloured stripes/);
+    assert.match(prompt, /Perspective and curved folds may compress or bend/);
     if (category.id !== "jackets") {
       assert.match(prompt, /previous lower-garment cloth/);
     }
@@ -357,7 +357,7 @@ test("fabric-region prompts correctly name pieces and preserve the unselected re
     const noArgPrompt = buildLevel1TryOnPrompt(resolved);
     assert.equal(bothPrompt, noArgPrompt, `${design.id}: default parameter must match explicit "both"`);
     assert.doesNotMatch(bothPrompt, /UNCHANGED REGION/, `${design.id}: "both" must not include an unchanged-region sentence`);
-    assert.match(bothPrompt, /Apply these fabric characteristics faithfully to every selected garment piece/, `${design.id}: "both" must keep the explicit all-pieces wording`);
+    assert.match(bothPrompt, /Apply these fabric characteristics to the named upper\/lower base panels only; retain explicitly selected contrasting facings, trim and embroidery/, `${design.id}: both regions must use the assigned base cloth without destroying selected trim`);
 
     const upperPrompt = buildLevel1TryOnPrompt(resolved, "upper");
     for (const piece of design.blueprint.fabricRegions.upper) {

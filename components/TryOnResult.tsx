@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ResultComparison, type ComparisonReference } from "@/components/ResultComparison";
+import { GenerationReview } from "@/components/GenerationReview";
 import { ZoomableImage } from "@/components/ZoomableImage";
 import type { ResultSummary } from "@/lib/result-summary";
 
@@ -12,6 +14,7 @@ type TryOnResultProps = {
   onRegenerate: () => void;
   onReset: () => void;
   isGenerating: boolean;
+  fabricReferences?: ComparisonReference[];
 };
 
 export function TryOnResult({
@@ -22,8 +25,9 @@ export function TryOnResult({
   onRegenerate,
   onReset,
   isGenerating,
+  fabricReferences,
 }: TryOnResultProps) {
-  const [view, setView] = useState<"original" | "result">("result");
+  const [view, setView] = useState<"original" | "result" | "compare">("result");
   const [filename] = useState(
     () => `nasir-bespoke-try-on-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
   );
@@ -52,15 +56,16 @@ export function TryOnResult({
           >
             Try-On
           </button>
+          <button type="button" aria-pressed={view === "compare"} onClick={() => setView("compare")}>Side by side</button>
         </div>
       </div>
 
-      <div className="result-frame">
+      {view === "compare" ? <ResultComparison originalUrl={originalUrl} resultUrl={resultUrl} fabricReferences={fabricReferences} /> : <div className="result-frame">
         <ZoomableImage
           src={view === "result" ? resultUrl : originalUrl}
           alt={view === "result" ? "Generated virtual try-on" : "Original person photo"}
         />
-      </div>
+      </div>}
 
       <dl className="result-summary" aria-label="Generated look summary">
         <div><dt>Garment</dt><dd>{summary.garment}</dd></div>
@@ -85,6 +90,7 @@ export function TryOnResult({
           Start Over
         </button>
       </div>
+      {resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)?.[1] ? <GenerationReview key={resultUrl} generationId={resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)![1]} /> : null}
       <p className="result-disclaimer">AI visualization. Actual garment fit may vary.</p>
     </div>
   );

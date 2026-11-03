@@ -144,6 +144,9 @@ a:focus-visible {
   gap: 20px;
 }
 
+/* Keep the table and review controls reachable when details exceed the panel. */
+.history-panel > * { flex-shrink: 0; }
+
 .history-panel-header h2 {
   margin: 3px 0 0;
   font-family: var(--font-serif);
@@ -2126,7 +2129,7 @@ a:focus-visible {
   .atelier-shell { display: block; }
   .atelier-sidebar { display: none; }
   .atelier-main { padding: 0 18px 38px; }
-  .atelier-mobile-header { align-items: center; background: rgba(13,14,13,.94); border-bottom: 1px solid var(--atelier-line); display: flex; gap: 10px; justify-content: space-between; margin: 0 -18px; padding: 12px 18px; position: sticky; top: 0; z-index: 25; }
+  .atelier-mobile-header { align-items: center; background: rgba(13,14,13,.94); border-bottom: 1px solid var(--atelier-line); display: flex; gap: 10px; justify-content: space-between; padding: 12px 18px; position: sticky; top: 0; z-index: 25; }
   .atelier-mobile-brand { align-items: center; display: flex; gap: 9px; min-width: 0; }
   .atelier-mobile-brand > span:last-child { display: grid; gap: 2px; min-width: 0; }
   .atelier-mobile-brand small { color: var(--atelier-muted); display: block; font-size: 9px; }
@@ -2146,7 +2149,7 @@ a:focus-visible {
 
 @media (max-width: 620px) {
   .atelier-main { padding: 0 13px 28px; }
-  .atelier-mobile-header { margin: 0 -13px; padding-left: 13px; padding-right: 13px; }
+  .atelier-mobile-header { padding-left: 13px; padding-right: 13px; }
   .atelier-mobile-actions .logout-control button { font-size: 0; padding: 0; width: 32px; }
   .atelier-mobile-actions .logout-control button::before { content: "↗"; font-size: 15px; }
   .atelier-shell .brand-header { padding: 31px 7px 22px; }
@@ -2905,3 +2908,26 @@ a:focus-visible {
   .history-modal-root { padding: 0; }
   .history-panel { border-radius: 0; border: none; height: 100vh; max-height: 100vh; width: 100vw; max-width: 100vw; padding: 20px 16px 32px; }
 }
+
+.generation-review { margin-block: 1.5rem; }
+.generation-review fieldset { display: flex; flex-wrap: wrap; gap: .8rem; padding: 1rem; border: 1px solid #6b665a; }
+.generation-review label { display: inline-flex; align-items: center; gap: .4rem; }
+
+.result-comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.result-comparison-grid figure { margin: 0; min-width: 0; }
+.result-comparison-pane { overflow: auto; height: min(65vh, 650px); border: 1px solid #6b665a; }
+.result-comparison-pane img { display: block; height: auto; }
+@media (max-width: 600px) { .result-comparison-grid { grid-template-columns: 1fr; } .result-comparison-pane { height: 40vh; } }
+
+.fabric-reference-controls { margin-block: 1rem; }
+.fabric-reference-controls fieldset { display: grid; min-width: 0; gap: .8rem; border: 1px solid #6b665a; padding: 1rem; }
+.fabric-reference-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.fabric-reference-controls select, .fabric-reference-controls input { min-width: 0; max-width: 100%; }
+.fabric-region-toggle { flex-wrap: wrap; max-width: 100%; }
+.fabric-reference-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; max-width: 700px; }
+.fabric-reference-preview-grid figure { margin: 0; min-width: 0; }
+.fabric-crop-source { position: relative; }
+.fabric-crop-source img { display: block; width: 100%; height: auto; }
+.fabric-crop-source span { position: absolute; border: 2px solid #f3c66a; box-shadow: 0 0 0 1px #222; }
+.fabric-detail-preview { overflow: hidden; position: relative; }
+.fabric-detail-preview img { display: block; height: auto; }

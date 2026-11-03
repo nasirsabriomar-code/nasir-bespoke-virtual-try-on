@@ -122,15 +122,18 @@ export async function markUploadComplete(id: string, metadata: Pick<UploadSlot, 
   const sql = getSql();
   if (!sql) {
     const slot = memoryUploads.get(id);
-    if (!slot) return null;
+    if (!slot || slot.status === "consumed") return null;
+    if (slot.status === "uploaded") return slot;
     const next = { ...slot, ...metadata, status: "uploaded" as const };
     memoryUploads.set(id, next);
     return next;
   }
   await ensureSchema();
   const rows = await sql`UPDATE nasir_tryon_uploads SET status = 'uploaded', checksum = ${metadata.checksum ?? null}, width = ${metadata.width ?? null}, height = ${metadata.height ?? null}
-    WHERE id = ${id} RETURNING *`;
-  return rows[0] ? rowToSlot(rows[0] as Record<string, unknown>) : null;
+    WHERE id = ${id} AND status = 'authorized' RETURNING *`;
+  if (rows[0]) return rowToSlot(rows[0] as Record<string, unknown>);
+  const existing = await getUploadSlot(id);
+  return existing?.status === "uploaded" ? existing : null;
 }
 
 export async function consumeUploadSlots(username: string, ids: string[]) {
@@ -139,18 +142,25 @@ export async function consumeUploadSlots(username: string, ids: string[]) {
   if (slots.some((slot) => !slot || slot.username !== username || slot.status !== "uploaded" || new Date(slot.expiresAt).getTime() < Date.now())) return null;
   const sql = getSql();
   if (!sql) {
+    if (unique.some(id => memoryUploads.get(id)?.status !== "uploaded")) return null;
     unique.forEach((id) => {
       const slot = memoryUploads.get(id)!;
       memoryUploads.set(id, { ...slot, status: "consumed" });
     });
   } else {
     await ensureSchema();
-    // One UPDATE covers every slot. This makes one-time use atomic: a racing
-    // request receives no complete set once another request consumes it.
-    const consumed = await sql`UPDATE nasir_tryon_uploads
-      SET status = 'consumed'
+    // Lock the complete eligible set in a stable order before consuming any.
+    // A request overlapping another set must not consume its non-overlapping
+    // uploads if even one requested slot has already been used.
+    const consumed = await sql`WITH eligible AS MATERIALIZED (
+      SELECT id FROM nasir_tryon_uploads
       WHERE id = ANY(${unique}::uuid[]) AND username = ${username}
         AND status = 'uploaded' AND expires_at >= now()
+      ORDER BY id FOR UPDATE
+    ) UPDATE nasir_tryon_uploads
+      SET status = 'consumed'
+      WHERE id IN (SELECT id FROM eligible)
+        AND (SELECT count(*) FROM eligible) = ${unique.length}
       RETURNING id`;
     if (consumed.length !== unique.length) return null;
   }

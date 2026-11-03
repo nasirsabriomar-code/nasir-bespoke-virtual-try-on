@@ -10,7 +10,7 @@ The product is not a consumer social app or a general-purpose AI editor. The cor
                              ↓
                      Server-side compiler
                              ↓
-                        GPT Image 2
+                  GPT Image 2.5 Sunburst
                              ↓
                      Try-on visualization
 
@@ -27,10 +27,12 @@ The app is designed for showroom computers, iPads, and phones. It is deployed as
 - Explicit No Change and Keep Existing choices where appropriate.
 - Sequential, data-driven suit configuration with dependencies, conflicts, visual references, and prompt fragments.
 - Deterministic server-side prompt compilation. Employees never write prompts and the browser cannot submit arbitrary prompts or model parameters.
-- GPT Image 2 image editing through the official OpenAI Node SDK.
+- GPT Image 2.5 Sunburst image editing at fixed medium quality through the official OpenAI Node SDK, returning private PNG masters.
 - Generation loading states, result comparison, download, Try Again, and Start Over.
 - Usage/history metadata in Upstash Redis.
-- Optional private customer-image and result storage in Vercel Blob.
+- Private Cloudflare R2 customer-image/result storage with a Neon upload ledger and permanent history.
+- Account-scoped pending-generation recovery, resumable chunk uploads, staff feedback/favourites and fabric/result inspection.
+- Opt-in full-swatch/detail repeat guidance and background mask/compositing prototypes. Visual improvements await output evaluation; established reference/background defaults remain available.
 - Responsive Midnight Atelier user interface for desktop, iPad, and iPhone layouts.
 
 ## Current boundaries
@@ -47,16 +49,16 @@ The current history model is shared among authenticated staff. Fine-grained user
 - Tailwind CSS 4
 - Node.js 22.13 or newer
 - OpenAI Node SDK 7.4
-- GPT Image 2 (gpt-image-2)
+- GPT Image 2.5 Sunburst (gpt-image-2.5-sunburst)
 - Upstash Redis and Ratelimit
-- Vercel Blob for optional private image storage
+- Cloudflare R2 for private images; Neon PostgreSQL for permanent history/upload state
 - Vercel deployment
 
 ## Product roadmap
 
 ### Phase 1 — Simple private AI try-on
 
-Completed foundation: authenticated person/fabric uploads, optional outfit input, visual men's catalog, GPT Image 2 generation, history, and responsive showroom workflow.
+Completed foundation: authenticated person/fabric uploads, optional outfit input, visual men's catalogue, image generation, history and responsive showroom workflow. See research/IMPROVEMENT_BATCHES.md for the ten-batch improvement scope and its remaining acceptance gates.
 
 ### Phase 2 — Expanded garment intelligence
 

@@ -1,3 +1,5 @@
+import type { BackgroundControl } from "./background-control";
+import type { FabricGuidance } from "./fabric-guidance";
 import type { SupportedImageMime } from "@/lib/validation";
 import type { CatalogSelection, TryOnSelection } from "@/lib/catalog/types";
 
@@ -15,6 +17,8 @@ export type EffortQuality = "low" | "medium" | "high" | "max";
 export type TryOnInput = {
   person: TryOnImage;
   outfit?: TryOnImage;
+  backgroundControl?: BackgroundControl;
+  fabricGuidance?: FabricGuidance;
   fabric?: TryOnImage;
   lowerFabric?: TryOnImage;
   shirtFabric?: TryOnImage;
@@ -43,6 +47,7 @@ export type TryOnMetadata = {
   reportedSize?: string;
   outputWidth?: number;
   outputHeight?: number;
+  provenance?: { promptVersion: string; preprocessingVersion: string; promptHash: string; modelSnapshot: string | null; preprocessingMs: number; providerMs: number; providerAttempts: number; fallbackReasons: string[]; fabricGuidance?: FabricGuidance; backgroundControl?: BackgroundControl };
   usage?: {
     inputTokens: number;
     outputTokens: number;

@@ -119,7 +119,11 @@ function readCookie(cookieHeader: string | null, name: string) {
     if (separator < 0) continue;
     const key = pair.slice(0, separator).trim();
     if (key !== name) continue;
-    return decodeURIComponent(pair.slice(separator + 1).trim());
+    try {
+      return decodeURIComponent(pair.slice(separator + 1).trim());
+    } catch {
+      return null;
+    }
   }
   return null;
 }
@@ -129,9 +133,5 @@ export function getSessionTokenFromRequest(request: Request) {
 }
 
 export async function requireRequestUser(request: Request) {
-  const user = await getCurrentUserFromToken(getSessionTokenFromRequest(request));
-  if (!user && process.env.NODE_ENV === "development") {
-    return { username: "showroom", displayName: "Showroom Staff" };
-  }
-  return user;
+  return getCurrentUserFromToken(getSessionTokenFromRequest(request));
 }

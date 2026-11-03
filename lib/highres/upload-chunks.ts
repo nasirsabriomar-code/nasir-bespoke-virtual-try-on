@@ -39,7 +39,18 @@ export async function writeUploadChunk(username: string, id: string, index: numb
     reader.releaseLock();
   }
   if (size !== expected) throw new HighResolutionUploadError("The upload part is incomplete.", 400);
+  // A slow request may have started before another request completed the slot.
+  const current = await getUploadSlot(id);
+  if (!current || current.status !== "authorized") throw new HighResolutionUploadError("This upload is already complete.", 409);
+  if (new Date(current.expiresAt).getTime() < Date.now()) throw new HighResolutionUploadError("This upload session expired.", 410);
   await r2Put(uploadChunkPath(slot, index), Buffer.concat(parts), "application/octet-stream");
+  const after = await getUploadSlot(id);
+  if (!after || after.status !== "authorized" || new Date(after.expiresAt).getTime() < Date.now()) {
+    // Completion only reads chunks and writes the separate immutable master.
+    // A late duplicate part must not leave a new orphan behind that completion.
+    await r2Delete(uploadChunkPath(slot, index)).catch(() => undefined);
+    throw new HighResolutionUploadError("This upload is already complete or expired.", 409);
+  }
 }
 
 export async function readUploadChunks(slot: UploadSlot) {

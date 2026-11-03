@@ -198,20 +198,21 @@ export function compileVisualizationPrompt(
 ) {
   const visibleOptions = configuration.options.filter(({ option }) => option.priority !== "non-visual" && option.visibleIn.includes(specification.targetView));
   const sections = Object.entries(sectionLabels).map(([section, label]) => {
-    const items = visibleOptions.filter((item) => item.section === section);
-    return items.length ? `${label}:\n${items.map(({ groupName, option }) => `- ${groupName}: ${option.promptFragment}`).join("\n")}` : "";
+    const items = visibleOptions.filter((item) => item.section === section).sort((a, b) => priorityRank[b.option.priority] - priorityRank[a.option.priority]);
+    return items.length ? `${label}:\n${items.map(({ groupName, option }) => `- [${option.priority.toUpperCase()}] ${groupName}: ${option.promptFragment}`).join("\n")}` : "";
   }).filter(Boolean);
   const negatives = [...new Set(
     visibleOptions
       .filter(({ option }) => option.priority === "critical" || option.priority === "high" || option.priority === "medium")
+      .sort((a, b) => priorityRank[b.option.priority] - priorityRank[a.option.priority])
       .flatMap(({ option }) => option.negativeConstraints ?? []),
-  )].slice(0, 16);
+  )];
 
   return [
     basePrompt,
     "NASIR OUTFIT VISUALIZATION COMPILER — STRUCTURED OUTFIT SPECIFICATION:",
     `Target view: ${specification.targetView}. Prioritize a full-body front view when Image 1 permits; do not change Image 1's camera or composition.`,
-    "The following selected specification is authoritative. Critical and high-priority visible attributes must take precedence over medium and low details.",
+    "The following selected specification is authoritative for clothing construction only. Critical and high-priority visible attributes take precedence over medium and low details, without overriding identity, body, pose, camera or unaffected-scene preservation. Explicitly selected facings and embellishments are local panel exceptions, not changes to the base cloth.",
     sections.join("\n\n"),
     negatives.length ? `DO NOT CHANGE / SELECTED NEGATIVE CONSTRAINTS:\n${negatives.map((item) => `- ${item}`).join("\n")}` : "",
   ].filter(Boolean).join("\n\n");

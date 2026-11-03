@@ -206,10 +206,12 @@ export type Level1CatalogueDesignView = {
     };
     generation: {
       state: "ready" | "awaiting-approved-reference";
+      unavailabilityReason?: "storage-unavailable" | "missing" | "unapproved";
     };
   }>;
   generation: {
     state: "ready" | "awaiting-approved-reference";
+      unavailabilityReason?: "storage-unavailable" | "missing" | "unapproved";
   };
 };
 

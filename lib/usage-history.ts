@@ -1,3 +1,6 @@
+import type { GenerationReview } from "@/lib/history/review-types";
+import { sanitizeGenerationMetadata } from "@/lib/tryon/metadata";
+import type { TryOnMetadata } from "@/lib/tryon/types";
 import "server-only";
 
 import { createHash } from "node:crypto";
@@ -28,6 +31,8 @@ export type UsageEvent = {
   provider: string;
   model: string;
   quality: string;
+  review?: GenerationReview;
+  metadata?: Partial<TryOnMetadata>;
   assets?: GenerationAssetRefs;
   generation?: {
     mode: "catalog" | "outfit" | "level1" | "split";
@@ -307,6 +312,7 @@ function parseEvent(value: unknown): UsageEvent | null {
     provider: record.provider,
     model: record.model,
     quality: record.quality,
+    ...(record.metadata ? { metadata: sanitizeGenerationMetadata(record.metadata) } : {}),
     ...(parseGenerationMetadata(record.generation) ? { generation: parseGenerationMetadata(record.generation) } : {}),
     ...(parseAssetRefs(record.assets) ? { assets: parseAssetRefs(record.assets) } : {}),
   };

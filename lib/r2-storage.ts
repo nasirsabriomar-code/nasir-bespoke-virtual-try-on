@@ -1,3 +1,4 @@
+import { invalidateCatalogueAvailability } from "@/lib/catalog/availability-cache";
 import "server-only";
 
 import { createHash, createHmac } from "node:crypto";
@@ -95,6 +96,7 @@ export async function r2Put(pathname: string, body: Blob | Uint8Array, contentTy
     body: body instanceof Blob ? body : Buffer.from(body),
   });
   if (!response.ok) throw new Error(`R2 upload failed with status ${response.status}.`);
+  if (pathname.startsWith("nasir-bespoke/catalogue/")) invalidateCatalogueAvailability(pathname);
 }
 
 export class R2RequestError extends Error {

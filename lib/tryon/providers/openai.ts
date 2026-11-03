@@ -1,3 +1,10 @@
+import { prepareBackgroundEdit, compositeBackground } from "../background-preservation";
+import { orderGenerationImages, renderInputManifest, promptImageIndicesAreValid } from "../image-layout";
+import { CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY } from "../pattern-geometry";
+import { cropFabricDetail } from "./../fabric-reference";
+import { DEFAULT_DETAIL_CROP, type FabricRole } from "./../fabric-guidance";
+import { UploadValidationError } from "@/lib/validation";
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { createOpenAIClient } from "@/lib/openai";
 import type { TryOnInput, TryOnOutput, TryOnProvider } from "@/lib/tryon/types";
@@ -22,8 +29,9 @@ function rounded(value: number) {
 
 function canvasFor(width: number, height: number, pixelLimit: number) {
   const ratio = Math.min(3, Math.max(1 / 3, width / height));
-  const outputWidth = rounded(Math.sqrt(pixelLimit * ratio));
-  const outputHeight = rounded(Math.sqrt(pixelLimit / ratio));
+  const heightLimit = Math.min(Math.sqrt(pixelLimit / ratio), PROVIDER_COMPATIBILITY_EDGE, PROVIDER_COMPATIBILITY_EDGE / ratio);
+  const outputWidth = rounded(heightLimit * ratio);
+  const outputHeight = rounded(heightLimit);
   return `${outputWidth}x${outputHeight}`;
 }
 
@@ -72,16 +80,16 @@ export async function centerFabricRepeat(image: TryOnInput["person"]): Promise<T
     const cropHeight = Math.max(16, Math.round(height * 0.5));
     const left = Math.round((width - cropWidth) / 2);
     const top = Math.round((height - cropHeight) / 2);
-    const output = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 })
+    const { data: output, info } = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 })
       .extract({ left, top, width: cropWidth, height: cropHeight })
       .rotate()
       .png({ compressionLevel: 9, palette: false })
-      .toBuffer();
+      .toBuffer({ resolveWithObject: true });
     return {
       file: new File([output], image.file.name, { type: "image/png" }),
       mime: "image/png",
-      width: cropWidth,
-      height: cropHeight,
+      width: info.width,
+      height: info.height,
     };
   } catch {
     return image;
@@ -133,19 +141,37 @@ function inputParts(input: TryOnInput): ImagePart[] {
   if (input.shirtFabric) fabrics.push({ image: input.shirtFabric, stem: "shirt-fabric-reference" });
   if (input.waistcoatFabric) fabrics.push({ image: input.waistcoatFabric, stem: "waistcoat-fabric-reference" });
   const references = input.references.map(({ role, image }) => ({ image, stem: `${role}-blueprint` }));
-  // Split and Full Outfit: construction first, fabric last, so colour is the later signal.
-  if (input.selection.mode === "split" || input.selection.mode === "level1") {
-    parts.push(...references, ...fabrics);
-  } else {
-    parts.push(...fabrics, ...references);
-  }
-  return parts;
+  return orderGenerationImages(input.selection.mode, parts[0], parts[1], fabrics, references);
 }
 
-async function providerSafeUpload({ image, stem }: ImagePart) {
+const STEM_TO_FABRIC: Record<string, FabricRole> = { "fabric-reference": "fabric", "lower-fabric-reference": "lowerFabric", "shirt-fabric-reference": "shirtFabric", "waistcoat-fabric-reference": "waistcoatFabric" };
+export async function prepareProviderReferences(input: TryOnInput): Promise<{ parts: ImagePart[]; guidance: string }> {
+  const details: { part: ImagePart; fullIndex: number; role: FabricRole }[] = [];
+  const parts: ImagePart[] = [];
+  for (const [index, part] of inputParts(input).entries()) {
+    const role = STEM_TO_FABRIC[part.stem];
+    const options = role ? input.fabricGuidance?.[role] : undefined;
+    if (!isFabricStem(part.stem)) { parts.push(part); continue; }
+    if (options?.mode !== "full-detail") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
+    parts.push({ ...part, image: await uprightImage(part.image) });
+    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: index + 1, role });
+  }
+  const lines: string[] = [];
+  for (const detail of details) {
+    const options = input.fabricGuidance![detail.role]!;
+    const number = parts.length + 1;
+    parts.push(detail.part);
+    lines.push(`Image ${detail.fullIndex} is the complete ${detail.role} swatch: it controls repeat scale, pattern density and colour. Image ${number} is a cropped detail from that same swatch: use it only to inspect weave and motif edges, never to enlarge the repeat or infer a new physical scale. Ignore rulers, calibration marks and the swatch background.`);
+    if (options.repeatWidthCm || options.repeatHeightCm) lines.push(`Measured physical repeat for Image ${detail.fullIndex}: ${options.repeatWidthCm ? `width ${options.repeatWidthCm} cm` : "width unspecified"}; ${options.repeatHeightCm ? `height ${options.repeatHeightCm} cm` : "height unspecified"}. Use this as garment pattern-scale guidance, not a garment sizing measurement.`);
+  }
+  if (parts.length > 16) throw new UploadValidationError("Too many visual references. Reduce the number of fabric detail references.", "invalid_image");
+  return { parts, guidance: lines.length ? "FABRIC SCALE AND DETAIL AUTHORITY:\n" + lines.join("\n") : "" };
+}
+
+async function providerSafeUpload({ image, stem }: ImagePart, forcePng = false) {
   const source = Buffer.from(await image.file.arrayBuffer());
   const sourceMetadata = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 }).metadata();
-  const outputMime: SupportedImageMime = sourceMetadata.hasAlpha ? "image/png" : "image/jpeg";
+  const outputMime: SupportedImageMime = forcePng || sourceMetadata.hasAlpha ? "image/png" : "image/jpeg";
   const normalized = sharp(source, { failOn: "error", limitInputPixels: 40_000_000 })
     // Applies EXIF orientation and removes metadata that the image endpoint does not need.
     .rotate()
@@ -173,32 +199,51 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const client = this.clientFactory();
 
     const person = await uprightImage(input.person);
-    const parts = await Promise.all(inputParts({ ...input, person }).map(async (part) => (
-      isFabricStem(part.stem) ? { ...part, image: await centerFabricRepeat(part.image) } : part
-    )));
+    const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
+    const background = input.backgroundControl && input.backgroundControl.mode !== "prompt-only" ? await prepareBackgroundEdit(person, requestedSize, input.backgroundControl) : null;
+    const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person });
+    const regionInstruction = background
+      ? `EDIT REGION (${input.backgroundControl!.mode}): Only the transparent garment region permits clothing, necessary revealed-background reconstruction and contact-shadow changes. Preserve all other regions. ${input.backgroundControl!.mode === "composite" ? "The normalized original outside this region will be retained by compositing; keep silhouette and lighting aligned at its boundary." : "The mask guides the edit; keep unaffected surroundings fixed."} Do not draw a rectangle or border.`
+      : "EDIT REGION (prompt-only): Restrict changes to selected clothing/accessories and their necessary local silhouette, revealed-background and contact-shadow effects. Keep all unaffected surroundings fixed.";
+    const providerPrompt = [input.prompt, renderInputManifest(parts), CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY, guidance, regionInstruction].filter(Boolean).join("\n\n");
+    if (!promptImageIndicesAreValid(providerPrompt, parts.length)) throw new UploadValidationError("The reference image mapping is invalid.", "invalid_image");
+    if (providerPrompt.length > 32000) throw new UploadValidationError("The selected look has too many instructions.", "invalid_image");
     const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
 
-    const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
+    const preprocessingMs = Date.now() - startedAt;
+    let providerAttempts = 0;
+    const fallbackReasons: string[] = [];
+    const providerStart = Date.now();
     console.info("try_on_provider_inputs", {
       requestId: input.requestId,
       model: MODEL,
       images: imageInputs.map((image) => ({ name: image.name, type: image.type, bytes: image.size })),
     });
-    const edit = (size: string, images: File[]) => client.images.edit({
+    const edit = async (size: string, images: File[]) => {
+      const maskFile = background ? await (async () => {
+        const metadata = await sharp(Buffer.from(await images[0].arrayBuffer())).metadata();
+        const mask = await sharp(background.mask).resize(metadata.width!, metadata.height!, { kernel: sharp.kernel.nearest }).png().toBuffer();
+        return new File([new Uint8Array(mask)], "garment-mask.png", { type: "image/png" });
+      })() : undefined;
+      providerAttempts++;
+      return client.images.edit({
       model: MODEL,
       image: images,
-      prompt: input.prompt,
+      ...(maskFile ? { mask: maskFile } : {}),
+      prompt: providerPrompt,
       quality,
       size,
       output_format: "png",
       background: "opaque",
       n: 1,
     });
+    };
     const editWithSizeFallback = async (images: File[]) => {
       try {
         return { response: await edit(requestedSize, images), resolvedSize: requestedSize };
       } catch (error) {
         if (!isSizeRejection(error)) throw error;
+        fallbackReasons.push("size");
         const fallbackSize = resolveFallbackCanvas(person.width, person.height);
         return { response: await edit(fallbackSize, images), resolvedSize: fallbackSize };
       }
@@ -210,7 +255,8 @@ export class OpenAITryOnProvider implements TryOnProvider {
       ({ response, resolvedSize } = await editWithSizeFallback(imageInputs));
     } catch (error) {
       if (!isInvalidImageFile(error)) throw error;
-      const compatibilityInputs = await Promise.all(parts.map(providerSafeUpload));
+      fallbackReasons.push("image-format");
+      const compatibilityInputs = await Promise.all(parts.map((part, index) => providerSafeUpload(part, Boolean(background && index === 0))));
       console.warn("try_on_provider_image_fallback", {
         requestId: input.requestId,
         model: MODEL,
@@ -230,7 +276,8 @@ export class OpenAITryOnProvider implements TryOnProvider {
       throw new Error("The image provider returned no result.");
     }
 
-    const bytes = Uint8Array.from(Buffer.from(encodedImage, "base64"));
+    let bytes = Uint8Array.from(Buffer.from(encodedImage, "base64"));
+    if (background && input.backgroundControl?.mode === "composite") bytes = new Uint8Array(await compositeBackground(background.base, bytes, background.mask));
     const decodedDimensions = detectImageDimensions(bytes, "image/png");
     if (!decodedDimensions) throw new Error("The image provider returned an invalid PNG result.");
 
@@ -244,6 +291,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
         durationMs: Date.now() - startedAt,
         // response.quality/usage are OpenAI's own server-reported values, distinct
         // from the `quality` we requested above — see TryOnMetadata for why this matters.
+        provenance: { promptVersion: "atelier-v4-scoped-authority", backgroundControl: input.backgroundControl, preprocessingVersion: guidance ? "full-detail-v1" : "crop-v2-orientation", fabricGuidance: input.fabricGuidance, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
         reportedQuality: response.quality,
         requestedSize,
         reportedSize: response.size ?? resolvedSize,

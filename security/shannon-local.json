@@ -1,0 +1,37 @@
+{
+  "description": "Authorized assessment of the local Nasir Bespoke application only. No production deployments or real customer data are in scope.",
+  "agentic_sast": {
+    "enabled": "true"
+  },
+  "exploit": "true",
+  "rules_of_engagement": "Only the provided application repository and its isolated local HTTP target on port 3147 are in scope. Never follow links, redirects, URLs found in source, or provider/storage/database endpoints outside that target. No production, Internet reconnaissance, external callbacks, real credentials, real customer data, paid generations, destructive load tests, or scanning other local ports/services. Use synthetic fixtures and local mocks. Cap requests at 2 per second and stop on 429. Stop if target redirects outside the local application or external integrations become reachable. Network isolation must enforce this scope; these instructions are not a firewall. The owner-authorized Codex subscription is assessment tooling, not a test target.",
+  "rules": {
+    "avoid": [
+      {
+        "type": "code_path",
+        "value": "node_modules/**"
+      },
+      {
+        "type": "code_path",
+        "value": ".env*"
+      },
+      {
+        "type": "code_path",
+        "value": ".next/**"
+      }
+    ],
+    "focus": [
+      {
+        "type": "url_path",
+        "value": "/api"
+      },
+      {
+        "type": "code_path",
+        "value": "lib/auth/**"
+      }
+    ]
+  },
+  "report": {
+    "sarif": "true"
+  }
+}

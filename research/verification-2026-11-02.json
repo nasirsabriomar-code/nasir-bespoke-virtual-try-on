@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-02",
+  "scope": "Repository and isolated loopback environments with synthetic data",
+  "overallTenBatchAcceptance": "incomplete: matched actual-output evaluation and staff/tailor review remain pending",
+  "acceptanceBlocker": {
+    "status": "awaiting external evidence",
+    "approvedPersonOrGarmentFixtures": 0,
+    "observedScoredOutputs": 0,
+    "tailorConfirmation": "not supplied",
+    "paidPilotAuthorized": false,
+    "completionClaimed": false
+  },
+  "paidImageCalls": 0,
+  "productionAccessOrDeployment": false,
+  "tests": {
+    "passed": 204,
+    "failed": 0,
+    "groups": { "security": 54, "catalogue": 67, "bespoke": 4, "renderedSource": 8, "storageClientPipeline": 71 }
+  },
+  "checks": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "productionBuildOnly": "passed; no deployment",
+    "localHttpSecurity": "passed",
+    "diffWhitespace": "passed",
+    "offlineSwatchPreparation": "passed; ten cases and twenty PNG references, including three same-cloth capture pairs and a plain control",
+    "offlineSummaryCli": "passed; empty observed dataset returns no condition results"
+  },
+  "fixtureFollowup": {
+    "recipeVersion": "procedural-fabric-v2",
+    "applicationCodeChanged": false,
+    "lint": "passed",
+    "imageDimensionsAndChecksums": "all twenty references verified",
+    "sameClothCapturePairs": 3,
+    "observedChecksAndStripePeriods": "40 pixels wide / 100 pixels close for the same declared 4 cm repeat",
+    "plainControl": "uniform pixels verified",
+    "regeneration": "identical manifest and reference checksums",
+    "pilotAuthorized": false,
+    "paidCallsPlanned": null
+  },
+  "browser": {
+    "passed": 13,
+    "pageErrors": 0,
+    "completedAt": "2026-11-02T17:54:05.488Z",
+    "authentication": "Real local application with synthetic staff credentials",
+    "services": "Synthetic catalogue, image storage, generation and status fixtures",
+    "coverage": [
+      "login and protected page",
+      "catalogue outage labels and ready-reference selection through viewer",
+      "fabric/background controls and original-key recovery after proxy error",
+      "feedback load failure cannot overwrite prior feedback",
+      "fabric comparison, shared zoom and scroll",
+      "favourite and failure reason persist after History reload",
+      "pending refresh recovery without resubmission",
+      "other-account metadata isolation",
+      "upload cancellation before generation",
+      "390px mobile layout",
+      "confirmed logout clears job/upload checkpoints",
+      "navigation and unknown outcome prevent a duplicate run",
+      "expired authentication redirects and retains minimal recovery metadata"
+    ]
+  },
+  "integrationLimits": [
+    "Two-process session tests use a loopback Redis REST fixture, not live Upstash",
+    "Upload tests use the in-memory ledger and mocked object storage; PostgreSQL locking was source-reviewed, not exercised against live Neon",
+    "No real image-provider response was evaluated; no visual gain or cost reduction is proven",
+    "Shannon remains blocked before analysis by provider cyber-access approval"
+  ],
+  "remainingGates": [
+    "Approved representative synthetic people and garment/construction cases",
+    "Professional tailor review of proportions and cutting/grain expectations",
+    "Matched actual outputs scored for scale, colour, construction, background and identity",
+    "Owner-authorized budget before any paid image calls; currently disallowed",
+    "Observed latency/cost acceptance before changing model or quality defaults"
+  ]
+}

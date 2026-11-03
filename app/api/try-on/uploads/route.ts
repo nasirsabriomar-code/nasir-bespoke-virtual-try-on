@@ -4,6 +4,7 @@ import { createUploadSlot, type UploadRole } from "@/lib/highres/ledger";
 import { HighResolutionUploadError, assertHighResolutionStorage } from "@/lib/highres/uploads";
 import { MAX_IMAGE_BYTES, type SupportedImageMime } from "@/lib/validation";
 import { isSameOriginRequest } from "@/lib/request-security";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/request-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,11 @@ export async function POST(request: Request) {
     const user = await requireRequestUser(request);
     if (!user) return Response.json({ error: "Your session has expired. Please sign in again." }, { status: 401 });
     assertHighResolutionStorage();
-    const body = await request.json() as Record<string, unknown>;
+    const parsed = await readBoundedJson(request, 4_096);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return Response.json({ error: "Invalid upload request." }, { status: 400 });
+    }
+    const body = parsed as Record<string, unknown>;
     const role = typeof body.role === "string" && ROLES.has(body.role as UploadRole) ? body.role as UploadRole : null;
     const filename = typeof body.filename === "string" ? body.filename : "";
     const contentType = typeof body.contentType === "string" && TYPES.has(body.contentType as SupportedImageMime)
@@ -29,6 +34,8 @@ export async function POST(request: Request) {
     const slot = await createUploadSlot({ username: user.username, role, filename, contentType, bytes });
     return Response.json({ id: slot.id, pathname: slot.pathname, expiresAt: slot.expiresAt }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return Response.json({ error: "Upload request is too large." }, { status: 413 });
+    if (error instanceof SyntaxError) return Response.json({ error: "Invalid upload request." }, { status: 400 });
     if (error instanceof AuthConfigurationError) return Response.json({ error: "Authentication is not configured." }, { status: 503 });
     if (error instanceof HighResolutionUploadError) return Response.json({ error: error.message }, { status: error.status });
     console.error("highres_upload_slot_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });

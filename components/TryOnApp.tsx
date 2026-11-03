@@ -1,6 +1,11 @@
 "use client";
 
-import { UPLOAD_CHUNK_BYTES } from "@/lib/highres/upload-config";
+import { BackgroundControls } from "@/components/BackgroundControls";
+import type { BackgroundControl } from "@/lib/tryon/background-control";
+import { FabricReferenceControls } from "@/components/FabricReferenceControls";
+import type { FabricGuidance, FabricRole } from "@/lib/tryon/fabric-guidance";
+import { pendingStorageKey, parsePendingGeneration, type PendingGeneration } from "@/lib/pending-generation";
+import { uploadOriginal } from "@/lib/highres/client-upload";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GenerationState } from "@/components/GenerationState";
@@ -12,7 +17,7 @@ import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
-import { fetchWithTimeout, recoverGeneration } from "@/lib/generation-recovery";
+import { fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
 import { buildResultSummary, type ResultSummary } from "@/lib/result-summary";
 import { DEFAULT_SPLIT_OUTFIT_STATE } from "@/lib/split-outfit/catalogue";
 import { clearSplitFabrics } from "@/lib/split-outfit/client-fabrics";
@@ -30,6 +35,7 @@ type UploadRole = "person" | "fabric" | "lowerFabric" | "shirtFabric" | "waistco
 
 type TryOnAppProps = {
   displayName: string;
+  accountId: string;
 };
 
 const MAX_CLIENT_FILE_SIZE = 50 * 1024 * 1024;
@@ -75,36 +81,7 @@ async function prepareImage(file: File): Promise<File> {
   return file;
 }
 
-type UploadSlotResponse = { id: string; pathname: string };
 type GenerationResponse = { generationId: string; resultUrl: string; originalUrl: string; metadata?: { reportedSize?: string; outputWidth?: number; outputHeight?: number } };
-
-async function uploadOriginal(role: UploadRole, file: File, onProgress: (progress: number) => void) {
-  const slotResponse = await fetch("/api/try-on/uploads", {
-    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role, filename: file.name, contentType: file.type, bytes: file.size }),
-  });
-  const slotPayload = await slotResponse.json().catch(() => ({})) as UploadSlotResponse & { error?: string };
-  if (!slotResponse.ok || !slotPayload.id || !slotPayload.pathname) throw new Error(slotPayload.error || "We couldn't prepare this upload.");
-  const count = Math.ceil(file.size / UPLOAD_CHUNK_BYTES);
-  for (let index = 0; index < count; index++) {
-    const uploadResponse = await fetch("/api/try-on/uploads/" + encodeURIComponent(slotPayload.id) + "/parts/" + index, {
-      method: "PUT", credentials: "same-origin",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: file.slice(index * UPLOAD_CHUNK_BYTES, (index + 1) * UPLOAD_CHUNK_BYTES),
-    });
-    if (!uploadResponse.ok) {
-      const payload = await uploadResponse.json().catch(() => ({})) as { error?: string };
-      throw new Error(payload.error || "We couldn't upload the original image.");
-    }
-    onProgress(Math.round((index + 1) * 100 / count));
-  }
-  const completeResponse = await fetch(`/api/try-on/uploads/${encodeURIComponent(slotPayload.id)}/complete`, {
-    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
-  });
-  const completePayload = await completeResponse.json().catch(() => ({})) as { error?: string };
-  if (!completeResponse.ok) throw new Error(completePayload.error || "We couldn't validate this upload.");
-  return slotPayload.id;
-}
 
 function getClientDeviceHint() {
   if (typeof navigator === "undefined") return "unknown";
@@ -115,7 +92,7 @@ function getClientDeviceHint() {
   return "desktop";
 }
 
-export function TryOnApp({ displayName }: TryOnAppProps) {
+export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [person, setPerson] = useState<UploadedImage | null>(null);
   const [fabric, setFabric] = useState<UploadedImage | null>(null);
   const [lowerFabric, setLowerFabric] = useState<UploadedImage | null>(null);
@@ -133,17 +110,23 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   const [categoryId, setCategoryId] = useState("suit");
   const [designId, setDesignId] = useState<string | null>(null);
   const [designVariantId, setDesignVariantId] = useState<string | null>(null);
+  const [backgroundControl, setBackgroundControl] = useState<BackgroundControl>({ mode: "prompt-only" });
+  const [fabricGuidance, setFabricGuidance] = useState<FabricGuidance>({});
   const [fabricRegion, setFabricRegion] = useState<FabricRegion>("both");
   const [reuseFabricForLower, setReuseFabricForLower] = useState(false);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [originalResultUrl, setOriginalResultUrl] = useState<string | null>(null);
   const [outputSize, setOutputSize] = useState<string | null>(null);
   const [resultSummary, setResultSummary] = useState<ResultSummary | null>(null);
+  const uploadController = useRef<AbortController | null>(null);
+  const [generationStage, setGenerationStage] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const objectUrls = useRef(new Set<string>());
   const generationKeyRef = useRef<string | null>(null);
+  const pendingRef = useRef<PendingGeneration | null>(null);
+  const [pendingGeneration, setPendingGeneration] = useState<PendingGeneration | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -205,6 +188,53 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     setResultSummary(null);
   }, [revokeUrl]);
 
+  const trackPending = useCallback((value: PendingGeneration | null) => {
+    pendingRef.current = value;
+    setPendingGeneration(value);
+    try {
+      if (value) sessionStorage.setItem(pendingStorageKey(accountId), JSON.stringify(value));
+      else sessionStorage.removeItem(pendingStorageKey(accountId));
+    } catch { /* The current tab can still follow a job without browser persistence. */ }
+  }, [accountId]);
+
+  const reconcilePending = useCallback(async (value: PendingGeneration) => {
+    generationKeyRef.current = value.key;
+    setIsGenerating(true);
+    try {
+      const recovered = await recoverGeneration(value.key);
+      if (recovered.kind === "unknown") {
+        setError("This generation is still unconfirmed. Check again or inspect History before starting another paid run.");
+        return;
+      }
+      trackPending(null);
+      generationKeyRef.current = null;
+      if (recovered.kind === "failed") { setError(recovered.error); return; }
+      setResultUrl(recovered.resultUrl);
+      setOriginalResultUrl(recovered.originalUrl);
+      setResultSummary(value.summary);
+      setOutputSize(null);
+      setError(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Recovery is unavailable.");
+      if (error instanceof RecoveryAuthenticationError) window.location.replace("/login");
+    } finally { setIsGenerating(false); }
+  }, [trackPending]);
+
+  useEffect(() => {
+    let pending: PendingGeneration | null = null;
+    try { pending = parsePendingGeneration(sessionStorage.getItem(pendingStorageKey(accountId))); } catch { /* Browser storage is optional. */ }
+    if (!pending || generationKeyRef.current) return;
+    const value = pending;
+    // Defer state changes until after mount and make Strict Mode's first pass cancellable.
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active || generationKeyRef.current) return;
+      trackPending(value);
+      void reconcilePending(value);
+    });
+    return () => { active = false; };
+  }, [accountId, trackPending, reconcilePending]);
+
   const selectedDesign = useMemo(
     () => catalogue?.designs.find((design) => design.id === designId) ?? null,
     [catalogue, designId],
@@ -215,11 +245,19 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
   );
   const selectedReferenceReady = (selectedVariant ?? selectedDesign)?.generation.state === "ready";
   const isJacketCategory = categoryId === "jackets";
+  const activeFabricReferences = useMemo(() => {
+    const candidates: { role: FabricRole; label: string; image: UploadedImage | null }[] = mode === "full"
+      ? [{ role: "fabric", label: isJacketCategory ? "Jacket fabric" : "Upper fabric", image: fabric }, ...(!isJacketCategory && fabricRegion === "custom" && !reuseFabricForLower ? [{ role: "lowerFabric" as const, label: "Lower fabric", image: lowerFabric }] : [])]
+      : [{ role: "fabric", label: "Jacket fabric", image: splitFabrics.jacket }, { role: "lowerFabric", label: "Trouser fabric", image: splitFabrics.trousers }, { role: "shirtFabric", label: "Shirt fabric", image: splitFabrics.shirt }, ...(splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE" ? [{ role: "waistcoatFabric" as const, label: "Waistcoat fabric", image: splitFabrics.waistcoat }] : [])];
+    return candidates.filter((item): item is typeof item & { image: UploadedImage } => item.image !== null);
+  }, [mode, isJacketCategory, fabric, fabricRegion, reuseFabricForLower, lowerFabric, splitFabrics, splitOutfit.waistcoatId]);
 
   const changeImage = useCallback(async (role: UploadRole, file: File) => {
     setError(null);
     try {
       const prepared = await prepareImage(file);
+      if (role === "person") setBackgroundControl({ mode: "prompt-only" });
+      if (role !== "person") setFabricGuidance(current => { const next = { ...current }; delete next[role]; return next; });
       const previewUrl = URL.createObjectURL(prepared);
       objectUrls.current.add(previewUrl);
       if (role === "person") {
@@ -280,13 +318,13 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         setError("Add a customer photo and fabric, then choose an approved design to generate.");
         return;
       }
-      if (fabricRegion === "custom" && !reuseFabricForLower && !lowerFabric) {
+      if (!isJacketCategory && fabricRegion === "custom" && !reuseFabricForLower && !lowerFabric) {
         setError("Add a lower fabric or choose to reuse the upper fabric for both regions.");
         return;
       }
     }
 
-    if (generationKeyRef.current) return;
+    if (generationKeyRef.current) { setError("Check the pending generation before starting another paid run."); return; }
 
     setError(null);
     setIsGenerating(true);
@@ -307,22 +345,22 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
       const idempotencyKey = crypto.randomUUID();
       generationKeyRef.current = idempotencyKey;
       setUploadProgress(0);
-      const personUpload = await uploadOriginal("person", person.file, setUploadProgress);
-      const fabricUpload = mode === "split"
-        ? (splitFabrics.jacket ? await uploadOriginal("fabric", splitFabrics.jacket.file, setUploadProgress) : undefined)
-        : await uploadOriginal("fabric", fabric!.file, setUploadProgress);
-      const lowerFabricUpload = mode === "split"
-        ? (splitFabrics.trousers ? await uploadOriginal("lowerFabric", splitFabrics.trousers.file, setUploadProgress) : undefined)
-        : mode === "full" && fabricRegion === "custom" && !reuseFabricForLower && lowerFabric
-          ? await uploadOriginal("lowerFabric", lowerFabric.file, setUploadProgress)
-          : undefined;
-      const shirtFabricUpload = mode === "split" && splitFabrics.shirt
-        ? await uploadOriginal("shirtFabric", splitFabrics.shirt.file, setUploadProgress)
-        : undefined;
-      const waistcoatFabricUpload = mode === "split" && splitFabrics.waistcoat && splitOutfit.waistcoatId && splitOutfit.waistcoatId !== "SUIT_WAISTCOAT_NONE"
-        ? await uploadOriginal("waistcoatFabric", splitFabrics.waistcoat.file, setUploadProgress)
-        : undefined;
+      uploadController.current = new AbortController();
+      const files = [person.file, ...activeFabricReferences.map(item => item.image.file)];
+      const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+      const transferred = new Map<string, number>();
+      const upload = (role: UploadRole, file: File) => uploadOriginal(role, file, () => {}, {
+        accountId, signal: uploadController.current!.signal,
+        onBytes: bytes => { transferred.set(role, Math.max(transferred.get(role) ?? 0, bytes)); setUploadProgress(Math.min(100, Math.round(Array.from(transferred.values()).reduce((sum, amount) => sum + amount, 0) * 100 / totalBytes))); },
+        onPhase: phase => setGenerationStage(`${phase === "uploading" ? "Uploading" : "Validating"} ${role === "person" ? "customer photo" : "fabric"}`),
+      });
+      const personUpload = await upload("person", person.file);
+      const fabricUploads: Partial<Record<FabricRole, string>> = {};
+      for (const reference of activeFabricReferences) fabricUploads[reference.role] = await upload(reference.role, reference.image.file);
+      const { fabric: fabricUpload, lowerFabric: lowerFabricUpload, shirtFabric: shirtFabricUpload, waistcoatFabric: waistcoatFabricUpload } = fabricUploads;
       setUploadProgress(100);
+      uploadController.current = null;
+      setGenerationStage("Generating and saving your private master");
       const requestBody = mode === "split"
         ? {
           selectionMode: "split" as const,
@@ -344,22 +382,32 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           }
           : null;
       if (!requestBody) throw new Error("We couldn't create the try-on. Please try again.");
+      const pending = { key: idempotencyKey, createdAt: Date.now(), summary };
+      trackPending(pending);
+      const activeGuidance: FabricGuidance = {};
+      for (const role of Object.keys(requestBody.uploads) as FabricRole[]) if (fabricGuidance[role]) activeGuidance[role] = fabricGuidance[role];
+      const requestWithGuidance = { ...requestBody, fabricGuidance: JSON.stringify(activeGuidance), backgroundControl: JSON.stringify(backgroundControl) };
       let response: Response;
       try {
         response = await fetchWithTimeout("/api/try-on", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "X-Nasir-Device": getClientDeviceHint(), "Idempotency-Key": idempotencyKey },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(requestWithGuidance),
         }, GENERATION_REQUEST_TIMEOUT_MS);
+        // A proxy error or conflict can arrive while the original job is still
+        // running. Reconcile that key before allowing a new generation.
+        if (response.status >= 500 || response.status === 409) throw new Error("Generation outcome needs confirmation.");
       } catch {
         // The connection dropped or timed out, but the paid generation may still
         // be running. Follow it rather than asking staff to pay for another.
         const recovered = await recoverGeneration(idempotencyKey);
         if (recovered.kind === "complete") {
+          trackPending(null);
           showResult(recovered.resultUrl, recovered.originalUrl, null);
           return;
         }
+        if (recovered.kind === "failed") trackPending(null);
         throw new Error(recovered.kind === "failed"
           ? recovered.error
           : "We lost contact with this try-on. Please check History before trying again, as it may still finish.");
@@ -369,27 +417,34 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
         return;
       }
       if (!response.ok) {
+        trackPending(null);
         const payload: unknown = await response.json().catch(() => ({}));
         throw new Error(readResponseError(payload, "We couldn't create the try-on. Please try again."));
       }
       const payload = await response.json().catch(() => ({})) as GenerationResponse;
       if (!payload.resultUrl || !payload.originalUrl) throw new Error("We couldn't create the try-on. Please try again.");
+      trackPending(null);
       showResult(payload.resultUrl, payload.originalUrl, payload.metadata?.outputWidth && payload.metadata?.outputHeight
         ? `${payload.metadata.outputWidth}×${payload.metadata.outputHeight}`
         : payload.metadata?.reportedSize ?? null);
     } catch (generationError: unknown) {
+      if (generationError instanceof RecoveryAuthenticationError) window.location.replace("/login");
       setError(generationError instanceof Error ? generationError.message : "We couldn't create the try-on. Please try again.");
     } finally {
-      generationKeyRef.current = null;
+      if (!pendingRef.current) generationKeyRef.current = null;
+      uploadController.current = null;
+      setGenerationStage("");
       setUploadProgress(null);
       setIsGenerating(false);
     }
-  }, [categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit]);
+  }, [accountId, activeFabricReferences, trackPending, backgroundControl, fabricGuidance, categoryId, clearResult, designVariantId, fabric, fabricRegion, isJacketCategory, lowerFabric, mode, person, reuseFabricForLower, selectedDesign, selectedReferenceReady, selectedVariant, splitFabrics, splitOutfit]);
 
   const selectSplitFabric = useCallback(async (piece: keyof SplitPieceFabrics, file: File) => {
     setError(null);
     try {
       const prepared = await prepareImage(file);
+      const role = ({ jacket: "fabric", trousers: "lowerFabric", shirt: "shirtFabric", waistcoat: "waistcoatFabric" } as const)[piece];
+      setFabricGuidance(current => { const next = { ...current }; delete next[role]; return next; });
       const previewUrl = URL.createObjectURL(prepared);
       objectUrls.current.add(previewUrl);
       setSplitFabrics((current) => {
@@ -467,6 +522,8 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
     });
     setSplitFabrics((current) => clearSplitFabrics(current, revokeUrl));
     setSplitOutfit(DEFAULT_SPLIT_OUTFIT_STATE);
+    setFabricGuidance({});
+    setBackgroundControl({ mode: "prompt-only" });
   }, [clearResult, isJacketCategory, revokeUrl]);
 
   return (
@@ -702,7 +759,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
 
           {selectedDesign && !selectedReferenceReady ? (
             <p className="level1-pending-note" role="status">
-              This reference image is unavailable. Choose an available design or variation.
+              {(selectedVariant ?? selectedDesign).generation.unavailabilityReason === "storage-unavailable" ? "Reference storage is temporarily unavailable. Please try again shortly." : "This reference image is unavailable. Choose an available design or variation."}
             </p>
           ) : null}
         </>
@@ -718,10 +775,14 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           onReuseJacketOnTrousers={reuseJacketOnTrousers}
         />
       )}
+      {person ? <BackgroundControls previewUrl={person.previewUrl} value={backgroundControl} onChange={setBackgroundControl} disabled={isGenerating} /> : null}
+      {activeFabricReferences.map(item => <FabricReferenceControls key={item.role + item.image.previewUrl} label={item.label} previewUrl={item.image.previewUrl} value={fabricGuidance[item.role]} onChange={value => setFabricGuidance(current => ({ ...current, [item.role]: value }))} disabled={isGenerating} />)}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {pendingGeneration && !isGenerating ? <section aria-label="Pending generation"><p>We need to check whether the previous generation finished before starting another paid run.</p><button type="button" onClick={() => void reconcilePending(pendingGeneration)}>Check generation again</button></section> : null}
 
-      {uploadProgress !== null ? <p className="privacy-note" role="status">Preserving original quality… {uploadProgress}% uploaded.</p> : null}
+      {uploadProgress !== null ? <p className="privacy-note" role="status">{generationStage || "Preparing originals"} · {uploadProgress}% of total upload.</p> : null}
 
+      {isGenerating && !pendingGeneration ? <button type="button" onClick={() => uploadController.current?.abort()}>Cancel upload</button> : null}
       {isGenerating ? <GenerationState /> : null}
 
       {resultUrl && originalResultUrl && resultSummary ? (
@@ -733,6 +794,7 @@ export function TryOnApp({ displayName }: TryOnAppProps) {
           onRegenerate={generate}
           onReset={startOver}
           isGenerating={isGenerating}
+          fabricReferences={activeFabricReferences.map(item => ({ label: item.label, url: item.image.previewUrl }))}
         />
       ) : null}
 

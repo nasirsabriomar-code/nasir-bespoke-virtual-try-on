@@ -1,3 +1,6 @@
+import { parseBackgroundControl } from "@/lib/tryon/background-control";
+import { parseFabricGuidance } from "@/lib/tryon/fabric-guidance";
+import { sanitizeGenerationMetadata } from "@/lib/tryon/metadata";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -36,6 +39,7 @@ import {
   RateLimitConfigurationError,
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
+import { readBoundedBody, readBoundedJson, RequestBodyTooLargeError } from "@/lib/request-body";
 import { generateTryOn } from "@/lib/tryon";
 import { grayscaleConstruction } from "@/lib/tryon/neutralize-construction";
 import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
@@ -170,6 +174,8 @@ function hasUnexpectedFields(formData: FormData) {
       "lowerFabric",
       "shirtFabric",
       "waistcoatFabric",
+      "backgroundControl",
+      "fabricGuidance",
       "selectionMode",
       "upperGarmentId",
       "lowerGarmentId",
@@ -193,7 +199,7 @@ function hasUnexpectedFields(formData: FormData) {
 }
 
 function hasLevel1ForbiddenFields(formData: FormData) {
-  const level1Fields = new Set(["person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "variantId", "fabricRegion", "quality"]);
+  const level1Fields = new Set(["backgroundControl", "fabricGuidance", "person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "variantId", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!level1Fields.has(name)) return true;
   }
@@ -201,7 +207,7 @@ function hasLevel1ForbiddenFields(formData: FormData) {
 }
 
 function hasSplitForbiddenFields(formData: FormData) {
-  const splitFields = new Set(["person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
+  const splitFields = new Set(["backgroundControl", "fabricGuidance", "person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
   for (const [name] of formData.entries()) {
     if (!splitFields.has(name)) return true;
   }
@@ -328,6 +334,7 @@ async function recordUsageSafely(
     provider: metadata?.provider ?? "openai",
     model: metadata?.model ?? "gpt-image-2.5-sunburst",
     quality: metadata?.quality ?? "medium",
+    metadata: sanitizeGenerationMetadata(metadata),
     generation,
     assets,
   };
@@ -354,6 +361,8 @@ function isTimeoutError(error: unknown) {
 }
 
 const HIGHRES_TEXT_FIELDS = [
+  "backgroundControl",
+  "fabricGuidance",
   "selectionMode", "upperGarmentId", "lowerGarmentId", "garmentSubtypeId",
   "upperStyleId", "lowerStyleId", "turbanStyleId", "shoeStyleId", "turbanId", "shoeId",
   "bespokeConfiguration", "categoryId", "designId", "variantId", "fabricRegion",
@@ -390,7 +399,13 @@ async function handleHighResolutionRequest(
     if (process.env.NODE_ENV === "production" && !isPermanentHistoryConfigured()) {
       return jsonError("Permanent generation history is not configured.", 503);
     }
-    const body = await request.json() as HighResolutionRequest;
+    const parsed = await readBoundedJson(request, 64 * 1024);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return jsonError("The try-on selection is invalid.", 400);
+    const body = parsed as HighResolutionRequest;
+    if (body.fabricGuidance !== undefined && typeof body.fabricGuidance !== "string") return jsonError("Invalid fabric reference settings.", 400);
+    if (body.backgroundControl !== undefined && typeof body.backgroundControl !== "string") return jsonError("Invalid garment edit region.", 400);
+    parseFabricGuidance(body.fabricGuidance);
+    parseBackgroundControl(body.backgroundControl);
     const uploads = body.uploads;
     if (!uploads || typeof uploads !== "object" || Array.isArray(uploads) || "quality" in body) {
       return jsonError("Please upload your images again and use the fixed medium-quality studio pipeline.", 400);
@@ -440,9 +455,9 @@ async function handleHighResolutionRequest(
     const headers = new Headers(request.headers);
     headers.delete("content-type");
     headers.delete("content-length");
-    headers.set("X-Nasir-High-Resolution", "1");
-    return await handleTryOnRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies);
+    return await handleMultipartRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies, true);
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return jsonError("The try-on selection is too large.", 413);
     if (error instanceof HighResolutionUploadError) return jsonError(error.message, error.status);
     if (error instanceof UploadValidationError) return jsonError(error.message, error.code === "file_too_large" ? 413 : 400);
     if (error instanceof AuthConfigurationError) return jsonError("Authentication is not configured.", 503);
@@ -464,8 +479,15 @@ export async function handleTryOnRequest(
   if ((request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) {
     return handleHighResolutionRequest(request, dependencies);
   }
+  return handleMultipartRequest(request, dependencies, false);
+}
+
+async function handleMultipartRequest(
+  request: Request,
+  dependencies: RouteDependencies,
+  highResolution: boolean,
+): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const highResolution = request.headers.get("x-nasir-high-resolution") === "1";
 
   if (!isSameOriginRequest(request)) {
     return jsonError("This request was blocked. Please refresh and try again.", 403);
@@ -519,7 +541,13 @@ export async function handleTryOnRequest(
   let lease: GenerationLease | null = null;
   let rateHeaders: HeadersInit = {};
   try {
-    const formData = await request.formData();
+    // Only the private, server-built high-resolution handoff may exceed the
+    // legacy HTTP limit. A browser header cannot select that trusted path.
+    const formData = highResolution
+      ? await request.formData()
+      : await new Response(await readBoundedBody(request, MAX_REQUEST_BYTES), {
+        headers: { "content-type": contentType },
+      }).formData();
     const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
     if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit" && selectionModeValue !== "level1" && selectionModeValue !== "split")) {
       return jsonError("Please choose a valid generation mode.", 400, rateHeaders);
@@ -533,6 +561,12 @@ export async function handleTryOnRequest(
       : selectionModeValue === "catalog"
         ? "catalog"
         : getExactlyOneFile(formData, "outfit") ? "outfit" : "catalog";
+    const rawGuidance = getExactlyOneText(formData, "fabricGuidance", false);
+    if (rawGuidance === null) return jsonError("Invalid fabric reference settings.", 400);
+    const fabricGuidance = parseFabricGuidance(rawGuidance);
+    const rawBackground = getExactlyOneText(formData, "backgroundControl", false);
+    if (rawBackground === null) return jsonError("Invalid garment edit region.", 400);
+    const backgroundControl = parseBackgroundControl(rawBackground);
     const personFile = getExactlyOneFile(formData, "person");
     const outfitFile = getExactlyOneFile(formData, "outfit");
     const fabricFile = getExactlyOneFile(formData, "fabric");
@@ -623,6 +657,9 @@ export async function handleTryOnRequest(
     const waistcoatFabric = selectionMode === "split" && waistcoatFabricFile
       ? await validateImageFile(waistcoatFabricFile, "a waistcoat fabric photo")
       : undefined;
+    for (const role of Object.keys(fabricGuidance)) {
+      if (!({ fabric, lowerFabric, shirtFabric, waistcoatFabric } as Record<string, unknown>)[role]) throw new UploadValidationError("Fabric settings require a matching uploaded fabric.", "invalid_image");
+    }
 
     let selectionIds: TryOnSelection = selectionMode === "level1"
       ? { mode: "level1", categoryId: categoryId as string, designId: designId as string, ...(variantId ? { variantId } : {}) }
@@ -832,6 +869,8 @@ export async function handleTryOnRequest(
     }));
     const result = await dependencies.generate({
       person,
+      fabricGuidance,
+      backgroundControl,
       ...(selectionMode === "outfit" && outfit ? { outfit } : {}),
       ...(fabric ? { fabric } : {}),
       ...(lowerFabric ? { lowerFabric } : {}),
@@ -952,6 +991,9 @@ export async function handleTryOnRequest(
       : imageResultResponse(result.bytes, result.contentType, rateHeaders);
   } catch (error) {
     const durationMs = Date.now() - startedAt;
+    if (error instanceof RequestBodyTooLargeError) {
+      return jsonError("The uploaded images are too large. Please choose smaller images.", 413);
+    }
     if (generationAttempted) {
       if (idempotencyKey) {
         const isTimeout = isTimeoutError(error);

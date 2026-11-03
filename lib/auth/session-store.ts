@@ -18,7 +18,25 @@ const globalSessionStore = globalThis as typeof globalThis & {
 const memorySessions = globalSessionStore.__nasirMemorySessions ?? new Map<string, MemorySession>();
 globalSessionStore.__nasirMemorySessions = memorySessions;
 let redisCache: { key: string; redis: Redis } | null = null;
-const REDIS_TIMED_OUT = Symbol("redis-timed-out");
+const SESSION_STORE_TIMEOUT_MS = 2500;
+
+async function persistentSessionOperation<T>(operation: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new SessionStoreConfigurationError()), SESSION_STORE_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    // Session state is authoritative across instances. An outage must never
+    // revive a revoked session or claim that an unconfirmed logout succeeded.
+    throw new SessionStoreConfigurationError();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function sessionKey(sessionId: string) {
   const hashed = createHash("sha256").update(sessionId).digest("hex");
@@ -40,7 +58,11 @@ function getRedis() {
 
   const key = createHash("sha256").update(`${url}:${token}`).digest("hex");
   if (!redisCache || redisCache.key !== key) {
-    redisCache = { key, redis: new Redis({ url, token }) };
+    redisCache = { key, redis: new Redis({
+      url, token,
+      retry: { retries: 0 },
+      signal: () => AbortSignal.timeout(SESSION_STORE_TIMEOUT_MS),
+    }) };
   }
   return redisCache.redis;
 }
@@ -50,13 +72,9 @@ export async function activateSession(sessionId: string, username: string, ttlSe
   const key = sessionKey(sessionId);
   const userHash = usernameHash(username);
   if (redis) {
-    try {
-      const redisPromise = redis.set(key, userHash, { ex: ttlSeconds });
-      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 2500));
-      await Promise.race([redisPromise, timeoutPromise]);
-    } catch {
-      // Fallback to memory
-    }
+    const result = await persistentSessionOperation(() => redis.set(key, userHash, { ex: ttlSeconds }));
+    if (result !== "OK") throw new SessionStoreConfigurationError();
+    return;
   }
   memorySessions.set(key, { usernameHash: userHash, expiresAt: Date.now() + ttlSeconds * 1000 });
 }
@@ -66,16 +84,7 @@ export async function isSessionActive(sessionId: string, username: string) {
   const key = sessionKey(sessionId);
   const userHash = usernameHash(username);
   if (redis) {
-    try {
-      const redisPromise = redis.get<string>(key);
-      const timeoutPromise = new Promise<typeof REDIS_TIMED_OUT>((resolve) => setTimeout(() => resolve(REDIS_TIMED_OUT), 2500));
-      const val = await Promise.race([redisPromise, timeoutPromise]);
-      // An answer from Redis is final: null means revoked, possibly by another
-      // instance, so this instance's memory must not bring the session back.
-      if (val !== REDIS_TIMED_OUT) return val === userHash;
-    } catch {
-      // Fallback to memory
-    }
+    return (await persistentSessionOperation(() => redis.get<string>(key))) === userHash;
   }
 
   const session = memorySessions.get(key);
@@ -90,13 +99,8 @@ export async function revokeSession(sessionId: string) {
   const redis = getRedis();
   const key = sessionKey(sessionId);
   if (redis) {
-    try {
-      const redisPromise = redis.del(key);
-      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 2500));
-      await Promise.race([redisPromise, timeoutPromise]);
-    } catch {
-      // Fallback
-    }
+    await persistentSessionOperation(() => redis.del(key));
+    return;
   }
   memorySessions.delete(key);
 }

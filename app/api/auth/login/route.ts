@@ -13,6 +13,7 @@ import {
   RateLimitConfigurationError,
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/request-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     const rateLimit = await checkLoginRateLimit(getRequestIdentifier(request));
     if (!rateLimit.allowed) return tooManyAttempts(rateLimit.resetAt);
 
-    const body = (await request.json()) as unknown;
+    const body = await readBoundedJson(request, 4_096);
     if (!body || typeof body !== "object") return jsonError("Invalid sign-in request.", 400);
     const record = body as Record<string, unknown>;
     const username = typeof record.username === "string" ? record.username : "";
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
     }
     return response;
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return jsonError("Invalid sign-in request.", 413);
+    if (error instanceof SyntaxError) return jsonError("Invalid sign-in request.", 400);
     if (error instanceof AuthConfigurationError) {
       console.error("authentication_configuration_error");
       return jsonError("Sign-in is not configured. Please contact the administrator.", 503);

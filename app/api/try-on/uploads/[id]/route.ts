@@ -27,3 +27,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return Response.json({ error: "We couldn't authorize this upload." }, { status: 400 });
   }
 }
+
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireRequestUser(request);
+    if (!user) return Response.json({ error: "Sign in required." }, { status: 401 });
+    const { id } = await context.params;
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return Response.json({ error: "Upload not found." }, { status: 404 });
+    const slot = await getUploadSlot(id);
+    if (!slot || slot.username !== user.username) return Response.json({ error: "Upload not found." }, { status: 404 });
+    if (Date.parse(slot.expiresAt) <= Date.now()) return Response.json({ error: "Upload expired." }, { status: 410 });
+    return Response.json({ id: slot.id, status: slot.status, bytes: slot.bytes, role: slot.role, expiresAt: slot.expiresAt }, { headers: { "Cache-Control": "no-store, private" } });
+  } catch { return Response.json({ error: "Upload status is unavailable." }, { status: 503 }); }
+}

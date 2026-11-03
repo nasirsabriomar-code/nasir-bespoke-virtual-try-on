@@ -8,6 +8,15 @@ import type { SplitOutfitState } from "@/lib/split-outfit/types";
 
 const none = { jacket: false, trousers: false, shirt: false, waistcoat: false };
 
+test("double-breasted recipes preserve two-column closure instead of a blanket single-column rule", async () => {
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify({ ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_DOUBLE_BREASTED" }));
+  const prompt = buildSplitOutfitPrompt(resolved, { ...none, jacket: true });
+  assert.match(prompt, /6x2 button fastening/);
+  assert.match(prompt, /double-breasted preserves the selected two-column arrangement/);
+  assert.doesNotMatch(prompt, /one button per hole in a single vertical column/);
+  assert.doesNotMatch(prompt, /for colour, shade, and texture only/);
+});
+
 test("no extra fabrics and no waistcoat numbers person then construction only", async () => {
   const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
   const map = buildSplitImageMap(resolved, none);
@@ -76,8 +85,10 @@ test("jacket fabric override names the jacket only and does not recolour shoes",
   const prompt = buildSplitOutfitPrompt(resolved, { ...none, jacket: true });
   assert.ok(prompt.includes(fabricFidelityOverride("jacket", 6, 2)));
   assert.match(prompt, /PATTERN GEOMETRY — CRITICAL/);
-  assert.match(prompt, /straight, parallel, evenly spaced, and the same scale/);
-  assert.match(prompt, /must not wave, thicken, or redraw stripes/);
+  assert.match(prompt, /straight, parallel, evenly spaced, and at the intrinsic cloth repeat/);
+  assert.match(prompt, /bias-cut pockets may legitimately interrupt the repeat/);
+  assert.doesNotMatch(prompt, /Continue the repeat across seams, lapels, pockets, and edges/);
+  assert.match(prompt, /Perspective and curved folds may compress or bend/);
   assert.match(prompt, /Footwear \[Image 5 = cut and cloth\]/);
   assert.doesNotMatch(prompt, /FINAL FABRIC APPLICATION OVERRIDE — FOOTWEAR/);
   assert.doesNotMatch(prompt, /the jacket and the trousers only/);
