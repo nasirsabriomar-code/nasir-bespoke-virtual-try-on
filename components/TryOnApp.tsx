@@ -237,13 +237,18 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       setOriginalResultUrl(recovered.originalUrl);
       setResultSummary(value.summary);
       setOutputSize(null);
-      if (value.summary.pieces) setSessionResults((current) => addSessionResult(current, { id: value.key, resultUrl: recovered.resultUrl, originalUrl: recovered.originalUrl, summary: value.summary, swatches: {}, ownedUrls: [], recovered: true }, revokeUrl));
+      if (value.summary.pieces) {
+        // A recovered Split result reopens Split Outfit at Review, where it can be shown to the customer.
+        setMode("split");
+        goToStep("review");
+        setSessionResults((current) => addSessionResult(current, { id: value.key, resultUrl: recovered.resultUrl, originalUrl: recovered.originalUrl, summary: value.summary, swatches: {}, ownedUrls: [], recovered: true }, revokeUrl));
+      }
       setError(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Recovery is unavailable.");
       if (error instanceof RecoveryAuthenticationError) window.location.replace("/login");
     } finally { setIsGenerating(false); }
-  }, [revokeUrl, trackPending]);
+  }, [goToStep, revokeUrl, trackPending]);
 
   useEffect(() => {
     let pending: PendingGeneration | null = null;

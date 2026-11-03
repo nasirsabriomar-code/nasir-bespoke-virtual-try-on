@@ -3109,7 +3109,7 @@ a:focus-visible {
   position: sticky;
   z-index: 5;
 }
-.split-builder-footer button { min-height: 48px; padding: 0 20px; }
+.split-builder-footer button { min-height: 48px; padding: 0 20px; white-space: nowrap; }
 .split-builder-back {
   background: transparent;
   border: 1px solid var(--atelier-line-strong);
@@ -3239,9 +3239,9 @@ a:focus-visible {
   position: relative;
   touch-action: pan-y pinch-zoom;
 }
-.show-customer-photo .show-customer-image,
-.show-customer-photo img { max-height: 100%; max-width: 100%; object-fit: contain; }
-.show-customer-photo > :not(.show-customer-toolbar):not(.show-customer-nav) { height: 100%; width: 100%; }
+.show-customer-photo { overflow: hidden; }
+.show-customer-photo .zoomable-image-trigger.show-customer-image { height: 100%; width: 100%; }
+.show-customer-photo .show-customer-image img { height: 100%; max-height: 100%; max-width: 100%; object-fit: contain; width: 100%; }
 .show-customer-toolbar { left: 24px; position: absolute; top: 16px; z-index: 2; }
 .show-customer-toolbar button { min-height: 44px; min-width: 72px; }
 .show-customer-nav {
