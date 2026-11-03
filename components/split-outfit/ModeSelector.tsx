@@ -31,7 +31,7 @@ export function ModeSelector({ mode, onModeChange, disabled = false }: ModeSelec
         >
           <div className="mode-option-content">
             <span className="mode-option-title">FULL OUTFIT</span>
-            <span className="mode-option-desc">Complete curated looks across 7 bespoke categories</span>
+            <span className="mode-option-desc">Complete curated looks across 8 bespoke categories</span>
           </div>
           {mode === "full" ? <span className="mode-active-pill" aria-hidden="true">Active</span> : null}
         </button>

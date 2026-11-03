@@ -15,6 +15,7 @@ type TryOnResultProps = {
   onReset: () => void;
   isGenerating: boolean;
   fabricReferences?: ComparisonReference[];
+  notice?: string;
 };
 
 export function TryOnResult({
@@ -26,6 +27,7 @@ export function TryOnResult({
   onReset,
   isGenerating,
   fabricReferences,
+  notice,
 }: TryOnResultProps) {
   const [view, setView] = useState<"original" | "result" | "compare">("result");
   const [filename] = useState(
@@ -60,6 +62,7 @@ export function TryOnResult({
         </div>
       </div>
 
+      {notice ? <p className="result-notice" role="status">{notice}</p> : null}
       {view === "compare" ? <ResultComparison originalUrl={originalUrl} resultUrl={resultUrl} fabricReferences={fabricReferences} /> : <div className="result-frame">
         <ZoomableImage
           src={view === "result" ? resultUrl : originalUrl}

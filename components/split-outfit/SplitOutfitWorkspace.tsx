@@ -1,16 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   buildSummaryFromView,
   optionsFor,
   reconcile,
 } from "@/lib/split-outfit/client-engine";
+import { adjacentStep, BUILDER_STEPS, buildBuilderRows, missingSteps, type BuilderStepId } from "@/lib/split-outfit/builder-steps";
 import type { RepairNotice } from "@/lib/rules/types";
 import { SPLIT_OUTFIT_FAMILIES } from "@/lib/split-outfit/types";
-import type { SplitCatalogueView, SplitOutfitFamily, SplitOutfitState } from "@/lib/split-outfit/types";
+import type { SplitCatalogueView, SplitComponentCategory, SplitOutfitFamily, SplitOutfitState } from "@/lib/split-outfit/types";
+import { BuilderStepList } from "./BuilderStepList";
+import { SplitClothRow } from "./SplitClothRow";
 import { SplitComponentCard } from "./SplitComponentCard";
-import { SplitMaterialsSection, SplitPieceFabricSlot, type SplitPieceFabrics } from "./SplitMaterialsSection";
+import type { SplitPieceFabrics } from "./SplitMaterialsSection";
 import { SplitOutfitReview } from "./SplitOutfitReview";
 
 type SplitOutfitWorkspaceProps = {
@@ -24,6 +27,16 @@ type SplitOutfitWorkspaceProps = {
   trousersLinked: boolean;
   fabricControls: (piece: keyof SplitPieceFabrics) => ReactNode;
   onReuseJacketOnTrousers: () => void;
+  step: BuilderStepId;
+  onStepChange: (step: BuilderStepId) => void;
+  visited: ReadonlySet<BuilderStepId>;
+  personPreview: string | null;
+  /** Customer photo upload, rendered in the first step. */
+  personSlot: ReactNode;
+  /** Errors and generation progress, shown on every step. */
+  statusSlot: ReactNode;
+  /** Advanced settings and the result, shown on the review step. */
+  reviewExtras: ReactNode;
 };
 
 const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
@@ -36,11 +49,36 @@ const FAMILY_LABELS: Record<SplitOutfitFamily, string> = {
   achkan: "Achkan",
 };
 
-export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating, fabrics, trousersLinked, fabricControls, onFabricSelect, onFabricRemove, onReuseJacketOnTrousers }: SplitOutfitWorkspaceProps) {
+const STEP_INTRO: Record<BuilderStepId, string> = {
+  customer: "Photograph or upload the customer.",
+  jacket: "Choose a cut, then the cloth.",
+  trousers: "Choose a cut, then the cloth.",
+  inner: "Choose the shirt and, if wanted, a waistcoat.",
+  shoes: "Shoes keep the leather and colour of their reference photograph.",
+  extras: "Optional. Accessories are described in words; there is no photograph.",
+  review: "Check every piece, then generate.",
+};
+
+const STEP_FOR_GROUP: Record<string, BuilderStepId> = {
+  upper: "jacket",
+  lower: "trousers",
+  "inner-shirt": "inner",
+  "inner-waistcoat": "inner",
+  footwear: "shoes",
+  accessory: "extras",
+};
+
+const FLASH_MS = 1500;
+
+export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating, fabrics, trousersLinked, fabricControls, onFabricSelect, onFabricRemove, onReuseJacketOnTrousers, step, onStepChange, visited, personPreview, personSlot, statusSlot, reviewExtras }: SplitOutfitWorkspaceProps) {
   const [view, setView] = useState<SplitCatalogueView | null>(null);
   const [retry, setRetry] = useState(0);
   const [viewError, setViewError] = useState<string | null>(null);
   const [notices, setNotices] = useState<RepairNotice[]>([]);
+  const [flashIds, setFlashIds] = useState<BuilderStepId[]>([]);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const builderRef = useRef<HTMLDivElement>(null);
+  const previousStep = useRef(step);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +100,20 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
     return () => { cancelled = true; controller.abort(); };
   }, [state.family, retry]);
 
+  // Move focus to the new step for keyboard and screen-reader users, and bring the builder into view.
+  useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    headingRef.current?.focus({ preventScroll: true });
+    builderRef.current?.scrollIntoView({ block: "start" });
+  }, [step]);
+
+  useEffect(() => {
+    if (flashIds.length === 0) return;
+    const timer = window.setTimeout(() => setFlashIds([]), FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [flashIds]);
+
   // The fetched view lags one render behind a family switch — treat a view
   // for a stale family the same as "still loading" rather than rendering it.
   const isLoadingView = !viewError && (!view || view.family !== state.family);
@@ -77,6 +129,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       const proposed = mutate(prev);
       const { state: reconciled, notices: repairNotices } = reconcile(view, proposed);
       setNotices(repairNotices);
+      if (repairNotices.length) setFlashIds([...new Set(repairNotices.map((notice) => STEP_FOR_GROUP[notice.groupId]).filter(Boolean))]);
       return reconciled;
     });
   }, [onChange, view]);
@@ -104,6 +157,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
       footwearId: null,
       accessoryIds: [],
     }));
+    onStepChange("jacket");
   };
 
   const familySelector = (
@@ -154,224 +208,134 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
     );
   }
 
+  const rows = buildBuilderRows({
+    state,
+    names: {
+      upper: summary.upper?.customer.name,
+      lower: summary.lower?.customer.name,
+      shirt: summary.shirt?.customer.name,
+      waistcoat: summary.waistcoat?.customer.name,
+      footwear: summary.footwear?.customer.name,
+    },
+    accessoryNames: summary.accessories.map((option) => option.customer.name),
+    personPreview,
+    fabricPreviews: {
+      jacket: fabrics.jacket?.previewUrl ?? null,
+      trousers: fabrics.trousers?.previewUrl ?? null,
+      shirt: fabrics.shirt?.previewUrl ?? null,
+      waistcoat: fabrics.waistcoat?.previewUrl ?? null,
+    },
+    trousersLinked,
+    visited,
+    current: step,
+  });
+  const currentRow = rows.find((row) => row.id === step) ?? rows[0];
+  const previous = adjacentStep(step, -1);
+  const next = adjacentStep(step, 1);
+  const nextLabel = next ? BUILDER_STEPS.find((item) => item.id === next)?.label : null;
+
+  const cards = (category: SplitComponentCategory, isSelected: (id: string) => boolean, onSelect: (id: string) => void, isMultiSelect = false) => (
+    <div className="split-cards-grid">
+      {optionsFor(view, state, category)
+        .filter(({ verdict }) => verdict.status !== "incompatible")
+        .map(({ option, verdict }) => (
+          <SplitComponentCard
+            disabled={isGenerating}
+            key={option.id}
+            option={option}
+            selected={isSelected(option.id)}
+            onSelect={() => onSelect(option.id)}
+            verdict={verdict}
+            isMultiSelect={isMultiSelect}
+          />
+        ))}
+    </div>
+  );
+
+  const clothRow = (piece: keyof SplitPieceFabrics) => (
+    <SplitClothRow
+      piece={piece}
+      fabric={fabrics[piece]}
+      onSelect={(file) => onFabricSelect(piece, file)}
+      onRemove={() => onFabricRemove(piece)}
+      disabled={isGenerating}
+      controls={fabricControls(piece)}
+      link={piece === "trousers" ? { linked: trousersLinked, available: Boolean(fabrics.jacket), jacketPreview: fabrics.jacket?.previewUrl ?? null, onToggle: onReuseJacketOnTrousers } : undefined}
+    />
+  );
+
+  const stepContent: Record<BuilderStepId, ReactNode> = {
+    customer: personSlot,
+    jacket: <>{cards("upper", (id) => state.upperId === id, (id) => applyChange((prev) => ({ ...prev, upperId: id })))}{clothRow("jacket")}</>,
+    trousers: <>{cards("lower", (id) => state.lowerId === id, (id) => applyChange((prev) => ({ ...prev, lowerId: id })))}{clothRow("trousers")}</>,
+    inner: (
+      <div className="split-inner-group">
+        <div className="split-subsection">
+          <h3 className="split-subsection-title">Dress shirt</h3>
+          {cards("inner-shirt", (id) => state.shirtId === id, (id) => applyChange((prev) => ({ ...prev, shirtId: id })))}
+          {clothRow("shirt")}
+        </div>
+        <div className="split-subsection">
+          <h3 className="split-subsection-title">Waistcoat (optional)</h3>
+          {cards("inner-waistcoat", (id) => state.waistcoatId === id, (id) => applyChange((prev) => ({ ...prev, waistcoatId: id })))}
+          {state.waistcoatId && state.waistcoatId !== "SUIT_WAISTCOAT_NONE" ? clothRow("waistcoat") : null}
+        </div>
+      </div>
+    ),
+    shoes: cards("footwear", (id) => state.footwearId === id, (id) => applyChange((prev) => ({ ...prev, footwearId: id }))),
+    extras: cards("accessory", (id) => state.accessoryIds.includes(id), toggleAccessory, true),
+    review: (
+      <>
+        <SplitOutfitReview
+          summary={summary}
+          fabrics={fabrics}
+          trousersLinked={trousersLinked}
+          onGenerate={onGenerate}
+          isGenerating={isGenerating}
+          missing={missingSteps(state, Boolean(personPreview))}
+          onEdit={onStepChange}
+        />
+        {reviewExtras}
+      </>
+    ),
+  };
+
   return (
     <div className="split-outfit-workspace" aria-label="Split Outfit Customization Workspace">
       {familySelector}
-
-      {/* 01 — UPPER GARMENT */}
-      <section className="level1-flow" id="split-piece-jacket" tabIndex={-1} aria-label="Upper Garment Selection">
-        <div className="level1-step-heading">
-          <span>01</span>
-          <div>
-            <p className="eyebrow">Upper Garment · {FAMILY_LABELS[state.family]} Family</p>
-            <h2>Jacket silhouette & cut</h2>
-          </div>
-        </div>
-
-        <div className="split-cards-grid">
-          {optionsFor(view, state, "upper")
-            .filter(({ verdict }) => verdict.status !== "incompatible")
-            .map(({ option, verdict }) => (
-              <SplitComponentCard
-                disabled={isGenerating}
-                key={option.id}
-                option={option}
-                selected={state.upperId === option.id}
-                onSelect={() => applyChange((prev) => ({ ...prev, upperId: option.id }))}
-                verdict={verdict}
-              />
-            ))}
-        </div>
-        <SplitPieceFabricSlot
-          piece="jacket"
-          controls={fabricControls("jacket")}
-          fabric={fabrics.jacket}
-          onSelect={(file) => onFabricSelect("jacket", file)}
-          onRemove={() => onFabricRemove("jacket")}
-          disabled={isGenerating}
-        />
-      </section>
-
-      {/* 02 — LOWER GARMENT */}
-      <section className="level1-flow" id="split-piece-trousers" tabIndex={-1} aria-label="Lower Garment Selection">
-        <div className="level1-step-heading">
-          <span>02</span>
-          <div>
-            <p className="eyebrow">Lower Garment · Trousers</p>
-            <h2>Trouser drape & rise</h2>
-          </div>
-        </div>
-
-        <div className="split-cards-grid">
-          {optionsFor(view, state, "lower")
-            .filter(({ verdict }) => verdict.status !== "incompatible")
-            .map(({ option, verdict }) => (
-              <SplitComponentCard
-                disabled={isGenerating}
-                key={option.id}
-                option={option}
-                selected={state.lowerId === option.id}
-                onSelect={() => applyChange((prev) => ({ ...prev, lowerId: option.id }))}
-                verdict={verdict}
-              />
-            ))}
-        </div>
-        <SplitPieceFabricSlot
-          piece="trousers"
-          controls={fabricControls("trousers")}
-          fabric={fabrics.trousers}
-          onSelect={(file) => onFabricSelect("trousers", file)}
-          onRemove={() => onFabricRemove("trousers")}
-          disabled={isGenerating}
-          extra={fabrics.jacket || trousersLinked ? (
-            <button type="button" className="history-button" onClick={onReuseJacketOnTrousers} disabled={isGenerating}>
-              {trousersLinked ? "Unlink trousers from jacket fabric" : "Link trousers to jacket fabric (replaces trouser cloth)"}
+      <div className="split-builder" ref={builderRef}>
+        <BuilderStepList rows={rows} onSelect={onStepChange} flashIds={flashIds} />
+        <div className="split-builder-main">
+          <section className="split-builder-step" aria-labelledby="split-step-heading">
+            <div className="split-builder-step-heading">
+              <p className="eyebrow">Step {currentRow.number} of {rows.length}</p>
+              <h2 id="split-step-heading" ref={headingRef} tabIndex={-1}>{currentRow.label}</h2>
+              <p className="split-section-intro">{STEP_INTRO[step]}</p>
+            </div>
+            {notices.length > 0 ? (
+              <div className="split-repair-notice" role="status">
+                {notices.map((notice, index) => (
+                  <p key={`${notice.groupId}-${notice.removedOptionId}-${index}`}>
+                    Removed a previous selection — {notice.reason}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            {stepContent[step]}
+            {statusSlot}
+          </section>
+          <div className="split-builder-footer">
+            <button type="button" className="split-builder-back" onClick={() => previous && onStepChange(previous)} disabled={!previous}>
+              ← Back
             </button>
-          ) : null}
-        />
-      </section>
-
-      {/* 03 — INNER / EXTRA */}
-      <section className="level1-flow" aria-label="Inner Garments and Waistcoat Selection">
-        <div className="level1-step-heading">
-          <span>03</span>
-          <div>
-            <p className="eyebrow">Inner Layer & Extra</p>
-            <h2>Dress shirt & waistcoat</h2>
-          </div>
-        </div>
-
-        <div className="split-inner-group">
-          {/* Sub-section: Shirt */}
-          <div className="split-subsection">
-            <h3 id="split-piece-shirt" tabIndex={-1} className="split-subsection-title">Dress Shirt</h3>
-            <div className="split-cards-grid">
-              {optionsFor(view, state, "inner-shirt")
-                .filter(({ verdict }) => verdict.status !== "incompatible")
-                .map(({ option, verdict }) => (
-                  <SplitComponentCard
-                    disabled={isGenerating}
-                key={option.id}
-                    option={option}
-                    selected={state.shirtId === option.id}
-                    onSelect={() => applyChange((prev) => ({ ...prev, shirtId: option.id }))}
-                    verdict={verdict}
-                  />
-                ))}
-            </div>
-            <SplitPieceFabricSlot
-              piece="shirt"
-          controls={fabricControls("shirt")}
-              fabric={fabrics.shirt}
-              onSelect={(file) => onFabricSelect("shirt", file)}
-              onRemove={() => onFabricRemove("shirt")}
-              disabled={isGenerating}
-            />
-          </div>
-
-          {/* Sub-section: Waistcoat */}
-          <div className="split-subsection">
-            <h3 id="split-piece-waistcoat" tabIndex={-1} className="split-subsection-title">Waistcoat (Optional Layer)</h3>
-            <div className="split-cards-grid">
-              {optionsFor(view, state, "inner-waistcoat")
-                .filter(({ verdict }) => verdict.status !== "incompatible")
-                .map(({ option, verdict }) => (
-                  <SplitComponentCard
-                    disabled={isGenerating}
-                key={option.id}
-                    option={option}
-                    selected={state.waistcoatId === option.id}
-                    onSelect={() => applyChange((prev) => ({ ...prev, waistcoatId: option.id }))}
-                    verdict={verdict}
-                  />
-                ))}
-            </div>
-            {state.waistcoatId && state.waistcoatId !== "SUIT_WAISTCOAT_NONE" ? (
-              <SplitPieceFabricSlot
-                piece="waistcoat"
-          controls={fabricControls("waistcoat")}
-                fabric={fabrics.waistcoat}
-                onSelect={(file) => onFabricSelect("waistcoat", file)}
-                onRemove={() => onFabricRemove("waistcoat")}
-                disabled={isGenerating}
-              />
+            {next ? (
+              <button type="button" className="level1-generate split-builder-next" onClick={() => onStepChange(next)}>
+                Next: {nextLabel} →
+              </button>
             ) : null}
           </div>
         </div>
-      </section>
-
-      {/* 04 — FOOTWEAR */}
-      <section className="level1-flow" id="split-piece-footwear" tabIndex={-1} aria-label="Footwear Selection">
-        <div className="level1-step-heading">
-          <span>04</span>
-          <div>
-            <p className="eyebrow">Footwear</p>
-            <h2>Bespoke dress shoes</h2>
-          </div>
-        </div>
-
-        <div className="split-cards-grid">
-          {optionsFor(view, state, "footwear")
-            .filter(({ verdict }) => verdict.status !== "incompatible")
-            .map(({ option, verdict }) => (
-              <SplitComponentCard
-                disabled={isGenerating}
-                key={option.id}
-                option={option}
-                selected={state.footwearId === option.id}
-                onSelect={() => applyChange((prev) => ({ ...prev, footwearId: option.id }))}
-                verdict={verdict}
-              />
-            ))}
-        </div>
-      </section>
-
-      {/* 05 — ACCESSORIES (MULTI-SELECT) */}
-      <section className="level1-flow" id="split-piece-accessories" tabIndex={-1} aria-label="Accessories Selection (Multi-Select)">
-        <div className="level1-step-heading">
-          <span>05</span>
-          <div>
-            <p className="eyebrow">Accessories · Multi-Select</p>
-            <h2>Finishing accents & details</h2>
-          </div>
-        </div>
-
-        <p className="split-section-intro">
-          Select one or more bespoke accessories to complete the look. You can toggle each piece individually.
-        </p>
-
-        <div className="split-cards-grid">
-          {optionsFor(view, state, "accessory")
-            .filter(({ verdict }) => verdict.status !== "incompatible")
-            .map(({ option, verdict }) => (
-              <SplitComponentCard
-                disabled={isGenerating}
-                key={option.id}
-                option={option}
-                selected={state.accessoryIds.includes(option.id)}
-                onSelect={() => toggleAccessory(option.id)}
-                verdict={verdict}
-                isMultiSelect={true}
-              />
-            ))}
-        </div>
-      </section>
-
-      {notices.length > 0 ? (
-        <div className="split-repair-notice" role="status">
-          {notices.map((notice, index) => (
-            <p key={`${notice.groupId}-${notice.removedOptionId}-${index}`}>
-              Removed a previous selection — {notice.reason}
-            </p>
-          ))}
-        </div>
-      ) : null}
-
-      {/* 06 — FABRICS & MATERIALS */}
-      <SplitMaterialsSection slots={summary.activeMaterialSlots} />
-
-      {/* 07 — YOUR OUTFIT */}
-      <SplitOutfitReview summary={summary} fabrics={fabrics} trousersLinked={trousersLinked} onGenerate={onGenerate} isGenerating={isGenerating} />
+      </div>
     </div>
   );
 }
