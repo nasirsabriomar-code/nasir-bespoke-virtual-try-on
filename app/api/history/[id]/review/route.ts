@@ -1,3 +1,4 @@
+import { canAccessGeneration } from "@/lib/history/access";
 import { requireRequestUser } from "@/lib/auth/session";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/request-body";
@@ -17,7 +18,7 @@ async function review(request: Request, context: { params: Promise<{ id: string 
     const { id } = await context.params;
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return Response.json({ error: "Generation not found." }, { status: 404, headers });
     const event = await lookupGenerationEvent(id, { permanent: async key => isPermanentHistoryConfigured() ? getPermanentGeneration(key) : null, recent: getUsageEvent });
-    if (!event) return Response.json({ error: "Generation not found." }, { status: 404, headers });
+    if (!canAccessGeneration(user, event)) return Response.json({ error: "Generation not found." }, { status: 404, headers });
     if (!write) return Response.json(await getGenerationReview(id, user.username), { headers });
     const value = parseReview(await readBoundedJson(request, 4096));
     if (!value) return Response.json({ error: "Invalid feedback." }, { status: 400, headers });

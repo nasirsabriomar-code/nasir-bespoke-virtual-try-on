@@ -6,7 +6,8 @@ import { findSplitOption, validateRecipe } from "./compatibility";
 import { SPLIT_OUTFIT_FAMILIES } from "./types";
 import type { SplitComponentOption, SplitOutfitFamily, SplitOutfitState } from "./types";
 import type { TryOnInput } from "@/lib/tryon/types";
-import { detectImageMime, validateImageFile } from "@/lib/validation";
+import { detectImageMime } from "@/lib/validation";
+import { validateImageFile } from "@/lib/validate-image";
 
 export class SplitOutfitError extends Error {
   constructor(

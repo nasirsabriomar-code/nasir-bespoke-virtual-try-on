@@ -71,6 +71,11 @@ try {
     if (path === "/api/split-catalog" && failSplitCatalogue) { return json(route, { error: "Synthetic catalogue outage" }, 503); }
     if (path === "/api/level1-catalog") return json(route, catalogue);
     if (path.startsWith("/api/split-catalog-assets/") || path === "/api/local-fixture.png" || /^\/api\/history\/[^/]+\/asset\//.test(path)) return route.fulfill({ contentType: "image/png", body: path.endsWith("/fabric") ? cloth : png });
+    if (/^\/api\/history\/[^/]+$/.test(path) && request.method() === "DELETE") {
+      const index = historyIds.indexOf(path.split("/")[3]);
+      if (index >= 0) historyIds.splice(index, 1);
+      return json(route, { deleted: true });
+    }
     if (path === "/api/history") return json(route, { events: historyIds.map((id, index) => ({ id, occurredAt: new Date().toISOString(), username: "assessment", status: "success", durationMs: 1000, provider: "fixture", model: "fixture", quality: "medium", device: { kind: "desktop", browser: "fixture", operatingSystem: "fixture" }, generation: { mode: "level1", categoryId: "suit", curatedDesignId: "SUIT_01_CLASSIC", curatedDesignName: "Synthetic suit" }, assets: { result: { contentType: "image/png" }, person: { contentType: "image/png" }, fabric: { contentType: "image/png" } }, review: index === 0 ? review : { decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" } })), total: 59, retained: 59 });
     if (path.endsWith("/review")) {
       if (request.method() === "GET") {
@@ -354,6 +359,19 @@ try {
   assert.ok(await customer.evaluate(dialog => [...dialog.querySelectorAll("img")].every(img => img.complete && img.naturalWidth > 0)), "no broken images");
   await customer.getByRole("button", { name: "Done", exact: true }).click();
   passed("A Split result recovered after reload reopens Split at Review and shows house-cloth marks without broken images");
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("button", { name: /Open details for/ }).first().click();
+  const deleteButton = page.getByRole("button", { name: "Delete generation and photos", exact: true });
+  page.once("dialog", dialog => dialog.dismiss());
+  await deleteButton.click();
+  assert.equal(await deleteButton.count(), 1);
+  const beforeDelete = historyIds.length;
+  page.once("dialog", dialog => dialog.accept());
+  await deleteButton.click();
+  await page.getByRole("button", { name: /Open details for/ }).first().waitFor();
+  assert.equal(historyIds.length, beforeDelete - 1);
+  assert.equal(await deleteButton.count(), 0);
+  passed("History deletion can be cancelled; confirmed deletion removes the selected generation");
   assert.deepEqual(pageErrors, []);
   await writeFile(new URL("results.json", output), JSON.stringify({ checkedAt: new Date().toISOString(), scope: "Loopback browser interactions with synthetic service fixtures; real local authentication", paidImageCalls: 0, checks, pageErrors }, null, 2));
   console.log(`Passed ${checks.length} local browser workflow checks; screenshots/results in .cache/improvement-browser. No paid calls or live storage services used.`);

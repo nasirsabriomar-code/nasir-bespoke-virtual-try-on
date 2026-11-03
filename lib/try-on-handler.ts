@@ -1,3 +1,4 @@
+import { checkUploadRateLimit } from "@/lib/rate-limit";
 import { parseBackgroundControl } from "@/lib/tryon/background-control";
 import { parseFabricGuidance } from "@/lib/tryon/fabric-guidance";
 import { sanitizeGenerationMetadata } from "@/lib/tryon/metadata";
@@ -74,12 +75,8 @@ import {
   type UsageEvent,
   type UsageStatus,
 } from "@/lib/usage-history";
-import {
-  MAX_REQUEST_BYTES,
-  UploadValidationError,
-  detectImageMime,
-  validateImageFile,
-} from "@/lib/validation";
+import { MAX_REQUEST_BYTES, UploadValidationError, detectImageMime } from "@/lib/validation";
+import { validateImageFile } from "@/lib/validate-image";
 
 import { GENERATION_STATE_HEADER, RESULT_SAVED_HEADER } from "@/lib/generation-recovery";
 
@@ -640,6 +637,12 @@ async function handleMultipartRequest(
   let lease: GenerationLease | null = handoff?.lease ?? null;
   let rateHeaders: HeadersInit = handoff?.rateHeaders ?? {};
   try {
+    if (!handoff) {
+      const admission = await checkUploadRateLimit(user.username, "complete");
+      if (!admission.allowed) return generationRateRejection(admission, generationRateHeaders(admission));
+      lease = await acquireGenerationLock(user.username);
+      if (!lease) return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
+    }
     // Only the private, server-built high-resolution handoff may exceed the
     // legacy HTTP limit. A browser header cannot select that trusted path.
     const formData = highResolution
@@ -850,7 +853,7 @@ async function handleMultipartRequest(
 
     if (!handoff) {
       try {
-        lease = await acquireGenerationLock(user.username);
+        lease ??= await acquireGenerationLock(user.username);
       } catch (error) {
         if (error instanceof GenerationGuardUnavailableError) {
           console.error("generation_guard_unavailable", { requestId, route: "try-on" });
@@ -1084,6 +1087,7 @@ async function handleMultipartRequest(
           ? { status: "complete_generation", generationId: requestId }
           : {
             status: "complete",
+            generationId: requestId,
             contentType: result.contentType,
             body: Buffer.from(result.bytes).toString("base64"),
           });

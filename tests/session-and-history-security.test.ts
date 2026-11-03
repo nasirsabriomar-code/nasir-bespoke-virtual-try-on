@@ -91,15 +91,14 @@ async function staffGeneration(owner: string) {
   return id;
 }
 
-test("#10 staff can download any generation they can already view in shared history", async (t) => {
+test("#10 staff cannot download another account’s generation", async (t) => {
   const id = await staffGeneration("atelier");
   t.mock.method(globalThis, "fetch", async () => new Response(Buffer.from("image"), { headers: { "Content-Type": "image/png" } }));
   const cookie = `${getSessionCookieName()}=${await createSessionToken("showroom")}`;
   const response = await readAsset(new Request(`http://localhost/api/history/${id}/asset/result?download=1`, { headers: { cookie } }), {
     params: Promise.resolve({ id, asset: "result" }),
   });
-  assert.equal(response.status, 200);
-  assert.equal(await response.text(), "image");
+  assert.equal(response.status, 404);
 });
 
 test("#10 signed-out requests still cannot read a generation", async () => {

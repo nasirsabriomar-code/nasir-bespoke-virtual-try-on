@@ -39,7 +39,10 @@ test("chunk uploads preserve a large original, enforce ownership and reject malf
   for(let index=0; index < Math.ceil(bytes.length/UPLOAD_CHUNK_BYTES); index++) {
     await Promise.all([0, 1].map(() => writeUploadChunk("owner",slot.id,index,part(bytes.subarray(index*UPLOAD_CHUNK_BYTES,(index+1)*UPLOAD_CHUNK_BYTES)))));
   }
-  const [completed, duplicate] = await Promise.all([completeUploadForUser("owner",slot.id), completeUploadForUser("owner",slot.id)]);
+  const outcomes = await Promise.allSettled([completeUploadForUser("owner",slot.id), completeUploadForUser("owner",slot.id)]);
+  assert.equal(outcomes.filter(item => item.status === "fulfilled").length, 1);
+  const completed = await completeUploadForUser("owner",slot.id);
+  const duplicate = await completeUploadForUser("owner",slot.id);
   assert.equal(duplicate.checksum, completed.checksum);
   assert.equal(completed.checksum,createHash("sha256").update(bytes).digest("hex"));
   assert.equal(completed.width,1600);

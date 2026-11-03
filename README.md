@@ -12,7 +12,7 @@ The employee never writes an AI prompt. The server resolves catalog selections a
 
 ## Technology
 
-- Next.js 16.3 App Router
+- Next.js 16.4.5 App Router
 - React 19.2
 - TypeScript 5.9
 - Tailwind CSS 4
@@ -139,7 +139,7 @@ The repository includes a GitHub Actions workflow at .github/workflows/ci.yml. I
 
 ## Security and privacy
 
-Read SECURITY.md before changing authentication, upload handling, history, storage, rate limits, or OpenAI integration. Customer images may be sensitive. The current application has strong server-side boundaries, but shared authenticated history access and image-retention cleanup remain known future improvements.
+Read SECURITY.md before changing authentication, upload handling, history, storage, rate limits, or OpenAI integration. Customer images may be sensitive. The current application has strong server-side boundaries, but history now defaults to owner-only access, with explicit administrator access and a configurable retention/deletion lifecycle.
 
 ## Contribution
 
@@ -150,7 +150,7 @@ See CONTRIBUTING.md. This project is internal and men's-only by design. Do not a
 
 The current runtime selects `gpt-image-2.5-sunburst` at fixed medium effort, producing one opaque PNG. It preserves the customer's aspect ratio within supported pixel and edge limits; high-resolution requests have a lower-resolution fallback for provider size rejections. Image-format normalization is a separate compatibility fallback. No ambiguous paid-call retry is enabled.
 
-History retains sanitized provider usage and generation provenance when available. Staff feedback and favourites are private to each signed-in account, persisted as small metadata records in Redis in production; local development uses memory. Review records contain controlled categories and no customer images or free-form prompts. They have no automatic expiry, like permanent history; a future generation-deletion workflow must also remove associated review keys. Image retention is unchanged.
+History retains sanitized provider usage and generation provenance when available. Staff feedback and favourites are private to each signed-in account, persisted as small metadata records in Redis in production; local development uses memory. Review records contain controlled categories and no customer images or free-form prompts. Generation deletion and retention cleanup also remove associated review keys. Completed generations default to 30-day retention; see SECURITY.md.
 
 Use `npm run quality:prepare` to generate ten deterministic technical swatch cases and twenty reference PNGs locally: different repeat sizes, three wide/close pairs of the same declared cloth, and a plain control. The manifest includes checksums and renderer versions; it authorizes no pilot and plans no calls automatically. These `.cache/quality-baseline` files are not a visual-quality benchmark and make no paid calls. `npm run quality:summary -- /absolute/path/to/scored-results.json` summarizes observed scores, timings and supplied billing costs offline. Missing cost remains unknown. See [evaluation protocol](research/QUALITY_EVALUATION_PROTOCOL.md) for scoring and acceptance gates. Paid image calls are currently disallowed by the owner.
 

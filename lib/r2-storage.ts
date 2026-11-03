@@ -92,6 +92,7 @@ export function presignR2Url(pathname: string, method: "GET" | "PUT" | "DELETE" 
 export async function r2Put(pathname: string, body: Blob | Uint8Array, contentType: string) {
   const response = await fetch(presignR2Url(pathname, "PUT"), {
     method: "PUT",
+    signal: AbortSignal.timeout(15_000),
     headers: { "Content-Type": contentType },
     body: body instanceof Blob ? body : Buffer.from(body),
   });
@@ -107,7 +108,7 @@ export class R2RequestError extends Error {
 }
 
 export async function r2Get(pathname: string) {
-  const response = await fetch(presignR2Url(pathname, "GET"), { cache: "no-store" });
+  const response = await fetch(presignR2Url(pathname, "GET"), { cache: "no-store", signal: AbortSignal.timeout(15_000) });
   if (!response.ok && response.status !== 404) {
     const xml = await response.text();
     const code = xml.match(/<Code>([A-Za-z0-9]+)<\/Code>/)?.[1] || "UnknownError";
@@ -118,6 +119,6 @@ export async function r2Get(pathname: string) {
 }
 
 export async function r2Delete(pathname: string) {
-  const response = await fetch(presignR2Url(pathname, "DELETE"), { method: "DELETE" });
+  const response = await fetch(presignR2Url(pathname, "DELETE"), { method: "DELETE", signal: AbortSignal.timeout(15_000) });
   if (!response.ok && response.status !== 404) throw new Error(`R2 delete failed with status ${response.status}.`);
 }

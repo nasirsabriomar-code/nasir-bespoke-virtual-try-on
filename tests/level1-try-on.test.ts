@@ -1,3 +1,4 @@
+import { resetMemoryRateLimitsForTests } from "@/lib/rate-limit";
 import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 import test, { beforeEach } from "node:test";
@@ -59,6 +60,7 @@ function activeJacketResolvedDesign(): ResolvedLevel1Design {
 }
 
 beforeEach(() => {
+  resetMemoryRateLimitsForTests();
   process.env.AUTH_SESSION_SECRET = "test-session-secret-that-is-at-least-thirty-two-bytes";
   process.env.AUTH_USERS_JSON = JSON.stringify([TEST_USER]);
   process.env.RATE_LIMIT_BACKEND = "memory";

@@ -1,3 +1,4 @@
+import { resetMemoryUploadLedgerForTests } from "@/lib/highres/ledger";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test, { beforeEach } from "node:test";
@@ -29,6 +30,7 @@ const result: TryOnOutput = {
 };
 
 beforeEach(() => {
+  resetMemoryUploadLedgerForTests();
   delete process.env.DATABASE_URL;
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;

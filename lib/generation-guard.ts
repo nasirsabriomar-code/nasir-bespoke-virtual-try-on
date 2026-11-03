@@ -1,3 +1,4 @@
+import { deletedGenerationIds } from "@/lib/highres/ledger";
 import "server-only";
 
 import { createHash } from "node:crypto";
@@ -60,7 +61,7 @@ export type GenerationLease = {
 
 export type IdempotencyRecord =
   | { status: "pending"; leaseId: string }
-  | { status: "complete"; contentType: string; body: string }
+  | { status: "complete"; contentType: string; body: string; generationId?: string }
   | { status: "complete_generation"; generationId: string }
   | { status: "failed"; error: string; httpStatus: number };
 
@@ -171,7 +172,7 @@ function parseRecord(value: unknown): IdempotencyRecord | null {
     && typeof record.body === "string"
     && record.body.length > 0
   ) {
-    return { status: "complete", contentType: record.contentType, body: record.body };
+    return { status: "complete", contentType: record.contentType, body: record.body, ...(typeof record.generationId === "string" && UUID_PATTERN.test(record.generationId) ? { generationId: record.generationId } : {}) };
   }
   if (record.status === "complete_generation" && typeof record.generationId === "string" && UUID_PATTERN.test(record.generationId)) {
     return { status: "complete_generation", generationId: record.generationId };
@@ -268,6 +269,15 @@ export async function resolveIdempotencyForRequest(
 ): Promise<IdempotencyResolution> {
   const existing = await readIdempotencyRecord(username, key);
   if (!existing) return { kind: "absent" };
+  // Older inline-image records cannot be associated with a deletion tombstone.
+  // Never replay their image bytes after the privacy boundary changes.
+  if (existing.status === "complete" && !existing.generationId) {
+    return { kind: "replay", record: { status: "failed", error: "This older result cannot be recovered. Please check History.", httpStatus: 410 } };
+  }
+  if ((existing.status === "complete" || existing.status === "complete_generation") && existing.generationId
+    && (await deletedGenerationIds([existing.generationId])).has(existing.generationId)) {
+    return { kind: "replay", record: { status: "failed", error: "This generation has been deleted.", httpStatus: 410 } };
+  }
   if (existing.status === "complete" || existing.status === "complete_generation" || existing.status === "failed") {
     return { kind: "replay", record: existing };
   }
@@ -327,4 +337,24 @@ export function expireMemoryGenerationLocksForTests() {
 export function failGenerationGuardWritesAfterForTests(allowedSuccesses: number) {
   if (process.env.NODE_ENV !== "test") return;
   testWritesAllowedBeforeFailure = allowedSuccesses;
+}
+
+export async function removeGenerationReplays(username: string, generationId: string) {
+  const prefix = `nasir-tryon:idemp:${userHash(username)}:`;
+  const matches = (record: IdempotencyRecord) => (record.status === "complete_generation" && record.generationId === generationId)
+    || (record.status === "complete" && (!record.generationId || record.generationId === generationId));
+  const failed: IdempotencyRecord = { status: "failed", error: "This generation has been deleted.", httpStatus: 410 };
+  if (!getRedis()) {
+    for (const [key, entry] of memoryIdempotency) if (key.startsWith(prefix) && matches(entry.record)) entry.record = failed;
+    return;
+  }
+  let cursor = "0";
+  do {
+    const [next, keys] = await redisOp(store => store.scan(cursor, { match: `${prefix}*`, count: 100 }));
+    cursor = String(next);
+    for (const key of keys) {
+      const record = parseRecord(await redisOp(store => store.get(key)));
+      if (record && matches(record)) await redisOp(store => store.set(key, JSON.stringify(failed), { ex: IDEMPOTENCY_TTL_SECONDS }));
+    }
+  } while (cursor !== "0");
 }

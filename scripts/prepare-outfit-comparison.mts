@@ -7,7 +7,7 @@ import { hasPhotographedWaistcoat } from "../lib/split-outfit/image-map";
 import { buildSplitOutfitPrompt } from "../lib/split-outfit/prompt";
 import { prepareProviderPacket } from "../lib/tryon/providers/openai";
 import { grayscaleConstruction } from "../lib/tryon/neutralize-construction";
-import { validateImageFile } from "../lib/validation";
+import { validateImageFile } from "../lib/validate-image";
 import type { TryOnInput } from "../lib/tryon/types";
 
 // Offline only. No provider or storage calls are made: references must be local approved files.

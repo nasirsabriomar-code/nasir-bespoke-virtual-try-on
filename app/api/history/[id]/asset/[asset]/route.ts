@@ -1,8 +1,8 @@
+import { canAccessGeneration } from "@/lib/history/access";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import {
   getPrivateGenerationAsset,
-  getPrivateGenerationAssetUrl,
   isGenerationAssetPath,
   type GenerationAssetKey,
 } from "@/lib/generation-storage";
@@ -64,17 +64,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       permanent: async (generationId) => isPermanentHistoryConfigured() ? getPermanentGeneration(generationId) : null,
       recent: getUsageEvent,
     });
-    const reference = event?.assets?.[asset as GenerationAssetKey];
+    if (!canAccessGeneration(user, event)) return new Response("Not found", { status: 404, headers: { "Cache-Control": "private, no-store" } });
+    const reference = event.assets?.[asset as GenerationAssetKey];
     if (!reference || !isGenerationAssetPath(reference.pathname, id, asset as GenerationAssetKey)) {
       return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
     const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
-    if (wantsDownload) {
-      // History is shared among authenticated staff, so downloads follow the
-      // same access as viewing.
-      // Stream the private Blob through this authenticated route. This keeps the
-      // signed Blob URL out of the browser address bar and download history.
+    {
+      // Views and downloads both revalidate the staff session on every request.
       const blob = await getPrivateGenerationAsset(reference.pathname);
       if (!blob?.stream) {
         return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
@@ -85,7 +83,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         status: 200,
         headers: {
           "Cache-Control": "private, no-store",
-          "Content-Disposition": `attachment; filename="${downloadFilename(asset, contentType)}"`,
+          "Content-Disposition": `${wantsDownload ? "attachment" : "inline"}; filename="${downloadFilename(asset, contentType)}"`,
           "Content-Type": contentType,
           ...(reference.bytes ? { "Content-Length": String(reference.bytes) } : {}),
           "X-Content-Type-Options": "nosniff",
@@ -93,8 +91,6 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       });
     }
 
-    const signedUrl = await getPrivateGenerationAssetUrl(reference.pathname);
-    return Response.redirect(signedUrl, 302);
   } catch (error) {
     if (error instanceof AuthConfigurationError) return new Response("Not found", { status: 404 });
     console.error("history_asset_read_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });

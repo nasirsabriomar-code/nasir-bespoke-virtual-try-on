@@ -78,8 +78,7 @@ test("feedback validates fields, persists and is isolated between staff", async 
   assert.equal(response.status, 200);
   const own = await (await GET(new Request(url, { headers: { cookie: first } }), context)).json();
   assert.equal(own.favourite, true); assert.deepEqual(own.reasons, ["pattern-too-large", "wrong-material", "changed-customer"]);
-  const other = await (await GET(new Request(url, { headers: { cookie: await cookie("staff-two") } }), context)).json();
-  assert.equal(other.favourite, false); assert.equal(other.decision, "unreviewed");
+  assert.equal((await GET(new Request(url, { headers: { cookie: await cookie("staff-two") } }), context)).status, 404);
 });
 
 test("consumed slots cannot be revived and memory consumption is atomic", async () => {

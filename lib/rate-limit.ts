@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-type LimitName = "minute" | "hour" | "day" | "global-day" | "login";
+type LimitName = "minute" | "hour" | "day" | "global-day" | "login" | "upload-create" | "upload-part" | "upload-complete" | "upload-global-create" | "upload-global-part" | "upload-global-complete";
 
 type LimitCheck = {
   name: LimitName;
@@ -83,7 +83,7 @@ function getRedis() {
 
   const key = createHash("sha256").update(`${url}:${token}`).digest("hex");
   if (!redisCache || redisCache.key !== key) {
-    redisCache = { key, redis: new Redis({ url, token }) };
+    redisCache = { key, redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3000) }) };
   }
   return redisCache.redis;
 }
@@ -188,4 +188,23 @@ export function getRequestIdentifier(request: Request) {
 export function resetMemoryRateLimitsForTests() {
   if (process.env.NODE_ENV !== "test") return;
   memoryEntries.clear();
+}
+
+export async function checkUploadRateLimit(username: string, operation: "create" | "part" | "complete"): Promise<RateLimitResult> {
+  const store = getRedis();
+  const perUser = operation === "create" ? 50 : operation === "part" ? 180 : 12;
+  const global = operation === "create" ? 250 : operation === "part" ? 1800 : 120;
+  const duration = operation === "create" ? "1 d" : "1 m";
+  const windowMs = operation === "create" ? 86_400_000 : 60_000;
+  const checks: LimitCheck[] = [];
+  for (const [name, identifier, limit] of [
+    [`upload-${operation}`, hashedIdentifier("upload", username), perUser],
+    [`upload-global-${operation}`, "application", global],
+  ] as const) {
+    const check = store ? await persistentLimit(store, name, identifier, limit, duration)
+      : memoryLimit(name, identifier, limit, windowMs);
+    checks.push(check);
+    if (!check.allowed) break;
+  }
+  return summarize(checks);
 }

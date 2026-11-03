@@ -1,3 +1,4 @@
+import { deletedGenerationIds } from "@/lib/highres/ledger";
 import "server-only";
 import { createHash } from "node:crypto";
 import { Redis } from "@upstash/redis";
@@ -22,11 +23,16 @@ export async function getGenerationReview(id: string, username: string): Promise
   return parsed && raw ? { ...parsed, updatedAt: raw.updatedAt } : { decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" };
 }
 export async function saveGenerationReview(id: string, username: string, review: Omit<GenerationReview, "updatedAt">) {
+  if ((await deletedGenerationIds([id])).has(id)) throw new Error("Generation deleted");
   const value = { ...review, updatedAt: new Date().toISOString() };
   const key = reviewKey(id, username);
   const store = redis();
   if (store) await store.set(key, value);
   else memory.set(key, value);
+  if ((await deletedGenerationIds([id])).has(id)) {
+    if (store) await store.del(key); else memory.delete(key);
+    throw new Error("Generation deleted");
+  }
   return value;
 }
 
@@ -40,4 +46,16 @@ export async function getGenerationReviews(ids: string[], username: string): Pro
     const parsed = parseReview(raw);
     return [id, parsed && raw ? { ...parsed, updatedAt: raw.updatedAt } : { decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" }];
   }));
+}
+
+export async function deleteGenerationReviews(id: string) {
+  const store = redis();
+  if (!store) { for (const key of memory.keys()) if (key.endsWith(`:${id}`)) memory.delete(key); return; }
+  // Includes keys belonging to removed accounts and older review records.
+  let cursor = "0";
+  do {
+    const [next, keys] = await store.scan(cursor, { match: `nasir-tryon:review:v1:*:${id}`, count: 100 });
+    cursor = String(next);
+    if (keys.length) await store.del(...keys);
+  } while (cursor !== "0");
 }

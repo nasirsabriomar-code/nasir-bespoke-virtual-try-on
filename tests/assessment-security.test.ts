@@ -188,7 +188,7 @@ test("successful persistent sessions remain usable until shared revocation", asy
 
 test("a client header cannot choose the trusted high-resolution handoff", async () => {
   const form = new FormData();
-  const image = new File([Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1])], "test.png", { type: "image/png" });
+  const image = new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgYGgAAACEAIGcaMMkAAAAAElFTkSuQmCC", "base64")], "test.png", { type: "image/png" });
   for (const name of ["person", "fabric", "outfit"]) form.set(name, image);
   form.set("selectionMode", "outfit");
   const bytes = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);

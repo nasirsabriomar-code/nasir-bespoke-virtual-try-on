@@ -1,9 +1,14 @@
+import { HighResolutionUploadError } from "@/lib/highres/upload-error";
+import { readBoundedBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { checkUploadRateLimit } from "@/lib/rate-limit";
+import { withUploadLease } from "@/lib/highres/upload-control";
 import { createHash } from "node:crypto";
 import { requireRequestUser } from "@/lib/auth/session";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { recoveryManifest } from "@/lib/catalog/recovery";
 import { r2Get, r2Put } from "@/lib/r2-storage";
 
+export const maxDuration = 120;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -14,29 +19,17 @@ export async function GET(request: Request) {
     { headers: { "Cache-Control": "no-store, private" } });
 }
 
-export async function POST(request: Request) {
+async function restore(request: Request) {
   if (!isSameOriginRequest(request)) return Response.json({ error: "Request blocked." }, { status: 403 });
-  if (!await requireRequestUser(request)) return Response.json({ error: "Sign in required." }, { status: 401 });
+  const user = await requireRequestUser(request);
+  if (!user) return Response.json({ error: "Sign in required." }, { status: 401 });
+  const admission = await checkUploadRateLimit(user.username, "complete");
+  if (!admission.allowed) return Response.json({ error: "Too many recovery requests." }, { status: 429, headers: { "Retry-After": String(Math.max(1, Math.ceil((admission.resetAt - Date.now()) / 1000))) } });
+  return withUploadLease(user.username, "recovery", 1, async () => {
   const id = new URL(request.url).searchParams.get("id");
   const asset = (await recoveryManifest()).find(a => a.id === id);
   if (!asset) return Response.json({ error: "Approved reference not found." }, { status: 404 });
-  const reader = request.body?.getReader();
-  if (!reader) return Response.json({ error: "Image is required." }, { status: 400 });
-  const parts: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > 4 * 1024 * 1024) {
-        await reader.cancel();
-        return Response.json({ error: "Reference exceeds 4 MB." }, { status: 413 });
-      }
-      parts.push(value);
-    }
-  } finally { reader.releaseLock(); }
-  const bytes = Buffer.concat(parts);
+  const bytes = await readBoundedBody(request, 4 * 1024 * 1024);
   if (createHash("sha256").update(bytes).digest("hex") !== asset.checksum) {
     return Response.json({ error: "This file does not match the approved reference." }, { status: 400 });
   }
@@ -54,4 +47,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Storage verification failed." }, { status: 503 });
   }
   return Response.json({ restored: true, id: asset.id }, { headers: { "Cache-Control": "no-store, private" } });
+  });
+}
+
+export async function POST(request: Request) {
+  try {
+    const response = await restore(request);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  } catch (error) {
+    const status = error instanceof HighResolutionUploadError ? error.status : error instanceof RequestBodyTooLargeError ? 413
+      : error instanceof DOMException && error.name === "TimeoutError" ? 408 : 503;
+    return Response.json({ error: status === 408 ? "Upload timed out. Please retry." : status === 413 ? "Reference exceeds 4 MB." : "Recovery is temporarily unavailable." }, { status, headers: { "Cache-Control": "private, no-store", ...(status === 429 ? { "Retry-After": "1" } : {}) } });
+  }
 }

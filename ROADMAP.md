@@ -25,7 +25,8 @@ Status: partially implemented / next major product phase
 - Deeply configure Sherwani, Nehru Jacket, Kurta Pajama, Indo-Western, Shirt, Waistcoat, and Coat/Blazer.
 - Replace temporary reference photography with official Nasir Bespoke assets.
 - Add structured showroom/customer permissions.
-- Add retention/deletion workflows for customer images.
+- Implemented: owner/admin history authorization, retention expiry and retryable deletion.
+- Next: storage-inventory reconciliation for unrecorded orphans.
 - Add MFA, account lifecycle, and audit reporting.
 - Add stronger image decode and privacy controls.
 
