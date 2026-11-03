@@ -1,4 +1,5 @@
-import type { ResultSummary } from "@/lib/result-summary";
+import type { PieceCloth, ResultSummary } from "@/lib/result-summary";
+const CLOTH_VALUES: readonly string[] = ["uploaded", "linked-to-jacket", "reference"];
 const PREFIX = "nasir-pending-generation-v1:";
 const TTL_MS = 15 * 60_000;
 export type PendingGeneration = { key: string; createdAt: number; summary: ResultSummary };
@@ -17,7 +18,12 @@ export function parsePendingGeneration(raw: string | null, now = Date.now()): Pe
     const result: ResultSummary = { garment: summary.garment, fabric: summary.fabric, shoes: summary.shoes, ...(summary.lower ? { lower: summary.lower } : {}), ...(summary.turban ? { turban: summary.turban } : {}) };
     if (value.summary.pieces !== undefined) {
       if (!Array.isArray(value.summary.pieces) || value.summary.pieces.length > 5 || value.summary.pieces.some((piece: Record<string, unknown>) => !piece || typeof piece !== "object" || ["label", "design", "source"].some(key => typeof piece[key] !== "string" || (piece[key] as string).length > 240))) return null;
-      result.pieces = value.summary.pieces.map((piece: { label: string; design: string; source: string }) => ({ label: piece.label, design: piece.design, source: piece.source }));
+      if (value.summary.pieces.some((piece: Record<string, unknown>) => (piece.cloth !== undefined && !CLOTH_VALUES.includes(piece.cloth as string)) || (piece.customerLabel !== undefined && (typeof piece.customerLabel !== "string" || piece.customerLabel.length > 240)))) return null;
+      result.pieces = value.summary.pieces.map((piece: { label: string; design: string; source: string; cloth?: PieceCloth; customerLabel?: string }) => ({ label: piece.label, design: piece.design, source: piece.source, ...(piece.cloth ? { cloth: piece.cloth } : {}), ...(piece.customerLabel !== undefined ? { customerLabel: piece.customerLabel } : {}) }));
+    }
+    if (value.summary.accessories !== undefined) {
+      if (!Array.isArray(value.summary.accessories) || value.summary.accessories.length > 5 || value.summary.accessories.some((name: unknown) => typeof name !== "string" || name.length > 240)) return null;
+      result.accessories = [...value.summary.accessories];
     }
     return { key: value.key, createdAt: value.createdAt, summary: result };
   } catch { return null; }

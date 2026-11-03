@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
-import { buildResultSummary } from "@/lib/result-summary";
+import { buildResultSummary, summaryDiffers } from "@/lib/result-summary";
+import { parsePendingGeneration } from "@/lib/pending-generation";
 import { DEFAULT_SPLIT_OUTFIT_STATE, SUIT_FOOTWEAR_OPTIONS, SUIT_LOWER_OPTIONS, SUIT_UPPER_OPTIONS } from "@/lib/split-outfit/catalogue";
 import { clearSplitFabrics } from "@/lib/split-outfit/client-fabrics";
 
@@ -135,4 +136,39 @@ test("material totals count effective assignments and exclude absent waistcoat c
   assert.deepEqual(fabricAssignmentCounts(stored, false), { total: 3, uploaded: 1, reference: 2 });
   assert.deepEqual(fabricAssignmentCounts(effectiveSplitFabrics(stored, true), false), { total: 3, uploaded: 2, reference: 1 });
   assert.deepEqual(fabricAssignmentCounts(effectiveSplitFabrics(stored, true), true), { total: 4, uploaded: 3, reference: 1 });
+});
+
+test("split summary carries customer labels, cloth sources and accessories", () => {
+  const summary = buildResultSummary({ mode: "split", splitOutfit: { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC", lowerId: "SUIT_LOWER_NON_PLEATED", shirtId: "SUIT_SHIRT_CLASSIC_FORMAL", footwearId: "SUIT_SHOE_OXFORD", accessoryIds: ["SUIT_ACC_TIE"] }, hasUploadedFabric: true, fabrics: { jacket: true, trousers: true }, trousersLinked: true });
+  assert.deepEqual(summary.pieces?.map(p => [p.cloth, p.customerLabel]), [["uploaded", "Classic jacket · your cloth"], ["linked-to-jacket", "Non-pleated trousers · same cloth as jacket"], ["reference", "Classic Formal shirt"], ["reference", "Oxford shoes"]]);
+  assert.deepEqual(summary.accessories, ["Tie"]);
+});
+
+test("summaryDiffers detects a changed piece, cloth or accessory", () => {
+  const a = buildResultSummary({ mode: "split", splitOutfit: { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC" }, hasUploadedFabric: false, fabrics: {} });
+  assert.equal(summaryDiffers(a, a), false);
+  assert.equal(summaryDiffers(a, buildResultSummary({ mode: "split", splitOutfit: { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_TUXEDO" }, hasUploadedFabric: false, fabrics: {} })), true);
+  assert.equal(summaryDiffers(a, buildResultSummary({ mode: "split", splitOutfit: { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC" }, hasUploadedFabric: true, fabrics: { jacket: true } })), true);
+  assert.equal(summaryDiffers(a, buildResultSummary({ mode: "split", splitOutfit: { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC", accessoryIds: ["SUIT_ACC_TIE"] }, hasUploadedFabric: false, fabrics: {} })), true);
+});
+
+test("pending summary round-trips the new fields", () => {
+  const summary = buildResultSummary({ mode: "split", splitOutfit: { ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_CLASSIC", accessoryIds: ["SUIT_ACC_TIE"] }, hasUploadedFabric: true, fabrics: { jacket: true } });
+  const now = Date.now();
+  const parsed = parsePendingGeneration(JSON.stringify({ key: "123e4567-e89b-42d3-a456-426614174000", createdAt: now - 1000, summary }), now);
+  assert.deepEqual(parsed?.summary, JSON.parse(JSON.stringify(summary)));
+});
+
+test("legacy pending summary still parses", () => {
+  const now = Date.now();
+  const legacy = { garment: "Classic", fabric: "Uploaded fabric", shoes: "Oxford", pieces: [{ label: "Jacket", design: "Classic", source: "Uploaded cloth" }] };
+  const parsed = parsePendingGeneration(JSON.stringify({ key: "123e4567-e89b-42d3-a456-426614174000", createdAt: now - 1000, summary: legacy }), now);
+  assert.deepEqual(parsed?.summary, legacy);
+});
+
+test("pending summary rejects an unknown cloth value or oversized accessories", () => {
+  const now = Date.now();
+  const make = (summary: unknown) => parsePendingGeneration(JSON.stringify({ key: "123e4567-e89b-42d3-a456-426614174000", createdAt: now - 1000, summary }), now);
+  assert.equal(make({ garment: "g", fabric: "f", shoes: "s", pieces: [{ label: "Jacket", design: "C", source: "x", cloth: "silk" }] }), null);
+  assert.equal(make({ garment: "g", fabric: "f", shoes: "s", accessories: ["a", "b", "c", "d", "e", "f"] }), null);
 });
