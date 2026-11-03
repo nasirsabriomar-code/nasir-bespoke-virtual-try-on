@@ -188,6 +188,23 @@ async function providerSafeUpload({ image, stem }: ImagePart, forcePng = false) 
   return new File([bytes], `${stem}.${extensionFor(outputMime)}`, { type: outputMime });
 }
 
+/** Shared offline/production compiler. Does not contact a provider or storage. */
+export async function prepareProviderPacket(input: TryOnInput) {
+  const person = await uprightImage(input.person);
+  const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
+  const background = input.backgroundControl && input.backgroundControl.mode !== "prompt-only" ? await prepareBackgroundEdit(person, requestedSize, input.backgroundControl) : null;
+  const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person });
+  const regionInstruction = background
+    ? `EDIT REGION (${input.backgroundControl!.mode}): Only the transparent garment region permits clothing, necessary revealed-background reconstruction and contact-shadow changes. Preserve all other regions. ${input.backgroundControl!.mode === "composite" ? "The normalized original outside this region will be retained by compositing; keep silhouette and lighting aligned at its boundary." : "The mask guides the edit; keep unaffected surroundings fixed."} Do not draw a rectangle or border.`
+    : "EDIT REGION (prompt-only): Restrict changes to selected clothing/accessories and their necessary local silhouette, revealed-background and contact-shadow effects. Keep all unaffected surroundings fixed.";
+  const providerPrompt = [input.prompt, renderInputManifest(parts), CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY, guidance, regionInstruction].filter(Boolean).join("\n\n");
+  if (!promptImageIndicesAreValid(providerPrompt, parts.length)) throw new UploadValidationError("The reference image mapping is invalid.", "invalid_image");
+  if (providerPrompt.length > 32000) throw new UploadValidationError("The selected look has too many instructions.", "invalid_image");
+  const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
+
+  return { person, requestedSize, background, parts, guidance, providerPrompt, imageInputs };
+}
+
 export class OpenAITryOnProvider implements TryOnProvider {
   constructor(
     private readonly clientFactory: typeof createOpenAIClient = createOpenAIClient,
@@ -198,17 +215,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const quality = DEFAULT_QUALITY;
     const client = this.clientFactory();
 
-    const person = await uprightImage(input.person);
-    const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
-    const background = input.backgroundControl && input.backgroundControl.mode !== "prompt-only" ? await prepareBackgroundEdit(person, requestedSize, input.backgroundControl) : null;
-    const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person });
-    const regionInstruction = background
-      ? `EDIT REGION (${input.backgroundControl!.mode}): Only the transparent garment region permits clothing, necessary revealed-background reconstruction and contact-shadow changes. Preserve all other regions. ${input.backgroundControl!.mode === "composite" ? "The normalized original outside this region will be retained by compositing; keep silhouette and lighting aligned at its boundary." : "The mask guides the edit; keep unaffected surroundings fixed."} Do not draw a rectangle or border.`
-      : "EDIT REGION (prompt-only): Restrict changes to selected clothing/accessories and their necessary local silhouette, revealed-background and contact-shadow effects. Keep all unaffected surroundings fixed.";
-    const providerPrompt = [input.prompt, renderInputManifest(parts), CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY, guidance, regionInstruction].filter(Boolean).join("\n\n");
-    if (!promptImageIndicesAreValid(providerPrompt, parts.length)) throw new UploadValidationError("The reference image mapping is invalid.", "invalid_image");
-    if (providerPrompt.length > 32000) throw new UploadValidationError("The selected look has too many instructions.", "invalid_image");
-    const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
+    const { person, requestedSize, background, parts, guidance, providerPrompt, imageInputs } = await prepareProviderPacket(input);
 
     const preprocessingMs = Date.now() - startedAt;
     let providerAttempts = 0;
