@@ -15,6 +15,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { TryOnResult } from "@/components/TryOnResult";
 import { UsageHistory } from "@/components/UsageHistory";
 import { ModeSelector } from "@/components/split-outfit/ModeSelector";
+import { ShowCustomerView } from "@/components/split-outfit/ShowCustomerView";
 import { SplitOutfitWorkspace } from "@/components/split-outfit/SplitOutfitWorkspace";
 import type { SplitPieceFabrics } from "@/components/split-outfit/SplitMaterialsSection";
 import { classifyGenerationResponse, fetchWithTimeout, recoverGeneration, RecoveryAuthenticationError } from "@/lib/generation-recovery";
@@ -128,6 +129,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const [resultSummary, setResultSummary] = useState<ResultSummary | null>(null);
   // Split Outfit keeps every result from this page session for showing the customer.
   const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
+  const [showCustomerOpen, setShowCustomerOpen] = useState(false);
   const [builderStep, setBuilderStep] = useState<BuilderStepId>("customer");
   const [visitedSteps, setVisitedSteps] = useState<ReadonlySet<BuilderStepId>>(() => new Set<BuilderStepId>(["customer"]));
   const goToStep = useCallback((step: BuilderStepId) => {
@@ -903,7 +905,15 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           personPreview={person?.previewUrl ?? null}
           personSlot={personUpload}
           statusSlot={statusBlock}
-          reviewExtras={<>{backgroundBlock}{resultBlock}</>}
+          reviewExtras={<>
+            {backgroundBlock}
+            {latestResult && resultUrl ? (
+              <button type="button" className="level1-generate show-customer-open" onClick={() => setShowCustomerOpen(true)} disabled={isGenerating}>
+                Show customer
+              </button>
+            ) : null}
+            {resultBlock}
+          </>}
         />
       )}
       {mode === "full" ? <>
@@ -913,6 +923,9 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         {resultBlock}
       </> : null}
 
+      {showCustomerOpen && mode === "split" && sessionResults.length ? (
+        <ShowCustomerView results={sessionResults} initialIndex={sessionResults.length - 1} onClose={() => setShowCustomerOpen(false)} />
+      ) : null}
       <p className="privacy-note">Photos and results are kept in private History, visible to signed-in staff. AI visualization; actual garment fit may vary.</p>
       </section>
     </main>
