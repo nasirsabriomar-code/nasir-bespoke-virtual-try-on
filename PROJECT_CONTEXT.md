@@ -10,7 +10,7 @@ The product is not a consumer social app or a general-purpose AI editor. The cor
                              ↓
                      Server-side compiler
                              ↓
-                  GPT Image 2.5 Sunburst
+                  GPT Image 2.6 Sunburst
                              ↓
                      Try-on visualization
 
@@ -27,7 +27,7 @@ The app is designed for showroom computers, iPads, and phones. It is deployed as
 - Explicit No Change and Keep Existing choices where appropriate.
 - Sequential, data-driven suit configuration with dependencies, conflicts, visual references, and prompt fragments.
 - Deterministic server-side prompt compilation. Employees never write prompts and the browser cannot submit arbitrary prompts or model parameters.
-- GPT Image 2.5 Sunburst image editing at fixed medium quality through the official OpenAI Node SDK, returning private PNG masters.
+- GPT Image 2.6 Sunburst image editing (configurable model/quality via IMAGE_* env vars) through the official OpenAI Node SDK, returning private PNG masters.
 - Generation loading states, result comparison, download, Try Again, and Start Over.
 - Usage/history metadata in Upstash Redis.
 - Private Cloudflare R2 customer-image/result storage with a Neon upload ledger and permanent history.
@@ -49,7 +49,7 @@ History and retained assets are owner-scoped by default, with explicitly configu
 - Tailwind CSS 4
 - Node.js 22.13 or newer
 - OpenAI Node SDK 7.4
-- GPT Image 2.5 Sunburst (gpt-image-2.5-sunburst)
+- GPT Image 2.6 Sunburst (gpt-image-2.6-sunburst), configurable
 - Upstash Redis and Ratelimit
 - Cloudflare R2 for private images; Neon PostgreSQL for permanent history/upload state
 - Vercel deployment
