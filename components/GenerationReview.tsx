@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { withDeadline } from "@/lib/generation-recovery";
 import { REVIEW_REASONS, type GenerationReview as Review, type ReviewReason } from "@/lib/history/review-types";
-const labels: Record<ReviewReason, string> = { "pattern-too-large": "Pattern too large", "pattern-too-small": "Pattern too small", "wrong-colour": "Wrong colour", "incorrect-construction": "Incorrect tailoring", "changed-background": "Background changed", "other-quality": "Other quality issue", "wrong-material": "Wrong fabric or material", "changed-customer": "Customer appearance changed" };
+const labels: Record<ReviewReason, string> = { "pattern-too-large": "Pattern too large", "pattern-too-small": "Pattern too small", "wrong-colour": "Wrong colour", "incorrect-construction": "Incorrect tailoring", "changed-background": "Background changed", "other-quality": "Other quality issue", "wrong-material": "Wrong fabric or material", "changed-customer": "Customer appearance changed", "broken-or-wavy-stripes": "Broken or wavy stripes" };
 async function requestReview(id: string, value?: Review): Promise<Review> {
   return withDeadline(async signal => {
     const response = await fetch(`/api/history/${encodeURIComponent(id)}/review`, { method: value ? "PUT" : "GET", credentials: "same-origin", cache: "no-store", signal, ...(value ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) } : {}) });

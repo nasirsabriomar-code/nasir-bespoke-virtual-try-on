@@ -4,7 +4,7 @@ const [directory, filename = "comparison.html"] = process.argv.slice(2);
 if (!directory || process.argv.length > 4 || path.basename(filename) !== filename) throw new Error("Usage: npm run quality:report -- RUN_DIRECTORY [NEW_REPORT_FILENAME.html]");
 const root = await realpath(directory);
 const runs: unknown = JSON.parse(await readFile(path.join(root, "private-condition-key.json"), "utf8"));
-if (!Array.isArray(runs) || runs.length > 500 || runs.some(row => !row || !/^[a-zA-Z0-9_-]{1,100}$/.test(row.runId) || !/^[a-zA-Z0-9_-]{1,80}$/.test(row.caseId) || !["A", "B"].includes(row.id) || !Number.isInteger(row.repeat))) throw new Error("Invalid prepared run key.");
+if (!Array.isArray(runs) || runs.length > 500 || runs.some(row => !row || !/^[a-zA-Z0-9_-]{1,100}$/.test(row.runId) || !/^[a-zA-Z0-9_-]{1,80}$/.test(row.caseId) || !/^[a-zA-Z0-9_-]{1,20}$/.test(row.id) || !Number.isInteger(row.repeat))) throw new Error("Invalid prepared run key.");
 const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 let body = "";
 for (const caseId of new Set(runs.map(row => row.caseId))) {

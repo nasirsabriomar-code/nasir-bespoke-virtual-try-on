@@ -54,3 +54,25 @@ npm run quality:summary -- /absolute/path/to/scored-results.json
 ```
 
 The existing summarizer counts failures/rejections and reports unknown costs as unknown. No percentage improvement should be claimed until actual outputs have been reviewed on representative photos. This bounded offline tool does not execute model jobs or manage billing.
+
+## Matrix experiments and paid runs
+
+A `"matrix"` manifest compares 2 to 8 named generation configs on every case. Each condition's `config` may set `model` (`gpt-image-2.5-sunburst`, `gpt-image-2.6-sunburst`, `gpt-image-2.6-flare`), `quality` (`medium`, `high`), `canvasProfile` (`experimental`, `stable`), `complexity` (`low`, `medium`, `high`; 2.6 models only) and `fabricTreatmentDefault` (`legacy-crop`, `full-swatch`, `full-detail`). Omitted keys use the code defaults, not the live environment.
+
+```json
+{
+  "version": 1,
+  "experiment": "matrix",
+  "repetitions": 1,
+  "conditions": [
+    { "id": "A", "config": { "model": "gpt-image-2.5-sunburst", "fabricTreatmentDefault": "legacy-crop" } },
+    { "id": "B", "config": { "model": "gpt-image-2.6-sunburst", "quality": "high", "canvasProfile": "stable", "fabricTreatmentDefault": "full-swatch" } },
+    { "id": "C", "config": { "model": "gpt-image-2.6-flare", "quality": "high", "canvasProfile": "stable", "fabricTreatmentDefault": "full-swatch" } }
+  ],
+  "cases": [ ... ]
+}
+```
+
+`npm run quality:prepare-outfit` accepts the same manifest and still makes no calls.
+
+`npm run quality:run -- manifest.json .cache/run-1` makes **paid** OpenAI calls. Without `--confirm-paid` it only prints the call count and every condition, then exits. Get the owner's approval for that count, then re-run with `--confirm-paid`. Results go to `<output>/<caseId>/<conditionId>/<repeat>.png` with a matching `.json` (config, latency and token usage). Calls run one at a time. A cell that already has a PNG or an `.error.json` is skipped, so re-running an interrupted run never bills finished cells. Delete a cell's `.error.json` to retry it. `private-condition-key.json` maps condition letters to configs: keep it away from reviewers so they can score blind. Fill in `score-template.json` (accepted, scores, reasons such as `broken-or-wavy-stripes`), then run `npm run quality:summary` on it for acceptance rate, latency and mean token usage per condition.
