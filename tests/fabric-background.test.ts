@@ -184,3 +184,78 @@ test("invalid or unmatched fabric controls are rejected before the rate limiter 
   }
   assert.equal(paid, 0); assert.equal(rate, 0);
 });
+
+function swatchInput(fabric: TryOnInput["person"], person: TryOnInput["person"], fabricGuidance?: TryOnInput["fabricGuidance"]) {
+  return { person, fabric, selection: { mode: "level1" }, references: [], fabricGuidance } as unknown as TryOnInput;
+}
+
+test("full-swatch sends the whole upright swatch", async () => {
+  const prepared = await prepareProviderReferences(swatchInput(await image("navy", 800, 1200), await image("grey")), "legacy-crop");
+  const explicit = await prepareProviderReferences(swatchInput(await image("navy", 800, 1200), await image("grey"), { fabric: { mode: "full-swatch" } }));
+  for (const result of [explicit]) {
+    const fabricPart = result.parts.find(part => part.stem === "fabric-reference")!;
+    assert.equal(fabricPart.image.width, 800); assert.equal(fabricPart.image.height, 1200);
+    assert.equal(result.parts.some(part => part.stem.endsWith("-detail")), false);
+    assert.equal(result.guidance, "");
+  }
+  assert.equal(prepared.parts.find(part => part.stem === "fabric-reference")!.image.width, 400);
+});
+
+test("default treatment comes from config", async () => {
+  const swatch = await image("navy", 800, 1200); const person = await image("grey");
+  const whole = await prepareProviderReferences(swatchInput(swatch, person), "full-swatch");
+  assert.equal(whole.parts.find(part => part.stem === "fabric-reference")!.image.width, 800);
+  const cropped = await prepareProviderReferences(swatchInput(swatch, person), "legacy-crop");
+  const croppedPart = cropped.parts.find(part => part.stem === "fabric-reference")!;
+  assert.equal(croppedPart.image.width, 400); assert.equal(croppedPart.image.height, 600);
+  const detailed = await prepareProviderReferences(swatchInput(swatch, person), "full-detail");
+  assert.equal(detailed.parts.some(part => part.stem === "fabric-reference-detail"), true);
+  assert.match(detailed.guidance, /complete fabric swatch/);
+});
+
+test("parseFabricGuidance accepts full-swatch and still rejects unknown modes", () => {
+  assert.deepEqual(parseFabricGuidance({ fabric: { mode: "full-swatch" } }), { fabric: { mode: "full-swatch" } });
+  assert.throws(() => parseFabricGuidance({ fabric: { mode: "zoomed" } }));
+});
+
+test("full-swatch manifest keeps the label/ruler instruction", async () => {
+  const { prepareProviderPacket } = await import("@/lib/tryon/providers/openai");
+  const packet = await prepareProviderPacket(swatchInput(await image("navy", 64, 64), await image("grey", 64, 64), { fabric: { mode: "full-swatch" } }), { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault: "legacy-crop" });
+  assert.match(packet.providerPrompt, /Do not reproduce reference labels or calibration marks\./);
+});
+
+test("stripe rendering rule appears exactly once in full-outfit and split provider prompts", async () => {
+  const { prepareProviderPacket } = await import("@/lib/tryon/providers/openai");
+  const config = { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault: "full-swatch" } as const;
+  const fixture = await image("navy", 64, 64);
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
+  const splitRefs = ["split-upper", "split-lower", "split-shirt", "split-footwear"].map(role => ({ role, image: fixture }));
+  const inputs = [
+    { person: fixture, fabric: fixture, references: [], selection: { mode: "level1" }, prompt: buildTryOnPrompt(undefined, { outfitProvided: false }) },
+    { person: fixture, fabric: fixture, lowerFabric: fixture, references: splitRefs, selection: { mode: "split" }, prompt: buildSplitOutfitPrompt(resolved, { jacket: true, trousers: true, shirt: false, waistcoat: false }) },
+  ];
+  for (const input of inputs) {
+    const packet = await prepareProviderPacket({ ...input, requestId: "stripe-rule" } as unknown as TryOnInput, config);
+    assert.equal(packet.providerPrompt.split("STRIPE RENDERING:").length - 1, 1);
+    assert.match(packet.providerPrompt, /one fine, continuous, unbroken line of constant width/);
+    assert.match(packet.providerPrompt, /follow the lapel roll on lapels/);
+  }
+});
+
+test("provenance records the fabric treatment actually applied, including the studio default", async () => {
+  const fixture = await image("navy", 64, 64);
+  const encoded = Buffer.from(await fixture.file.arrayBuffer()).toString("base64");
+  const client = { images: { edit: async () => ({ data: [{ b64_json: encoded }] }) } };
+  const run = async (fabricTreatmentDefault: "legacy-crop" | "full-swatch" | "full-detail", fabricGuidance?: TryOnInput["fabricGuidance"]) => {
+    const provider = new OpenAITryOnProvider(() => client as unknown as ReturnType<typeof createOpenAIClient>, { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault });
+    return (await provider.generate({ person: fixture, fabric: fixture, lowerFabric: fixture, references: [], selection: { mode: "level1" }, prompt: "p", requestId: "prov", fabricGuidance } as unknown as TryOnInput)).metadata.provenance!;
+  };
+  const studioDefault = await run("full-swatch");
+  assert.deepEqual(studioDefault.fabricGuidance, { fabric: { mode: "full-swatch" }, lowerFabric: { mode: "full-swatch" } });
+  assert.equal(studioDefault.preprocessingVersion, "full-swatch-v1");
+  const mixed = await run("legacy-crop", { lowerFabric: { mode: "full-swatch" } });
+  assert.deepEqual(mixed.fabricGuidance, { fabric: { mode: "legacy-crop" }, lowerFabric: { mode: "full-swatch" } });
+  assert.equal(mixed.preprocessingVersion, "full-swatch-v1");
+  assert.equal((await run("legacy-crop")).preprocessingVersion, "crop-v2-orientation");
+  assert.equal((await run("full-detail")).preprocessingVersion, "full-detail-v1");
+});

@@ -2,18 +2,17 @@ import { prepareBackgroundEdit, compositeBackground } from "../background-preser
 import { orderGenerationImages, renderInputManifest, promptImageIndicesAreValid } from "../image-layout";
 import { CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY } from "../pattern-geometry";
 import { cropFabricDetail } from "./../fabric-reference";
-import { DEFAULT_DETAIL_CROP, type FabricRole } from "./../fabric-guidance";
+import { DEFAULT_DETAIL_CROP, type FabricGuidance, type FabricReferenceOptions, type FabricRole, type FabricTreatment } from "./../fabric-guidance";
 import { UploadValidationError } from "@/lib/validation";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import type { ImageEditParamsNonStreaming } from "openai/resources/images";
 import { createOpenAIClient } from "@/lib/openai";
 import type { TryOnInput, TryOnOutput, TryOnProvider } from "@/lib/tryon/types";
+import { isModelGeneration26, resolveImageGenerationConfig, type ImageGenerationConfig } from "@/lib/tryon/model-config";
 import { detectImageDimensions, type SupportedImageMime } from "@/lib/validation";
 
-// Precision-first variant of OpenAI's Images 2.5 generation, released 2026-09-08.
-// Rollback pin if the unpinned alias ever regresses: "gpt-image-2.5-sunburst-2026-09-08"
-const MODEL = "gpt-image-2.5-sunburst";
-const DEFAULT_QUALITY = "medium" as const;
+// Model, quality, canvas profile and complexity come from lib/tryon/model-config.ts.
 const EXPERIMENTAL_MAX_PIXELS = 3840 * 2160;
 const STABLE_MAX_PIXELS = 2560 * 1440;
 const PROVIDER_COMPATIBILITY_EDGE = 3840;
@@ -46,11 +45,30 @@ export function resolveFallbackCanvas(width?: number, height?: number) {
   return canvasFor(width && height ? width : 9, width && height ? height : 16, STABLE_MAX_PIXELS);
 }
 
+/** Primary canvas for a profile. The stable profile has no larger size to fall back from. */
+export function resolveCanvasForProfile(profile: ImageGenerationConfig["canvasProfile"], width?: number, height?: number) {
+  return profile === "stable" ? resolveFallbackCanvas(width, height) : resolveHighResolutionCanvas(width, height);
+}
+
 function isSizeRejection(error: unknown) {
   const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
   if (record.status !== 400 && record.status !== 422) return false;
   const message = `${record.message ?? ""} ${record.code ?? ""}`.toLowerCase();
   return /size|dimension|pixel|resolution|width|height/.test(message);
+}
+
+/**
+ * Above 2560x1440 OpenAI labels sizes experimental, and a newer model may reject
+ * them in wording isSizeRejection does not recognise. Any other 400/422 on the
+ * experimental canvas gets one retry at the stable size. Invalid images and
+ * moderation blocks are excluded: a smaller canvas cannot fix those.
+ */
+function isExperimentalCanvasRejection(error: unknown) {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  if (record.status !== 400 && record.status !== 422) return false;
+  if (isInvalidImageFile(error)) return false;
+  const message = `${record.message ?? ""} ${record.code ?? ""}`.toLowerCase();
+  return !/moderation|safety|content.?policy/.test(message);
 }
 
 function isInvalidImageFile(error: unknown) {
@@ -145,27 +163,38 @@ function inputParts(input: TryOnInput): ImagePart[] {
 }
 
 const STEM_TO_FABRIC: Record<string, FabricRole> = { "fabric-reference": "fabric", "lower-fabric-reference": "lowerFabric", "shirt-fabric-reference": "shirtFabric", "waistcoat-fabric-reference": "waistcoatFabric" };
-export async function prepareProviderReferences(input: TryOnInput): Promise<{ parts: ImagePart[]; guidance: string }> {
-  const details: { part: ImagePart; fullIndex: number; role: FabricRole }[] = [];
+export async function prepareProviderReferences(input: TryOnInput, defaultTreatment: FabricTreatment = "legacy-crop"): Promise<{ parts: ImagePart[]; guidance: string; applied: FabricGuidance }> {
+  const applied: FabricGuidance = {};
+  const details: { part: ImagePart; fullIndex: number; role: FabricRole; options: FabricReferenceOptions }[] = [];
   const parts: ImagePart[] = [];
   for (const [index, part] of inputParts(input).entries()) {
     const role = STEM_TO_FABRIC[part.stem];
-    const options = role ? input.fabricGuidance?.[role] : undefined;
-    if (!isFabricStem(part.stem)) { parts.push(part); continue; }
-    if (options?.mode !== "full-detail") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
+    if (!isFabricStem(part.stem) || !role) { parts.push(part); continue; }
+    const options: FabricReferenceOptions = input.fabricGuidance?.[role] ?? { mode: defaultTreatment };
+    applied[role] = options;
+    if (options.mode === "legacy-crop") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
     parts.push({ ...part, image: await uprightImage(part.image) });
-    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: index + 1, role });
+    if (options.mode === "full-swatch") continue;
+    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: index + 1, role, options });
   }
   const lines: string[] = [];
   for (const detail of details) {
-    const options = input.fabricGuidance![detail.role]!;
+    const { options } = detail;
     const number = parts.length + 1;
     parts.push(detail.part);
     lines.push(`Image ${detail.fullIndex} is the complete ${detail.role} swatch: it controls repeat scale, pattern density and colour. Image ${number} is a cropped detail from that same swatch: use it only to inspect weave and motif edges, never to enlarge the repeat or infer a new physical scale. Ignore rulers, calibration marks and the swatch background.`);
     if (options.repeatWidthCm || options.repeatHeightCm) lines.push(`Measured physical repeat for Image ${detail.fullIndex}: ${options.repeatWidthCm ? `width ${options.repeatWidthCm} cm` : "width unspecified"}; ${options.repeatHeightCm ? `height ${options.repeatHeightCm} cm` : "height unspecified"}. Use this as garment pattern-scale guidance, not a garment sizing measurement.`);
   }
   if (parts.length > 16) throw new UploadValidationError("Too many visual references. Reduce the number of fabric detail references.", "invalid_image");
-  return { parts, guidance: lines.length ? "FABRIC SCALE AND DETAIL AUTHORITY:\n" + lines.join("\n") : "" };
+  return { parts, guidance: lines.length ? "FABRIC SCALE AND DETAIL AUTHORITY:\n" + lines.join("\n") : "", applied };
+}
+
+/** History label for the fabric preparation actually used; the per-role detail lives in provenance.fabricGuidance. */
+function preprocessingVersionFor(applied: FabricGuidance) {
+  const modes = Object.values(applied).map(options => options?.mode);
+  if (modes.includes("full-detail")) return "full-detail-v1";
+  if (modes.includes("full-swatch")) return "full-swatch-v1";
+  return "crop-v2-orientation";
 }
 
 async function providerSafeUpload({ image, stem }: ImagePart, forcePng = false) {
@@ -189,11 +218,11 @@ async function providerSafeUpload({ image, stem }: ImagePart, forcePng = false) 
 }
 
 /** Shared offline/production compiler. Does not contact a provider or storage. */
-export async function prepareProviderPacket(input: TryOnInput) {
+export async function prepareProviderPacket(input: TryOnInput, config: ImageGenerationConfig = resolveImageGenerationConfig()) {
   const person = await uprightImage(input.person);
-  const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
+  const requestedSize = resolveCanvasForProfile(config.canvasProfile, person.width, person.height);
   const background = input.backgroundControl && input.backgroundControl.mode !== "prompt-only" ? await prepareBackgroundEdit(person, requestedSize, input.backgroundControl) : null;
-  const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person });
+  const { parts, guidance, applied } = await prepareProviderReferences({ ...input, person: background?.image ?? person }, config.fabricTreatmentDefault);
   const regionInstruction = background
     ? `EDIT REGION (${input.backgroundControl!.mode}): Only the transparent garment region permits clothing, necessary revealed-background reconstruction and contact-shadow changes. Preserve all other regions. ${input.backgroundControl!.mode === "composite" ? "The normalized original outside this region will be retained by compositing; keep silhouette and lighting aligned at its boundary." : "The mask guides the edit; keep unaffected surroundings fixed."} Do not draw a rectangle or border.`
     : "EDIT REGION (prompt-only): Restrict changes to selected clothing/accessories and their necessary local silhouette, revealed-background and contact-shadow effects. Keep all unaffected surroundings fixed.";
@@ -202,20 +231,25 @@ export async function prepareProviderPacket(input: TryOnInput) {
   if (providerPrompt.length > 32000) throw new UploadValidationError("The selected look has too many instructions.", "invalid_image");
   const imageInputs = parts.map(({ image, stem }) => namedUpload(image, stem));
 
-  return { person, requestedSize, background, parts, guidance, providerPrompt, imageInputs };
+  return { person, requestedSize, background, parts, guidance, applied, providerPrompt, imageInputs };
 }
 
 export class OpenAITryOnProvider implements TryOnProvider {
+  private readonly config: ImageGenerationConfig;
+
   constructor(
     private readonly clientFactory: typeof createOpenAIClient = createOpenAIClient,
-  ) {}
+    config?: ImageGenerationConfig,
+  ) {
+    this.config = config ?? resolveImageGenerationConfig();
+  }
 
   async generate(input: TryOnInput): Promise<TryOnOutput> {
     const startedAt = Date.now();
-    const quality = DEFAULT_QUALITY;
+    const { model, quality, complexity } = this.config;
     const client = this.clientFactory();
 
-    const { person, requestedSize, background, parts, guidance, providerPrompt, imageInputs } = await prepareProviderPacket(input);
+    const { person, requestedSize, background, parts, applied, providerPrompt, imageInputs } = await prepareProviderPacket(input, this.config);
 
     const preprocessingMs = Date.now() - startedAt;
     let providerAttempts = 0;
@@ -223,7 +257,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const providerStart = Date.now();
     console.info("try_on_provider_inputs", {
       requestId: input.requestId,
-      model: MODEL,
+      model,
       images: imageInputs.map((image) => ({ name: image.name, type: image.type, bytes: image.size })),
     });
     const edit = async (size: string, images: File[]) => {
@@ -233,23 +267,26 @@ export class OpenAITryOnProvider implements TryOnProvider {
         return new File([new Uint8Array(mask)], "garment-mask.png", { type: "image/png" });
       })() : undefined;
       providerAttempts++;
-      return client.images.edit({
-      model: MODEL,
-      image: images,
-      ...(maskFile ? { mask: maskFile } : {}),
-      prompt: providerPrompt,
-      quality,
-      size,
-      output_format: "png",
-      background: "opaque",
-      n: 1,
-    });
+      // SDK 7.4.0 predates the 2.6 `complexity` field; it is sent only when configured for a 2.6 model.
+      const params: ImageEditParamsNonStreaming & { complexity?: ImageGenerationConfig["complexity"] } = {
+        model,
+        image: images,
+        ...(maskFile ? { mask: maskFile } : {}),
+        prompt: providerPrompt,
+        quality,
+        size,
+        output_format: "png",
+        background: "opaque",
+        n: 1,
+        ...(complexity && isModelGeneration26(model) ? { complexity } : {}),
+      };
+      return client.images.edit(params);
     };
     const editWithSizeFallback = async (images: File[]) => {
       try {
         return { response: await edit(requestedSize, images), resolvedSize: requestedSize };
       } catch (error) {
-        if (!isSizeRejection(error)) throw error;
+        if (this.config.canvasProfile === "stable" || !(isSizeRejection(error) || isExperimentalCanvasRejection(error))) throw error;
         fallbackReasons.push("size");
         const fallbackSize = resolveFallbackCanvas(person.width, person.height);
         return { response: await edit(fallbackSize, images), resolvedSize: fallbackSize };
@@ -266,7 +303,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
       const compatibilityInputs = await Promise.all(parts.map((part, index) => providerSafeUpload(part, Boolean(background && index === 0))));
       console.warn("try_on_provider_image_fallback", {
         requestId: input.requestId,
-        model: MODEL,
+        model,
         maxEdge: PROVIDER_COMPATIBILITY_EDGE,
         images: compatibilityInputs.map((image, index) => ({
           name: image.name,
@@ -293,12 +330,12 @@ export class OpenAITryOnProvider implements TryOnProvider {
       contentType: "image/png",
       metadata: {
         provider: "openai",
-        model: MODEL,
+        model,
         quality,
         durationMs: Date.now() - startedAt,
         // response.quality/usage are OpenAI's own server-reported values, distinct
         // from the `quality` we requested above — see TryOnMetadata for why this matters.
-        provenance: { promptVersion: "atelier-v4-scoped-authority", backgroundControl: input.backgroundControl, preprocessingVersion: guidance ? "full-detail-v1" : "crop-v2-orientation", fabricGuidance: input.fabricGuidance, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
+        provenance: { promptVersion: "atelier-v5-stripe-rendering", backgroundControl: input.backgroundControl, preprocessingVersion: preprocessingVersionFor(applied), fabricGuidance: applied, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
         reportedQuality: response.quality,
         requestedSize,
         reportedSize: response.size ?? resolvedSize,

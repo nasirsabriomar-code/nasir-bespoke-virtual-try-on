@@ -8,6 +8,8 @@ PANEL MATERIAL POLICY: Assigned cloth controls base-panel colour, weave, pattern
 
 export const FABRIC_SCALE_POLICY = `
 INTRINSIC REPEAT SCALE: Camera distance, swatch zoom and detail cropping do not change a cloth's physical repeat. Use supplied repeat measurements as guidance; never equate source pixels with centimetres or infer exact body measurements. Keep intrinsic repeat density consistent within each panel while allowing perspective compression and bending over folds. A close detail supplies weave and motif edges, not a larger physical repeat. Fabric repeat size is separate from lapel, pocket and button proportions. Preserve the actual colours of all lines, including coloured stripes; do not borrow colours from the room or former outfit.
+
+STRIPE RENDERING: Judge the cloth as it reads at the customer's viewing distance. A pinstripe made of tiny dots or slubs in the close-up swatch renders on the garment as one fine, continuous, unbroken line of constant width. Never draw dashed, broken, chalky, zig-zag or crossing stripe lines. Stripes run with the grain of each panel, follow the lapel roll on lapels, and bend only where the cloth visibly folds.
 `.trim();
 
 export const PATTERN_GEOMETRY = `

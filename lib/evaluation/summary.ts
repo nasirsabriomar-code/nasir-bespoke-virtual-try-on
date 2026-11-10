@@ -1,11 +1,12 @@
 export type EvaluationResult = {
   caseId: string; condition: string; accepted: boolean; durationMs: number;
   costUsd: number | null; failed?: boolean;
+  inputTokens?: number; outputTokens?: number;
   scores: { scale: number; colour: number; construction: number; background: number; identity: number } | null;
 };
 const SCORE_KEYS = ["scale", "colour", "construction", "background", "identity"] as const;
 function validRow(row: EvaluationResult) {
-  if (!row || typeof row !== "object" || typeof row.caseId !== "string" || !row.caseId.trim() || typeof row.condition !== "string" || !row.condition.trim() || typeof row.accepted !== "boolean" || (row.failed !== undefined && typeof row.failed !== "boolean") || !Number.isFinite(row.durationMs) || row.durationMs < 0 || (row.costUsd !== null && (!Number.isFinite(row.costUsd) || row.costUsd < 0))) return false;
+  if (!row || typeof row !== "object" || typeof row.caseId !== "string" || !row.caseId.trim() || typeof row.condition !== "string" || !row.condition.trim() || typeof row.accepted !== "boolean" || (row.failed !== undefined && typeof row.failed !== "boolean") || !Number.isFinite(row.durationMs) || row.durationMs < 0 || (row.costUsd !== null && (!Number.isFinite(row.costUsd) || row.costUsd < 0)) || [row.inputTokens, row.outputTokens].some(tokens => tokens !== undefined && (!Number.isFinite(tokens) || tokens < 0))) return false;
   if (row.failed) return row.accepted === false && row.scores === null;
   const scores = row.scores;
   if (!scores || typeof scores !== "object") return false;
@@ -25,6 +26,8 @@ export function summarizeEvaluations(results: EvaluationResult[]) {
       medianDurationMs: sorted.length % 2 ? sorted[Math.floor(sorted.length / 2)] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2,
       p95DurationMs: sorted[Math.ceil(sorted.length * .95) - 1],
       meanScores: scored.length ? Object.fromEntries(SCORE_KEYS.map(key => [key, scored.reduce((sum, row) => sum + row.scores[key], 0) / scored.length])) : null,
+      meanInputTokens: rows.every(row => row.inputTokens !== undefined) ? rows.reduce((sum, row) => sum + row.inputTokens!, 0) / rows.length : null,
+      meanOutputTokens: rows.every(row => row.outputTokens !== undefined) ? rows.reduce((sum, row) => sum + row.outputTokens!, 0) / rows.length : null,
       costsComplete, totalCostUsd, costPerAcceptedUsd: totalCostUsd !== null && accepted ? totalCostUsd / accepted : null,
     };
   });

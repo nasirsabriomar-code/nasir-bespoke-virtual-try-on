@@ -107,3 +107,12 @@ test("three-piece jacket prompt isolates jacket buttons from the full-ensemble c
   assert.match(prompt, /never two buttons stacked in the same spot/);
   assert.match(prompt, /one button per hole/);
 });
+
+test("split fabric role lines assign pattern and pattern scale to each cloth", async () => {
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify({ ...DEFAULT_SPLIT_OUTFIT_STATE, upperId: "SUIT_UPPER_THREE_PIECE", waistcoatId: "SUIT_WAISTCOAT_CLASSIC" }));
+  const prompt = buildSplitOutfitPrompt(resolved, { jacket: true, trousers: true, shirt: true, waistcoat: true });
+  for (const piece of ["jacket", "trousers", "shirt", "waistcoat"]) {
+    assert.match(prompt, new RegExp(`physical showroom fabric for the ${piece} only\\. Absolute cloth: exact colour, shade, texture, pattern and pattern scale\\.`));
+  }
+  assert.doesNotMatch(prompt, /Absolute cloth: exact colour, shade, and texture\./);
+});

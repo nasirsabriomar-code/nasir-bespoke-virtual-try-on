@@ -2,7 +2,7 @@
 
 Private AI visualization software for luxury men's bespoke tailoring.
 
-Authorized Nasir Bespoke staff can upload a male customer/model photo, upload a physical fabric photo, optionally upload an outfit photo or choose a visual men's garment configuration, and generate a try-on visualization with OpenAI's GPT Image 2.5 Sunburst.
+Authorized Nasir Bespoke staff can upload a male customer/model photo, upload a physical fabric photo, optionally upload an outfit photo or choose a visual men's garment configuration, and generate a try-on visualization with OpenAI's GPT Image 2.6 Sunburst (configurable).
 
 ## Product principle
 
@@ -18,7 +18,7 @@ The employee never writes an AI prompt. The server resolves catalog selections a
 - Tailwind CSS 4
 - Node.js 22.13+
 - OpenAI Node SDK 7.4
-- GPT Image 2.5 Sunburst (gpt-image-2.5-sunburst), fixed medium effort and private PNG masters
+- GPT Image 2.6 Sunburst (gpt-image-2.6-sunburst) by default, configurable via IMAGE_* env vars, and private PNG masters
 - Upstash Redis and Ratelimit
 - Private Cloudflare R2 image storage and Neon permanent history
 - Vercel deployment
@@ -148,7 +148,7 @@ See CONTRIBUTING.md. This project is internal and men's-only by design. Do not a
 
 ## Generation quality and evaluation
 
-The current runtime selects `gpt-image-2.5-sunburst` at fixed medium effort, producing one opaque PNG. It preserves the customer's aspect ratio within supported pixel and edge limits; high-resolution requests have a lower-resolution fallback for provider size rejections. Image-format normalization is a separate compatibility fallback. No ambiguous paid-call retry is enabled.
+The runtime defaults to `gpt-image-2.6-sunburst` at medium quality, producing one opaque PNG. `IMAGE_MODEL`, `IMAGE_QUALITY`, `IMAGE_CANVAS_PROFILE`, `IMAGE_COMPLEXITY` and `FABRIC_TREATMENT_DEFAULT` (see `.env.example`) change this without a code change; invalid values stop the app at startup, and `IMAGE_MODEL=gpt-image-2.5-sunburst` rolls back. It preserves the customer's aspect ratio within supported pixel and edge limits; high-resolution requests have a lower-resolution fallback for provider size rejections. Image-format normalization is a separate compatibility fallback. No ambiguous paid-call retry is enabled.
 
 History retains sanitized provider usage and generation provenance when available. Staff feedback and favourites are private to each signed-in account, persisted as small metadata records in Redis in production; local development uses memory. Review records contain controlled categories and no customer images or free-form prompts. Generation deletion and retention cleanup also remove associated review keys. Completed generations default to 30-day retention; see SECURITY.md.
 

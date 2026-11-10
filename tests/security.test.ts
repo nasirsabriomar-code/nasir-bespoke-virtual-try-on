@@ -21,6 +21,7 @@ import {
 } from "@/lib/rate-limit";
 import { isSameOriginRequest } from "@/lib/request-security";
 import { centerFabricRepeat, OpenAITryOnProvider } from "@/lib/tryon/providers/openai";
+import { DEFAULT_IMAGE_MODEL } from "@/lib/tryon/model-config";
 import { MAX_IMAGE_BYTES } from "@/lib/validation";
 import { validateImageFile } from "@/lib/validate-image";
 
@@ -330,7 +331,7 @@ test("production fails closed when persistent rate limiting is not configured", 
   setNodeEnv(originalNodeEnv);
 });
 
-test("GPT Image 2.5 provider submits both references in order with controlled settings", async () => {
+test("GPT Image provider submits both references in order with controlled settings", async () => {
   let captured: Record<string, unknown> | null = null;
   const fakeClient = {
     images: {
@@ -359,7 +360,7 @@ test("GPT Image 2.5 provider submits both references in order with controlled se
 
   assert.ok(captured);
   const parameters = captured as Record<string, unknown>;
-  assert.equal(parameters.model, "gpt-image-2.5-sunburst");
+  assert.equal(parameters.model, DEFAULT_IMAGE_MODEL);
   assert.equal(parameters.quality, "medium");
   assert.equal(parameters.output_format, "png");
   assert.equal(parameters.background, "opaque");
@@ -443,7 +444,7 @@ test("GPT Image provider retries an invalid image response with normalized 4K-co
   assert.equal(normalizedPerson.height, 960);
 });
 
-test("GPT Image 2.5 provider places the construction photo before the fabric photos", async () => {
+test("GPT Image provider places the construction photo before the fabric photos", async () => {
   let captured: Record<string, unknown> | null = null;
   const fakeClient = {
     images: {

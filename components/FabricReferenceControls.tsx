@@ -1,10 +1,16 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- previews are local object URLs only. */
 import { useState } from "react";
-import { DEFAULT_DETAIL_CROP, type FabricReferenceOptions, type DetailCrop } from "@/lib/tryon/fabric-guidance";
-export function FabricReferenceControls({ label, previewUrl, value, onChange, disabled }: { label: string; previewUrl: string; value?: FabricReferenceOptions; onChange: (value: FabricReferenceOptions) => void; disabled: boolean }) {
+import { DEFAULT_DETAIL_CROP, type FabricReferenceOptions, type FabricTreatment, type DetailCrop } from "@/lib/tryon/fabric-guidance";
+
+const TREATMENT_LABELS: Record<FabricTreatment, string> = {
+  "legacy-crop": "Centre crop (current)",
+  "full-swatch": "Whole swatch",
+  "full-detail": "Whole swatch + selected detail",
+};
+export function FabricReferenceControls({ label, previewUrl, value, onChange, disabled }: { label: string; previewUrl: string; value?: FabricReferenceOptions; onChange: (value: FabricReferenceOptions | undefined) => void; disabled: boolean }) {
   const [aspect, setAspect] = useState(1);
-  const options = value ?? { mode: "legacy-crop" as const };
+  const options: FabricReferenceOptions = value ?? { mode: "legacy-crop" };
   const crop = options.crop ?? DEFAULT_DETAIL_CROP;
   function updateCrop(field: keyof DetailCrop, next: number) {
     const updated = { ...crop, [field]: next };
@@ -16,8 +22,13 @@ export function FabricReferenceControls({ label, previewUrl, value, onChange, di
     <h3>{label}: pattern scale</h3>
     <fieldset disabled={disabled}>
       <legend>Reference treatment</legend>
-      <label><input type="checkbox" checked={options.mode === "full-detail"} onChange={event => onChange({ ...options, mode: event.target.checked ? "full-detail" : "legacy-crop" })} /> Use full swatch plus selected detail</label>
-      <p>The full swatch supplies pattern context; the selected detail shows weave and edges. The established centre-crop treatment remains available while evaluating results.</p>
+      <label>Fabric photo sent to the model
+        <select value={value?.mode ?? ""} onChange={event => onChange(event.target.value ? { ...options, mode: event.target.value as FabricTreatment } : undefined)}>
+          <option value="">Studio default</option>
+          {(Object.keys(TREATMENT_LABELS) as FabricTreatment[]).map(mode => <option key={mode} value={mode}>{TREATMENT_LABELS[mode]}</option>)}
+        </select>
+      </label>
+      <p>Whole swatch keeps the full stripe or check layout and is recommended for fine pinstripes. Whole swatch + detail adds a close-up for weave and edges. Centre crop is the earlier treatment, kept for comparison.</p>
       {options.mode === "full-detail" ? <>
         <div className="fabric-reference-preview-grid">
           <figure><figcaption>Full swatch with selected detail</figcaption><div className="fabric-crop-source"><img src={previewUrl} alt={`${label} full swatch`} onLoad={event => setAspect(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} /><span aria-hidden="true" style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` }} /></div></figure>

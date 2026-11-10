@@ -18,7 +18,7 @@ This is a Next.js App Router application. Server-rendered route protection is us
                       ├── streamed body / image validation and upload ownership
                       ├── catalog/configuration resolution
                       ├── deterministic prompt compiler
-                      ├── OpenAI GPT Image 2.5 Sunburst
+                      ├── OpenAI GPT Image 2.6 Sunburst (configurable)
                       ├── private Cloudflare R2 assets
                       ├── Neon upload ledger and permanent history
                       └── Upstash bounded history and account-scoped reviews
@@ -111,8 +111,8 @@ The frontend is not coupled to OpenAI. lib/tryon/index.ts selects the configured
 
 The current provider calls the official SDK image edit operation with:
 
-- model: gpt-image-2.5-sunburst
-- quality: fixed medium in the current provider
+- model: gpt-image-2.6-sunburst by default (IMAGE_MODEL; see lib/tryon/model-config.ts)
+- quality: medium by default (IMAGE_QUALITY)
 - size: aspect-preserving custom dimensions within supported edge/pixel limits, with a size-rejection fallback
 - output: one opaque PNG
 - provider timeout: 165 seconds; route maxDuration: 300 seconds; browser request deadline: 285 seconds
