@@ -1,3 +1,4 @@
+import "./helpers/hermetic-image-env";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
@@ -163,7 +164,7 @@ test("provider mask stays PNG and matches the first image across compatibility a
     if (attempts === 2) throw { status: 400, message: "Unsupported size dimensions" };
     return { data: [{ b64_json: encoded }], quality: "medium", size: request.size };
   } } };
-  const provider = new OpenAITryOnProvider(() => client as unknown as ReturnType<typeof createOpenAIClient>);
+  const provider = new OpenAITryOnProvider(() => client as unknown as ReturnType<typeof createOpenAIClient>, { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "experimental", fabricTreatmentDefault: "legacy-crop" });
   const output = await provider.generate({ person, fabric, references: [], selection: { mode: "level1", categoryId: "suit", designId: "SUIT_01_CLASSIC" }, requestId: "synthetic-provider-test", prompt: "Synthetic instructions", fabricGuidance: { fabric: { mode: "full-detail", repeatWidthCm: 4 } }, backgroundControl: { mode: "composite", region: { x: .25, y: .25, width: .5, height: .5 }, featherPixels: 0 } });
   assert.equal(attempts, 3); assert.equal(output.metadata.outputWidth, 32);
   assert.deepEqual(output.metadata.provenance?.fallbackReasons, ["image-format", "size"]);

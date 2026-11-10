@@ -1,3 +1,4 @@
+import "./helpers/hermetic-image-env";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
