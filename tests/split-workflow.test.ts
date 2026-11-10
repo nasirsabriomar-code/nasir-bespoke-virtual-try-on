@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtemp, writeFile, readFile, mkdir, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import sharp from "sharp";
 import { parseComparisonManifest, comparisonConditions } from "@/lib/evaluation/manifest";
@@ -12,7 +13,7 @@ import { parsePendingGeneration } from "@/lib/pending-generation";
 import { parseReview } from "@/lib/history/review-types";
 import { buildResultSummary } from "@/lib/result-summary";
 
-const manifest = () => ({ version: 1, experiment: "fabric-treatment", repetitions: 1, cases: [{ id: "one", recipe: DEFAULT_SPLIT_OUTFIT_STATE, person: "fixture.png", fabrics: { fabric: "fixture.png", lowerFabric: "fixture.png" }, references: { "split-upper": "fixture.png", "split-lower": "fixture.png", "split-shirt": "fixture.png", "split-footwear": "fixture.png" } }] });
+const manifest = (fixture = "fixture.png") => ({ version: 1, experiment: "fabric-treatment", repetitions: 1, cases: [{ id: "one", recipe: DEFAULT_SPLIT_OUTFIT_STATE, person: fixture, fabrics: { fabric: fixture, lowerFabric: fixture }, references: { "split-upper": fixture, "split-lower": fixture, "split-shirt": fixture, "split-footwear": fixture } }] });
 test("comparison conditions change one factor, and reject duplicate IDs and invalid bounds", () => {
   assert.equal(parseComparisonManifest(manifest()).cases.length, 1);
   assert.throws(() => parseComparisonManifest({ ...manifest(), cases: [...manifest().cases, ...manifest().cases] }));
@@ -48,7 +49,7 @@ test("offline comparison produces production packets, refuses overwrites and esc
     await writeFile(path.join(root, "no-network.mjs"), 'globalThis.fetch = () => { throw new Error("Offline tool attempted network access"); };');
     const env = { ...process.env };
     for (const key of Object.keys(env)) if (/^(DATABASE_|UPSTASH_|NASIR_|R2_|OPENAI_|AUTH_|BLOB_)/.test(key)) delete env[key];
-    const run = (script: string, args: string[]) => spawnSync(process.execPath, ["--import=tsx", `--import=${path.join(root, "no-network.mjs")}`, script, ...args], { cwd: process.cwd(), env, encoding: "utf8" });
+    const run = (script: string, args: string[]) => spawnSync(process.execPath, ["--import=tsx", `--import=${pathToFileURL(path.join(root, "no-network.mjs")).href}`, script, ...args], { cwd: process.cwd(), env, encoding: "utf8" });
     const output = path.join(root, "prepared");
     const prepared = run("scripts/prepare-outfit-comparison.mts", [path.join(root, "manifest.json"), output]);
     assert.equal(prepared.status, 0, prepared.stderr);
@@ -69,8 +70,8 @@ test("offline comparison produces production packets, refuses overwrites and esc
     assert.equal(run("scripts/report-outfit-comparison.mts", [output, "review.html"]).status, 0);
     assert.match(await readFile(path.join(output, "review.html"), "utf8"), /one-A-1\/generated.png/);
     await mkdir(path.join(root, "confined"));
-    await symlink(path.join(root, "fixture.png"), path.join(root, "confined", "fixture.png"));
-    await writeFile(path.join(root, "confined", "manifest.json"), JSON.stringify(manifest()));
+    await symlink(root, path.join(root, "confined", "outside"), "junction");
+    await writeFile(path.join(root, "confined", "manifest.json"), JSON.stringify(manifest("outside/fixture.png")));
     const escaped = run("scripts/prepare-outfit-comparison.mts", [path.join(root, "confined", "manifest.json"), path.join(root, "escaped")]);
     assert.notEqual(escaped.status, 0);
     assert.match(escaped.stderr, /escapes/);
