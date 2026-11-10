@@ -1,6 +1,6 @@
 import { prepareBackgroundEdit, compositeBackground } from "../background-preservation";
 import { orderGenerationImages, renderInputManifest, promptImageIndicesAreValid } from "../image-layout";
-import { CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY } from "../pattern-geometry";
+import { CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY, FABRIC_PATTERN_GUIDANCE } from "../pattern-geometry";
 import { cropFabricDetail } from "./../fabric-reference";
 import { DEFAULT_DETAIL_CROP, type FabricGuidance, type FabricReferenceOptions, type FabricRole, type FabricTreatment } from "./../fabric-guidance";
 import { UploadValidationError } from "@/lib/validation";
@@ -165,25 +165,32 @@ function inputParts(input: TryOnInput): ImagePart[] {
 const STEM_TO_FABRIC: Record<string, FabricRole> = { "fabric-reference": "fabric", "lower-fabric-reference": "lowerFabric", "shirt-fabric-reference": "shirtFabric", "waistcoat-fabric-reference": "waistcoatFabric" };
 export async function prepareProviderReferences(input: TryOnInput, defaultTreatment: FabricTreatment = "legacy-crop"): Promise<{ parts: ImagePart[]; guidance: string; applied: FabricGuidance }> {
   const applied: FabricGuidance = {};
-  const details: { part: ImagePart; fullIndex: number; role: FabricRole; options: FabricReferenceOptions }[] = [];
+  const details: { part: ImagePart; fullIndex: number; role: FabricRole }[] = [];
+  const lines: string[] = [];
   const parts: ImagePart[] = [];
   for (const [index, part] of inputParts(input).entries()) {
     const role = STEM_TO_FABRIC[part.stem];
     if (!isFabricStem(part.stem) || !role) { parts.push(part); continue; }
-    const options: FabricReferenceOptions = input.fabricGuidance?.[role] ?? { mode: defaultTreatment };
+    const reference = input.fabricGuidance?.[role];
+    const mode = reference?.mode && reference.mode !== "studio-default" ? reference.mode : defaultTreatment;
+    const options: FabricReferenceOptions = { ...reference, mode };
     applied[role] = options;
+    const imageIndex = index + 1;
+    if (options.pattern) lines.push(`Pattern guidance for Image ${imageIndex} (${role}): ${FABRIC_PATTERN_GUIDANCE[options.pattern]}`);
+    const measurements = [
+      options.repeatWidthCm === undefined ? null : `width ${options.repeatWidthCm} cm`,
+      options.repeatHeightCm === undefined ? null : `height ${options.repeatHeightCm} cm`,
+    ].filter(Boolean);
+    if (measurements.length) lines.push(`Measured physical repeat for Image ${imageIndex}: ${measurements.join(", ")}. Use this as garment pattern-scale guidance, not a garment sizing measurement.`);
     if (options.mode === "legacy-crop") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
     parts.push({ ...part, image: await uprightImage(part.image) });
     if (options.mode === "full-swatch") continue;
-    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: index + 1, role, options });
+    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: imageIndex, role });
   }
-  const lines: string[] = [];
   for (const detail of details) {
-    const { options } = detail;
     const number = parts.length + 1;
     parts.push(detail.part);
     lines.push(`Image ${detail.fullIndex} is the complete ${detail.role} swatch: it controls repeat scale, pattern density and colour. Image ${number} is a cropped detail from that same swatch: use it only to inspect weave and motif edges, never to enlarge the repeat or infer a new physical scale. Ignore rulers, calibration marks and the swatch background.`);
-    if (options.repeatWidthCm || options.repeatHeightCm) lines.push(`Measured physical repeat for Image ${detail.fullIndex}: ${options.repeatWidthCm ? `width ${options.repeatWidthCm} cm` : "width unspecified"}; ${options.repeatHeightCm ? `height ${options.repeatHeightCm} cm` : "height unspecified"}. Use this as garment pattern-scale guidance, not a garment sizing measurement.`);
   }
   if (parts.length > 16) throw new UploadValidationError("Too many visual references. Reduce the number of fabric detail references.", "invalid_image");
   return { parts, guidance: lines.length ? "FABRIC SCALE AND DETAIL AUTHORITY:\n" + lines.join("\n") : "", applied };
@@ -267,8 +274,8 @@ export class OpenAITryOnProvider implements TryOnProvider {
         return new File([new Uint8Array(mask)], "garment-mask.png", { type: "image/png" });
       })() : undefined;
       providerAttempts++;
-      // SDK 7.4.0 predates the 2.6 `complexity` field; it is sent only when configured for a 2.6 model.
-      const params: ImageEditParamsNonStreaming & { complexity?: ImageGenerationConfig["complexity"] } = {
+      // SDK 7.4.0 serializes these fields but its types predate the higher quality tiers and 2.6 complexity.
+      const params: Omit<ImageEditParamsNonStreaming, "quality"> & Pick<ImageGenerationConfig, "quality" | "complexity"> = {
         model,
         image: images,
         ...(maskFile ? { mask: maskFile } : {}),
@@ -280,7 +287,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
         n: 1,
         ...(complexity && isModelGeneration26(model) ? { complexity } : {}),
       };
-      return client.images.edit(params);
+      return client.images.edit(params as ImageEditParamsNonStreaming);
     };
     const editWithSizeFallback = async (images: File[]) => {
       try {
@@ -335,7 +342,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
         durationMs: Date.now() - startedAt,
         // response.quality/usage are OpenAI's own server-reported values, distinct
         // from the `quality` we requested above — see TryOnMetadata for why this matters.
-        provenance: { promptVersion: "atelier-v5-stripe-rendering", backgroundControl: input.backgroundControl, preprocessingVersion: preprocessingVersionFor(applied), fabricGuidance: applied, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
+        provenance: { promptVersion: "atelier-v6-fabric-pattern", backgroundControl: input.backgroundControl, preprocessingVersion: preprocessingVersionFor(applied), fabricGuidance: applied, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
         reportedQuality: response.quality,
         requestedSize,
         reportedSize: response.size ?? resolvedSize,

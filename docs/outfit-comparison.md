@@ -57,7 +57,7 @@ The existing summarizer counts failures/rejections and reports unknown costs as 
 
 ## Matrix experiments and paid runs
 
-A `"matrix"` manifest compares 2 to 8 named generation configs on every case. Each condition's `config` may set `model` (`gpt-image-2.5-sunburst`, `gpt-image-2.6-sunburst`, `gpt-image-2.6-flare`), `quality` (`medium`, `high`), `canvasProfile` (`experimental`, `stable`), `complexity` (`low`, `medium`, `high`; 2.6 models only) and `fabricTreatmentDefault` (`legacy-crop`, `full-swatch`, `full-detail`). Omitted keys use the code defaults, not the live environment.
+A `"matrix"` manifest compares 2 to 8 named generation configs on every case. Each condition's `config` may set `model` (`gpt-image-2.5-sunburst`, `gpt-image-2.6-sunburst`, `gpt-image-2.6-flare`), `quality` (`medium`, `high`, `xhigh`, `max`), `canvasProfile` (`experimental`, `stable`), `complexity` (`low`, `medium`, `high`; 2.6 models only) and `fabricTreatmentDefault` (`legacy-crop`, `full-swatch`, `full-detail`). Omitted keys use the code defaults, not the live environment.
 
 ```json
 {

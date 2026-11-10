@@ -59,6 +59,16 @@ test("edit call carries configured values", async () => {
   assert.equal(output.metadata.quality, "high");
 });
 
+test("higher image quality tiers reach the edit request on the stable canvas", async () => {
+  for (const quality of ["xhigh", "max"]) {
+    const config = resolveImageGenerationConfig({ IMAGE_QUALITY: quality, IMAGE_CANVAS_PROFILE: "stable" });
+    const { request, output, person } = await recordEdit(config);
+    assert.equal(request.quality, quality);
+    assert.equal(request.size, resolveFallbackCanvas(person.width, person.height));
+    assert.equal(output.metadata.quality, quality);
+  }
+});
+
 test("never sends complexity to 2.5", async () => {
   const { request } = await recordEdit({ model: "gpt-image-2.5-sunburst", quality: "medium", canvasProfile: "experimental", fabricTreatmentDefault: "legacy-crop" });
   assert.equal("complexity" in request, false);

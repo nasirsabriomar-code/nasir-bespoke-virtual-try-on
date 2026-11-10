@@ -219,6 +219,19 @@ test("parseFabricGuidance accepts full-swatch and still rejects unknown modes", 
   assert.throws(() => parseFabricGuidance({ fabric: { mode: "zoomed" } }));
 });
 
+test("studio whole swatch sends the measured repeat and pattern without a detail crop", async () => {
+  const swatch = await image("navy", 800, 1200);
+  const options = { mode: "studio-default", pattern: "chalk-stripe", repeatWidthCm: 1.2 } as const;
+  const guidance = parseFabricGuidance({ fabric: options });
+  const input = swatchInput(swatch, await image("grey"), guidance);
+  const result = await prepareProviderReferences(input, "full-swatch");
+  assert.deepEqual(result.applied.fabric, { ...options, mode: "full-swatch" });
+  assert.equal(result.parts.some(part => part.stem.endsWith("-detail")), false);
+  assert.match(result.guidance, /Measured physical repeat for Image 2: width 1\.2 cm/);
+  assert.match(result.guidance, /Pattern guidance for Image 2 .*soft, feathered edges/);
+  assert.throws(() => parseFabricGuidance({ fabric: { ...options, pattern: "arbitrary prompt" } }));
+});
+
 test("full-swatch manifest keeps the label/ruler instruction", async () => {
   const { prepareProviderPacket } = await import("@/lib/tryon/providers/openai");
   const packet = await prepareProviderPacket(swatchInput(await image("navy", 64, 64), await image("grey", 64, 64), { fabric: { mode: "full-swatch" } }), { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault: "legacy-crop" });
