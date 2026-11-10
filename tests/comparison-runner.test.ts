@@ -17,11 +17,11 @@ const baseCase = { id: "one", recipe: DEFAULT_SPLIT_OUTFIT_STATE, person: "p.png
 const matrix = (conditions: unknown) => ({ version: 1, experiment: "matrix", repetitions: 1, cases: [baseCase], conditions });
 
 test("matrix manifest validates conditions", () => {
-  const parsed = parseComparisonManifest(matrix([{ id: "A", config: { model: "gpt-image-2.5-sunburst" } }, { id: "B", config: { model: "gpt-image-2.6-flare", quality: "high", fabricTreatmentDefault: "full-swatch" } }]));
+  const parsed = parseComparisonManifest(matrix([{ id: "A", config: { model: "gpt-image-2.5-sunburst" } }, { id: "B", config: { model: "gpt-image-2.6-flare", quality: "max", fabricTreatmentDefault: "full-swatch" } }]));
   const conditions = resolveRunConditions(parsed);
   assert.equal(conditions.length, 2);
   assert.equal(conditions[0].config.model, "gpt-image-2.5-sunburst");
-  assert.equal(conditions[1].config.quality, "high");
+  assert.equal(conditions[1].config.quality, "max");
   assert.equal(conditions[1].config.fabricTreatmentDefault, "full-swatch");
   assert.throws(() => parseComparisonManifest(matrix([{ id: "A", config: { model: "gpt-image-9" } }, { id: "B", config: {} }])), /Unsupported IMAGE_MODEL/);
   assert.throws(() => parseComparisonManifest(matrix([{ id: "A", config: {} }])), /2 to 8 conditions/);
