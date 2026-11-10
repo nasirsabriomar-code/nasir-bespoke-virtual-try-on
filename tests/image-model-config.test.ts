@@ -1,3 +1,4 @@
+import "./helpers/hermetic-image-env";
 import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
@@ -64,8 +65,15 @@ test("never sends complexity to 2.5", async () => {
   assert.equal(request.model, "gpt-image-2.5-sunburst");
 });
 
+const TUNING_KEYS = ["IMAGE_MODEL", "IMAGE_QUALITY", "IMAGE_CANVAS_PROFILE", "IMAGE_COMPLEXITY", "FABRIC_TREATMENT_DEFAULT"];
+
 test("default provider config reaches the edit request", async () => {
-  const { request, person } = await recordEdit();
+  // Hermetic: the developer's shell or a deployment may export tuning values.
+  const saved = Object.fromEntries(TUNING_KEYS.map(key => [key, process.env[key]]));
+  for (const key of TUNING_KEYS) delete process.env[key];
+  let recorded;
+  try { recorded = await recordEdit(); } finally { for (const key of TUNING_KEYS) if (saved[key] !== undefined) process.env[key] = saved[key]; }
+  const { request, person } = recorded;
   assert.equal(request.model, "gpt-image-2.6-sunburst");
   assert.equal(request.quality, "medium");
   assert.equal(request.size, resolveHighResolutionCanvas(person.width, person.height));

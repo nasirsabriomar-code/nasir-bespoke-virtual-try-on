@@ -1,3 +1,4 @@
+import "./helpers/hermetic-image-env";
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { APIConnectionTimeoutError } from "openai";
