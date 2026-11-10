@@ -311,7 +311,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
         durationMs: Date.now() - startedAt,
         // response.quality/usage are OpenAI's own server-reported values, distinct
         // from the `quality` we requested above — see TryOnMetadata for why this matters.
-        provenance: { promptVersion: "atelier-v4-scoped-authority", backgroundControl: input.backgroundControl, preprocessingVersion: guidance ? "full-detail-v1" : "crop-v2-orientation", fabricGuidance: input.fabricGuidance, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
+        provenance: { promptVersion: "atelier-v5-stripe-rendering", backgroundControl: input.backgroundControl, preprocessingVersion: guidance ? "full-detail-v1" : "crop-v2-orientation", fabricGuidance: input.fabricGuidance, promptHash: createHash("sha256").update(providerPrompt).digest("hex"), modelSnapshot: null, preprocessingMs, providerMs: Date.now() - providerStart, providerAttempts, fallbackReasons },
         reportedQuality: response.quality,
         requestedSize,
         reportedSize: response.size ?? resolvedSize,

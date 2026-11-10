@@ -21,10 +21,10 @@ function imageRoleLines(map: SplitImageMap) {
     "IMAGE ROLE MAPPING (critical):",
     "Image 1 — male customer/person photograph and the complete source scene.",
   ];
-  if (map.fabrics.jacket) lines.push(`Image ${map.fabrics.jacket} — physical showroom fabric for the jacket only. Absolute cloth: exact colour, shade, and texture.`);
-  if (map.fabrics.trousers) lines.push(`Image ${map.fabrics.trousers} — physical showroom fabric for the trousers only. Absolute cloth: exact colour, shade, and texture.`);
-  if (map.fabrics.shirt) lines.push(`Image ${map.fabrics.shirt} — physical showroom fabric for the shirt only. Absolute cloth: exact colour, shade, and texture.`);
-  if (map.fabrics.waistcoat) lines.push(`Image ${map.fabrics.waistcoat} — physical showroom fabric for the waistcoat only. Absolute cloth: exact colour, shade, and texture.`);
+  if (map.fabrics.jacket) lines.push(`Image ${map.fabrics.jacket} — physical showroom fabric for the jacket only. Absolute cloth: exact colour, shade, texture, pattern and pattern scale.`);
+  if (map.fabrics.trousers) lines.push(`Image ${map.fabrics.trousers} — physical showroom fabric for the trousers only. Absolute cloth: exact colour, shade, texture, pattern and pattern scale.`);
+  if (map.fabrics.shirt) lines.push(`Image ${map.fabrics.shirt} — physical showroom fabric for the shirt only. Absolute cloth: exact colour, shade, texture, pattern and pattern scale.`);
+  if (map.fabrics.waistcoat) lines.push(`Image ${map.fabrics.waistcoat} — physical showroom fabric for the waistcoat only. Absolute cloth: exact colour, shade, texture, pattern and pattern scale.`);
   lines.push(
     map.fabrics.jacket
       ? `Image ${map.construction.jacket} — NASIR BESPOKE approved jacket construction (cut, lapel, pockets, vents only — cloth from Image ${map.fabrics.jacket}).`

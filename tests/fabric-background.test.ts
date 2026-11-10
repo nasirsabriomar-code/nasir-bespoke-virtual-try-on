@@ -223,3 +223,21 @@ test("full-swatch manifest keeps the label/ruler instruction", async () => {
   const packet = await prepareProviderPacket(swatchInput(await image("navy", 64, 64), await image("grey", 64, 64), { fabric: { mode: "full-swatch" } }), { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault: "legacy-crop" });
   assert.match(packet.providerPrompt, /Do not reproduce reference labels or calibration marks\./);
 });
+
+test("stripe rendering rule appears exactly once in full-outfit and split provider prompts", async () => {
+  const { prepareProviderPacket } = await import("@/lib/tryon/providers/openai");
+  const config = { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault: "full-swatch" } as const;
+  const fixture = await image("navy", 64, 64);
+  const resolved = await resolveSplitOutfitRecipe(JSON.stringify(DEFAULT_SPLIT_OUTFIT_STATE));
+  const splitRefs = ["split-upper", "split-lower", "split-shirt", "split-footwear"].map(role => ({ role, image: fixture }));
+  const inputs = [
+    { person: fixture, fabric: fixture, references: [], selection: { mode: "level1" }, prompt: buildTryOnPrompt(undefined, { outfitProvided: false }) },
+    { person: fixture, fabric: fixture, lowerFabric: fixture, references: splitRefs, selection: { mode: "split" }, prompt: buildSplitOutfitPrompt(resolved, { jacket: true, trousers: true, shirt: false, waistcoat: false }) },
+  ];
+  for (const input of inputs) {
+    const packet = await prepareProviderPacket({ ...input, requestId: "stripe-rule" } as unknown as TryOnInput, config);
+    assert.equal(packet.providerPrompt.split("STRIPE RENDERING:").length - 1, 1);
+    assert.match(packet.providerPrompt, /one fine, continuous, unbroken line of constant width/);
+    assert.match(packet.providerPrompt, /follow the lapel roll on lapels/);
+  }
+});
