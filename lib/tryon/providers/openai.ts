@@ -2,7 +2,7 @@ import { prepareBackgroundEdit, compositeBackground } from "../background-preser
 import { orderGenerationImages, renderInputManifest, promptImageIndicesAreValid } from "../image-layout";
 import { CONSTRUCTION_PROPORTIONS, MATERIAL_POLICY, FABRIC_SCALE_POLICY } from "../pattern-geometry";
 import { cropFabricDetail } from "./../fabric-reference";
-import { DEFAULT_DETAIL_CROP, type FabricRole } from "./../fabric-guidance";
+import { DEFAULT_DETAIL_CROP, type FabricReferenceOptions, type FabricRole, type FabricTreatment } from "./../fabric-guidance";
 import { UploadValidationError } from "@/lib/validation";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -149,20 +149,21 @@ function inputParts(input: TryOnInput): ImagePart[] {
 }
 
 const STEM_TO_FABRIC: Record<string, FabricRole> = { "fabric-reference": "fabric", "lower-fabric-reference": "lowerFabric", "shirt-fabric-reference": "shirtFabric", "waistcoat-fabric-reference": "waistcoatFabric" };
-export async function prepareProviderReferences(input: TryOnInput): Promise<{ parts: ImagePart[]; guidance: string }> {
-  const details: { part: ImagePart; fullIndex: number; role: FabricRole }[] = [];
+export async function prepareProviderReferences(input: TryOnInput, defaultTreatment: FabricTreatment = "legacy-crop"): Promise<{ parts: ImagePart[]; guidance: string }> {
+  const details: { part: ImagePart; fullIndex: number; role: FabricRole; options: FabricReferenceOptions }[] = [];
   const parts: ImagePart[] = [];
   for (const [index, part] of inputParts(input).entries()) {
     const role = STEM_TO_FABRIC[part.stem];
-    const options = role ? input.fabricGuidance?.[role] : undefined;
-    if (!isFabricStem(part.stem)) { parts.push(part); continue; }
-    if (options?.mode !== "full-detail") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
+    if (!isFabricStem(part.stem) || !role) { parts.push(part); continue; }
+    const options: FabricReferenceOptions = input.fabricGuidance?.[role] ?? { mode: defaultTreatment };
+    if (options.mode === "legacy-crop") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
     parts.push({ ...part, image: await uprightImage(part.image) });
-    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: index + 1, role });
+    if (options.mode === "full-swatch") continue;
+    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: index + 1, role, options });
   }
   const lines: string[] = [];
   for (const detail of details) {
-    const options = input.fabricGuidance![detail.role]!;
+    const { options } = detail;
     const number = parts.length + 1;
     parts.push(detail.part);
     lines.push(`Image ${detail.fullIndex} is the complete ${detail.role} swatch: it controls repeat scale, pattern density and colour. Image ${number} is a cropped detail from that same swatch: use it only to inspect weave and motif edges, never to enlarge the repeat or infer a new physical scale. Ignore rulers, calibration marks and the swatch background.`);
@@ -197,7 +198,7 @@ export async function prepareProviderPacket(input: TryOnInput, config: ImageGene
   const person = await uprightImage(input.person);
   const requestedSize = resolveCanvasForProfile(config.canvasProfile, person.width, person.height);
   const background = input.backgroundControl && input.backgroundControl.mode !== "prompt-only" ? await prepareBackgroundEdit(person, requestedSize, input.backgroundControl) : null;
-  const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person });
+  const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person }, config.fabricTreatmentDefault);
   const regionInstruction = background
     ? `EDIT REGION (${input.backgroundControl!.mode}): Only the transparent garment region permits clothing, necessary revealed-background reconstruction and contact-shadow changes. Preserve all other regions. ${input.backgroundControl!.mode === "composite" ? "The normalized original outside this region will be retained by compositing; keep silhouette and lighting aligned at its boundary." : "The mask guides the edit; keep unaffected surroundings fixed."} Do not draw a rectangle or border.`
     : "EDIT REGION (prompt-only): Restrict changes to selected clothing/accessories and their necessary local silhouette, revealed-background and contact-shadow effects. Keep all unaffected surroundings fixed.";

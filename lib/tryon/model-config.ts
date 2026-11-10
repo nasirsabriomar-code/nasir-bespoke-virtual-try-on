@@ -1,11 +1,10 @@
-import type { FabricTreatment } from "./fabric-guidance";
+import { FABRIC_TREATMENTS, type FabricTreatment } from "./fabric-guidance";
 
 export const IMAGE_MODELS = ["gpt-image-2.5-sunburst", "gpt-image-2.6-sunburst", "gpt-image-2.6-flare"] as const;
 export type ImageModelId = typeof IMAGE_MODELS[number];
 export const IMAGE_QUALITIES = ["medium", "high"] as const;
 export const CANVAS_PROFILES = ["experimental", "stable"] as const;
 export const IMAGE_COMPLEXITIES = ["low", "medium", "high"] as const;
-export const FABRIC_TREATMENTS: readonly FabricTreatment[] = ["legacy-crop", "full-detail"];
 
 export type ImageGenerationConfig = {
   model: ImageModelId;
