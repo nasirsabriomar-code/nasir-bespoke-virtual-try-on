@@ -6,14 +6,13 @@ import { DEFAULT_DETAIL_CROP, type FabricRole } from "./../fabric-guidance";
 import { UploadValidationError } from "@/lib/validation";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import type { ImageEditParamsNonStreaming } from "openai/resources/images";
 import { createOpenAIClient } from "@/lib/openai";
 import type { TryOnInput, TryOnOutput, TryOnProvider } from "@/lib/tryon/types";
+import { isModelGeneration26, resolveImageGenerationConfig, type ImageGenerationConfig } from "@/lib/tryon/model-config";
 import { detectImageDimensions, type SupportedImageMime } from "@/lib/validation";
 
-// Precision-first variant of OpenAI's Images 2.5 generation, released 2026-09-08.
-// Rollback pin if the unpinned alias ever regresses: "gpt-image-2.5-sunburst-2026-09-08"
-const MODEL = "gpt-image-2.5-sunburst";
-const DEFAULT_QUALITY = "medium" as const;
+// Model, quality, canvas profile and complexity come from lib/tryon/model-config.ts.
 const EXPERIMENTAL_MAX_PIXELS = 3840 * 2160;
 const STABLE_MAX_PIXELS = 2560 * 1440;
 const PROVIDER_COMPATIBILITY_EDGE = 3840;
@@ -44,6 +43,11 @@ export function resolveHighResolutionCanvas(width?: number, height?: number) {
 
 export function resolveFallbackCanvas(width?: number, height?: number) {
   return canvasFor(width && height ? width : 9, width && height ? height : 16, STABLE_MAX_PIXELS);
+}
+
+/** Primary canvas for a profile. The stable profile has no larger size to fall back from. */
+export function resolveCanvasForProfile(profile: ImageGenerationConfig["canvasProfile"], width?: number, height?: number) {
+  return profile === "stable" ? resolveFallbackCanvas(width, height) : resolveHighResolutionCanvas(width, height);
 }
 
 function isSizeRejection(error: unknown) {
@@ -189,9 +193,9 @@ async function providerSafeUpload({ image, stem }: ImagePart, forcePng = false) 
 }
 
 /** Shared offline/production compiler. Does not contact a provider or storage. */
-export async function prepareProviderPacket(input: TryOnInput) {
+export async function prepareProviderPacket(input: TryOnInput, config: ImageGenerationConfig = resolveImageGenerationConfig()) {
   const person = await uprightImage(input.person);
-  const requestedSize = resolveHighResolutionCanvas(person.width, person.height);
+  const requestedSize = resolveCanvasForProfile(config.canvasProfile, person.width, person.height);
   const background = input.backgroundControl && input.backgroundControl.mode !== "prompt-only" ? await prepareBackgroundEdit(person, requestedSize, input.backgroundControl) : null;
   const { parts, guidance } = await prepareProviderReferences({ ...input, person: background?.image ?? person });
   const regionInstruction = background
@@ -206,16 +210,21 @@ export async function prepareProviderPacket(input: TryOnInput) {
 }
 
 export class OpenAITryOnProvider implements TryOnProvider {
+  private readonly config: ImageGenerationConfig;
+
   constructor(
     private readonly clientFactory: typeof createOpenAIClient = createOpenAIClient,
-  ) {}
+    config?: ImageGenerationConfig,
+  ) {
+    this.config = config ?? resolveImageGenerationConfig();
+  }
 
   async generate(input: TryOnInput): Promise<TryOnOutput> {
     const startedAt = Date.now();
-    const quality = DEFAULT_QUALITY;
+    const { model, quality, complexity } = this.config;
     const client = this.clientFactory();
 
-    const { person, requestedSize, background, parts, guidance, providerPrompt, imageInputs } = await prepareProviderPacket(input);
+    const { person, requestedSize, background, parts, guidance, providerPrompt, imageInputs } = await prepareProviderPacket(input, this.config);
 
     const preprocessingMs = Date.now() - startedAt;
     let providerAttempts = 0;
@@ -223,7 +232,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
     const providerStart = Date.now();
     console.info("try_on_provider_inputs", {
       requestId: input.requestId,
-      model: MODEL,
+      model,
       images: imageInputs.map((image) => ({ name: image.name, type: image.type, bytes: image.size })),
     });
     const edit = async (size: string, images: File[]) => {
@@ -233,23 +242,26 @@ export class OpenAITryOnProvider implements TryOnProvider {
         return new File([new Uint8Array(mask)], "garment-mask.png", { type: "image/png" });
       })() : undefined;
       providerAttempts++;
-      return client.images.edit({
-      model: MODEL,
-      image: images,
-      ...(maskFile ? { mask: maskFile } : {}),
-      prompt: providerPrompt,
-      quality,
-      size,
-      output_format: "png",
-      background: "opaque",
-      n: 1,
-    });
+      // SDK 7.4.0 predates the 2.6 `complexity` field; it is sent only when configured for a 2.6 model.
+      const params: ImageEditParamsNonStreaming & { complexity?: ImageGenerationConfig["complexity"] } = {
+        model,
+        image: images,
+        ...(maskFile ? { mask: maskFile } : {}),
+        prompt: providerPrompt,
+        quality,
+        size,
+        output_format: "png",
+        background: "opaque",
+        n: 1,
+        ...(complexity && isModelGeneration26(model) ? { complexity } : {}),
+      };
+      return client.images.edit(params);
     };
     const editWithSizeFallback = async (images: File[]) => {
       try {
         return { response: await edit(requestedSize, images), resolvedSize: requestedSize };
       } catch (error) {
-        if (!isSizeRejection(error)) throw error;
+        if (!isSizeRejection(error) || this.config.canvasProfile === "stable") throw error;
         fallbackReasons.push("size");
         const fallbackSize = resolveFallbackCanvas(person.width, person.height);
         return { response: await edit(fallbackSize, images), resolvedSize: fallbackSize };
@@ -266,7 +278,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
       const compatibilityInputs = await Promise.all(parts.map((part, index) => providerSafeUpload(part, Boolean(background && index === 0))));
       console.warn("try_on_provider_image_fallback", {
         requestId: input.requestId,
-        model: MODEL,
+        model,
         maxEdge: PROVIDER_COMPATIBILITY_EDGE,
         images: compatibilityInputs.map((image, index) => ({
           name: image.name,
@@ -293,7 +305,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
       contentType: "image/png",
       metadata: {
         provider: "openai",
-        model: MODEL,
+        model,
         quality,
         durationMs: Date.now() - startedAt,
         // response.quality/usage are OpenAI's own server-reported values, distinct

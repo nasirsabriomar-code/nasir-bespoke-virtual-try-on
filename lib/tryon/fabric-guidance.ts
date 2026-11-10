@@ -3,6 +3,7 @@ export const FABRIC_ROLES = ["fabric", "lowerFabric", "shirtFabric", "waistcoatF
 export type FabricRole = typeof FABRIC_ROLES[number];
 export type DetailCrop = { x: number; y: number; width: number; height: number };
 export type FabricReferenceOptions = { mode: "legacy-crop" | "full-detail"; crop?: DetailCrop; repeatWidthCm?: number; repeatHeightCm?: number };
+export type FabricTreatment = FabricReferenceOptions["mode"];
 export type FabricGuidance = Partial<Record<FabricRole, FabricReferenceOptions>>;
 export const DEFAULT_DETAIL_CROP: DetailCrop = { x: .25, y: .25, width: .5, height: .5 };
 export function parseFabricGuidance(raw: unknown): FabricGuidance {

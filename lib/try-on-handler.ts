@@ -45,6 +45,7 @@ import { generateTryOn } from "@/lib/tryon";
 import { grayscaleConstruction } from "@/lib/tryon/neutralize-construction";
 import type { TryOnInput, TryOnOutput } from "@/lib/tryon/types";
 import { buildTryOnPrompt } from "@/lib/tryon/prompt";
+import { resolveImageGenerationConfig, type ImageGenerationConfig } from "@/lib/tryon/model-config";
 import {
   BespokeConfigurationError,
   buildOutfitSpecification,
@@ -343,6 +344,18 @@ function safeProviderError(error: unknown) {
   };
 }
 
+// Resolved at module load so an invalid IMAGE_* setting fails at boot, not on a paid request.
+const IMAGE_CONFIG = resolveImageGenerationConfig();
+
+/** Provider/model/quality for usage records when the provider returned no metadata. */
+export function usageModelFallback(metadata: Partial<TryOnOutput["metadata"]> | undefined, config: ImageGenerationConfig = IMAGE_CONFIG) {
+  return {
+    provider: metadata?.provider ?? "openai",
+    model: metadata?.model ?? config.model,
+    quality: metadata?.quality ?? config.quality,
+  };
+}
+
 async function recordUsageSafely(
   dependencies: RouteDependencies,
   request: Request,
@@ -362,9 +375,7 @@ async function recordUsageSafely(
     status,
     device: getRequestDevice(request),
     durationMs,
-    provider: metadata?.provider ?? "openai",
-    model: metadata?.model ?? "gpt-image-2.5-sunburst",
-    quality: metadata?.quality ?? "medium",
+    ...usageModelFallback(metadata),
     metadata: sanitizeGenerationMetadata(metadata),
     generation,
     assets,
@@ -1127,8 +1138,8 @@ async function handleMultipartRequest(
         durationMs,
         {
           provider: "openai",
-          model: "gpt-image-2.5-sunburst",
-          quality: "medium",
+          model: IMAGE_CONFIG.model,
+          quality: IMAGE_CONFIG.quality,
         },
       );
     }
@@ -1170,7 +1181,7 @@ async function handleMultipartRequest(
         username: user.username,
         success: false,
         provider: "openai",
-        model: "gpt-image-2.5-sunburst",
+        model: IMAGE_CONFIG.model,
         durationMs,
       });
       return jsonError("OpenAI API key is not configured.", 503, rateHeaders);
@@ -1184,7 +1195,7 @@ async function handleMultipartRequest(
       username: user.username,
       success: false,
       provider: "openai",
-      model: "gpt-image-2.5-sunburst",
+      model: IMAGE_CONFIG.model,
       durationMs,
       ...errorMetadata,
     });
