@@ -241,3 +241,21 @@ test("stripe rendering rule appears exactly once in full-outfit and split provid
     assert.match(packet.providerPrompt, /follow the lapel roll on lapels/);
   }
 });
+
+test("provenance records the fabric treatment actually applied, including the studio default", async () => {
+  const fixture = await image("navy", 64, 64);
+  const encoded = Buffer.from(await fixture.file.arrayBuffer()).toString("base64");
+  const client = { images: { edit: async () => ({ data: [{ b64_json: encoded }] }) } };
+  const run = async (fabricTreatmentDefault: "legacy-crop" | "full-swatch" | "full-detail", fabricGuidance?: TryOnInput["fabricGuidance"]) => {
+    const provider = new OpenAITryOnProvider(() => client as unknown as ReturnType<typeof createOpenAIClient>, { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile: "stable", fabricTreatmentDefault });
+    return (await provider.generate({ person: fixture, fabric: fixture, lowerFabric: fixture, references: [], selection: { mode: "level1" }, prompt: "p", requestId: "prov", fabricGuidance } as unknown as TryOnInput)).metadata.provenance!;
+  };
+  const studioDefault = await run("full-swatch");
+  assert.deepEqual(studioDefault.fabricGuidance, { fabric: { mode: "full-swatch" }, lowerFabric: { mode: "full-swatch" } });
+  assert.equal(studioDefault.preprocessingVersion, "full-swatch-v1");
+  const mixed = await run("legacy-crop", { lowerFabric: { mode: "full-swatch" } });
+  assert.deepEqual(mixed.fabricGuidance, { fabric: { mode: "legacy-crop" }, lowerFabric: { mode: "full-swatch" } });
+  assert.equal(mixed.preprocessingVersion, "full-swatch-v1");
+  assert.equal((await run("legacy-crop")).preprocessingVersion, "crop-v2-orientation");
+  assert.equal((await run("full-detail")).preprocessingVersion, "full-detail-v1");
+});

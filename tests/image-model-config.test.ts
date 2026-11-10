@@ -77,3 +77,26 @@ test("history metadata falls back to configured model", () => {
   assert.deepEqual(usageModelFallback(undefined, config), { provider: "openai", model: "gpt-image-2.6-flare", quality: "high" });
   assert.deepEqual(usageModelFallback({ provider: "openai", model: "gpt-image-2.5-sunburst", quality: "medium" }, config), { provider: "openai", model: "gpt-image-2.5-sunburst", quality: "medium" });
 });
+
+async function attemptsFor(canvasProfile: "experimental" | "stable", rejection: Record<string, unknown>) {
+  const person = await image(90, 160);
+  const encoded = Buffer.from(await (await image(32, 32)).file.arrayBuffer()).toString("base64");
+  const sizes: string[] = [];
+  const client = { images: { edit: async (params: { size: string }) => { sizes.push(params.size); if (sizes.length === 1) throw rejection; return { data: [{ b64_json: encoded }] }; } } };
+  const provider = new OpenAITryOnProvider(() => client as unknown as ReturnType<typeof createOpenAIClient>, { model: "gpt-image-2.6-sunburst", quality: "medium", canvasProfile, fabricTreatmentDefault: "legacy-crop" });
+  const input = { person, fabric: await image(64, 64), references: [], selection: { mode: "level1" }, requestId: "canvas", prompt: "p" } as unknown as TryOnInput;
+  try { const output = await provider.generate(input); return { sizes, fallbackReasons: output.metadata.provenance?.fallbackReasons, person }; } catch (error) { return { sizes, error, person }; }
+}
+
+test("experimental canvas falls back to the stable size on any unrecognised 400 rejection", async () => {
+  const { sizes, fallbackReasons, person } = await attemptsFor("experimental", { status: 400, message: "Requested output is not available for this model." });
+  assert.deepEqual(sizes, [resolveHighResolutionCanvas(person.width, person.height), resolveFallbackCanvas(person.width, person.height)]);
+  assert.deepEqual(fallbackReasons, ["size"]);
+});
+
+test("moderation blocks and the stable canvas are never retried", async () => {
+  const blocked = await attemptsFor("experimental", { status: 400, code: "moderation_blocked", message: "Your request was rejected by the safety system." });
+  assert.equal(blocked.sizes.length, 1); assert.ok(blocked.error);
+  const stable = await attemptsFor("stable", { status: 400, message: "Unsupported size dimensions" });
+  assert.equal(stable.sizes.length, 1); assert.ok(stable.error);
+});
