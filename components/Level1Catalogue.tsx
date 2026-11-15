@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useModalDialog } from "@/components/hooks/useModalDialog";
 import type { Level1CatalogueDesignView, Level1CatalogueView } from "@/lib/catalog/level1-types";
 
 type Level1CatalogueProps = {
@@ -30,30 +31,27 @@ export function Level1Catalogue({
   const designs = catalogue.designs.filter((design) => design.categoryId === activeCategory?.id);
   const [inspectingDesign, setInspectingDesign] = useState<Level1CatalogueDesignView | null>(null);
   const [choosingVariantDesign, setChoosingVariantDesign] = useState<Level1CatalogueDesignView | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const viewerDialogRef = useRef<HTMLDivElement | null>(null);
+  const viewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const variantDialogRef = useRef<HTMLDivElement | null>(null);
+  const variantCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  // Close modal on Escape key & manage body scroll lock
-  useEffect(() => {
-    if (!inspectingDesign && !choosingVariantDesign) return;
+  const closeViewer = () => setInspectingDesign(null);
+  const closeVariant = () => setChoosingVariantDesign(null);
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+  useModalDialog({
+    open: Boolean(inspectingDesign),
+    onClose: closeViewer,
+    dialogRef: viewerDialogRef,
+    initialFocusRef: viewerCloseButtonRef,
+  });
 
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setInspectingDesign(null);
-        setChoosingVariantDesign(null);
-      }
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    closeButtonRef.current?.focus();
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [choosingVariantDesign, inspectingDesign]);
+  useModalDialog({
+    open: Boolean(choosingVariantDesign),
+    onClose: closeVariant,
+    dialogRef: variantDialogRef,
+    initialFocusRef: variantCloseButtonRef,
+  });
 
   return (
     <div className="level1-catalogue">
@@ -94,80 +92,72 @@ export function Level1Catalogue({
           const hasImage = design.cardImage.state === "ready" && Boolean(design.cardImage.url);
 
           return (
-            <div
+            <article
               className={`level1-design-card${selected ? " is-selected" : ""}`}
               key={design.id}
-              role="button"
-              tabIndex={selectable ? 0 : -1}
-              aria-disabled={!selectable}
-              aria-pressed={selected}
-              onClick={() => {
-                if (!selectable) return;
-                if (design.variants?.length) {
-                  setChoosingVariantDesign(design);
-                } else {
-                  onDesignChange(design.id);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (selectable && (e.key === " " || e.key === "Enter")) {
-                  e.preventDefault();
+            >
+              <button
+                type="button"
+                className="level1-card-select-btn"
+                disabled={!selectable}
+                aria-pressed={selected}
+                onClick={() => {
+                  if (!selectable) return;
                   if (design.variants?.length) {
                     setChoosingVariantDesign(design);
                   } else {
                     onDesignChange(design.id);
                   }
-                }
-              }}
-            >
-              <div className="level1-card-image-wrap">
-                {hasImage ? (
-                  <>
-                    {/* Protected application route proxy — never a storage URL */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={design.cardImage.url}
-                      alt={`Full silhouette catalogue reference for ${design.name}`}
-                      className="level1-card-image"
-                      loading="lazy"
-                    />
-                    <button
-                      type="button"
-                      className="level1-card-inspect-btn"
-                      aria-label={`Inspect ${design.name} in full screen`}
-                      title="Inspect full silhouette and tailoring details"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setInspectingDesign(design);
-                      }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                        <line x1="11" y1="8" x2="11" y2="14" />
-                        <line x1="8" y1="11" x2="14" y2="11" />
-                      </svg>
-                      <span>Inspect</span>
-                    </button>
-                  </>
-                ) : (
-                  <div className="level1-card-placeholder" aria-hidden="true">
-                    <span>NB</span>
-                    <small>Reference image unavailable</small>
-                  </div>
-                )}
-              </div>
-
-              <div className="level1-card-body">
-                <div className="level1-card-title-row">
-                  <strong>{design.name}</strong>
-                  {selected ? <span className="level1-selected-mark">Selected</span> : null}
+                }}
+              >
+                <div className="level1-card-image-wrap">
+                  {hasImage ? (
+                    <>
+                      {/* Protected application route proxy — never a storage URL */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={design.cardImage.url}
+                        alt={`Full silhouette catalogue reference for ${design.name}`}
+                        className="level1-card-image"
+                        loading="lazy"
+                      />
+                    </>
+                  ) : (
+                    <div className="level1-card-placeholder" aria-hidden="true">
+                      <span>NB</span>
+                      <small>Reference image unavailable</small>
+                    </div>
+                  )}
                 </div>
-                <p className="level1-card-description">{design.description}</p>
-                <p className="level1-card-intent">{design.intent}</p>
-                {!ready ? <span className="level1-card-state">{unavailableLabel(design.generation.unavailabilityReason)}</span> : null}
-              </div>
-            </div>
+
+                <div className="level1-card-body">
+                  <div className="level1-card-title-row">
+                    <strong>{design.name}</strong>
+                    {selected ? <span className="level1-selected-mark">Selected</span> : null}
+                  </div>
+                  <p className="level1-card-description">{design.description}</p>
+                  <p className="level1-card-intent">{design.intent}</p>
+                  {!ready ? <span className="level1-card-state">{unavailableLabel(design.generation.unavailabilityReason)}</span> : null}
+                </div>
+              </button>
+              {hasImage ? (
+                <button
+                  type="button"
+                  className="level1-card-inspect-btn"
+                  aria-label={`Inspect ${design.name} in full screen`}
+                  title="Inspect full silhouette and tailoring details"
+                  onClick={() => setInspectingDesign(design)}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <line x1="11" y1="8" x2="11" y2="14" />
+                    <line x1="8" y1="11" x2="14" y2="11" />
+                  </svg>
+                  <span>Inspect</span>
+                </button>
+              ) : null}
+            </article>
           );
         })}
       </div>
@@ -183,6 +173,7 @@ export function Level1Catalogue({
             onClick={() => setInspectingDesign(null)}
           />
           <div
+            ref={viewerDialogRef}
             className="level1-viewer-dialog"
             role="dialog"
             aria-modal="true"
@@ -197,8 +188,8 @@ export function Level1Catalogue({
                 type="button"
                 className="level1-viewer-close-btn"
                 aria-label="Close design viewer (Esc)"
-                ref={closeButtonRef}
-                onClick={() => setInspectingDesign(null)}
+                ref={viewerCloseButtonRef}
+                onClick={closeViewer}
               >
                 <span aria-hidden="true">✕</span>
                 <span>Close</span>
@@ -251,6 +242,7 @@ export function Level1Catalogue({
             onClick={() => setChoosingVariantDesign(null)}
           />
           <div
+            ref={variantDialogRef}
             className="level1-variant-dialog"
             role="dialog"
             aria-modal="true"
@@ -266,8 +258,8 @@ export function Level1Catalogue({
                 type="button"
                 className="level1-viewer-close-btn"
                 aria-label="Close design options (Esc)"
-                ref={closeButtonRef}
-                onClick={() => setChoosingVariantDesign(null)}
+                ref={variantCloseButtonRef}
+                onClick={closeVariant}
               >
                 <span aria-hidden="true">✕</span>
                 <span>Close</span>

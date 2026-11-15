@@ -18,31 +18,31 @@ export function matchesRules(selections: Selections, rules: OptionRule[]): boole
 
 /** A slot/group is hidden entirely unless its visibleWhen rules are satisfied. */
 export function isGroupVisible(visibleWhen: OptionRule[] | undefined, selections: Selections): boolean {
-  return !visibleWhen || matchesRules(selections, visibleWhen);
+  return !visibleWhen?.length || matchesRules(selections, visibleWhen);
 }
 
 /** Check order is significant: hard blocks first, then soft flags. */
 export function evaluateOption(rules: OptionRuleSet | undefined, selections: Selections): Verdict {
   if (!rules) return { status: "available" };
 
-  if (rules.requires && !matchesRules(selections, rules.requires)) {
+  if (rules.requires?.length && !matchesRules(selections, rules.requires)) {
     return {
       status: "incompatible",
       reason: rules.reasons?.requires ?? DEFAULT_INCOMPATIBLE,
       blockedBy: rules.requires.map((rule) => rule.groupId),
     };
   }
-  if (rules.conflictsWith && matchesRules(selections, rules.conflictsWith)) {
+  if (rules.conflictsWith?.length && matchesRules(selections, rules.conflictsWith)) {
     return {
       status: "incompatible",
       reason: rules.reasons?.conflictsWith ?? DEFAULT_INCOMPATIBLE,
       blockedBy: rules.conflictsWith.map((rule) => rule.groupId),
     };
   }
-  if (rules.discouragedWhen && matchesRules(selections, rules.discouragedWhen)) {
+  if (rules.discouragedWhen?.length && matchesRules(selections, rules.discouragedWhen)) {
     return { status: "discouraged", reason: rules.reasons?.discouragedWhen ?? DEFAULT_DISCOURAGED };
   }
-  if (rules.recommendedWhen && matchesRules(selections, rules.recommendedWhen)) {
+  if (rules.recommendedWhen?.length && matchesRules(selections, rules.recommendedWhen)) {
     return { status: "recommended", reason: rules.reasons?.recommendedWhen ?? DEFAULT_RECOMMENDED };
   }
   return { status: "available" };
@@ -100,6 +100,7 @@ export function reconcileSelections(
     if (group.multi) {
       const ids = Array.isArray(currentValue) ? currentValue : [];
       const kept: string[] = [];
+      accepted[group.groupId] = kept;
       for (const id of ids) {
         const option = group.options.find((item) => item.id === id);
         const verdict = option ? evaluateOption(option.rules, accepted) : MISSING_OPTION_VERDICT;
@@ -109,7 +110,6 @@ export function reconcileSelections(
           notices.push({ groupId: group.groupId, removedOptionId: id, reason: verdictReason(verdict) });
         }
       }
-      accepted[group.groupId] = kept;
     } else {
       const id = typeof currentValue === "string" ? currentValue : undefined;
       if (id) {

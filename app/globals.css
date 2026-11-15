@@ -2241,13 +2241,15 @@ a:focus-visible {
 .atelier-shell .level1-catalogue-heading p { color: var(--atelier-muted); margin: 7px 0 0; }
 .atelier-shell .level1-catalogue-heading > span { color: var(--atelier-subdued); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
 .atelier-shell .level1-design-grid { display: grid; gap: 18px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.atelier-shell .level1-design-card { background: var(--atelier-surface); border: 1px solid var(--atelier-line); border-radius: 2px; color: var(--atelier-text); cursor: pointer; display: flex; flex-direction: column; overflow: hidden; position: relative; text-align: left; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.atelier-shell .level1-design-card { background: var(--atelier-surface); border: 1px solid var(--atelier-line); border-radius: 2px; color: var(--atelier-text); display: flex; flex-direction: column; overflow: hidden; position: relative; text-align: left; transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+.atelier-shell .level1-card-select-btn { appearance: none; background: transparent; border: 0; color: inherit; cursor: pointer; display: flex; flex: 1; flex-direction: column; font: inherit; padding: 0; text-align: left; width: 100%; }
+.atelier-shell .level1-card-select-btn:disabled { cursor: not-allowed; opacity: 0.72; }
 .atelier-shell .level1-design-card:hover { background: var(--atelier-interactive); border-color: var(--atelier-line-strong); box-shadow: 0 16px 36px rgba(0,0,0,.35); transform: translateY(-2px); }
 .atelier-shell .level1-design-card.is-selected { border-color: var(--atelier-gold); box-shadow: inset 0 0 0 1px rgba(201,154,61,.35), 0 18px 40px rgba(0,0,0,.45); }
 .atelier-shell .level1-card-image-wrap { align-items: center; aspect-ratio: 4 / 5; background: radial-gradient(circle at 50% 35%, #181917 0%, #0c0d0c 100%); display: flex; justify-content: center; overflow: hidden; position: relative; width: 100%; }
 .atelier-shell .level1-card-image { display: block; height: 100%; max-height: 100%; max-width: 100%; object-fit: contain; object-position: center; transition: transform 240ms ease; width: 100%; }
 .atelier-shell .level1-design-card:hover .level1-card-image { transform: scale(1.02); }
-.atelier-shell .level1-card-inspect-btn { align-items: center; background: rgba(12, 13, 12, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(201, 154, 61, 0.45); border-radius: 2px; bottom: 10px; color: var(--atelier-gold); cursor: pointer; display: inline-flex; font-size: 10px; font-weight: 600; gap: 5px; letter-spacing: 0.08em; opacity: 0.9; padding: 5px 9px; position: absolute; right: 10px; text-transform: uppercase; transition: opacity 160ms ease, background-color 160ms ease, border-color 160ms ease; z-index: 2; }
+.atelier-shell .level1-card-inspect-btn { align-items: center; background: rgba(12, 13, 12, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(201, 154, 61, 0.45); border-radius: 2px; color: var(--atelier-gold); cursor: pointer; display: inline-flex; font-size: 10px; font-weight: 600; gap: 5px; letter-spacing: 0.08em; opacity: 0.9; padding: 5px 9px; position: absolute; right: 10px; top: 10px; text-transform: uppercase; transition: opacity 160ms ease, background-color 160ms ease, border-color 160ms ease; z-index: 2; }
 .atelier-shell .level1-card-inspect-btn:hover { background: rgba(20, 22, 20, 0.96); border-color: var(--atelier-gold); opacity: 1; }
 .atelier-shell .level1-card-placeholder { align-items: center; aspect-ratio: 4 / 5; background: linear-gradient(145deg, #171714, #101110); color: var(--atelier-gold); display: flex; flex-direction: column; justify-content: center; padding: 22px; text-align: center; width: 100%; }
 .atelier-shell .level1-card-placeholder span { border: 1px solid rgba(201,154,61,.46); border-radius: 50%; display: grid; font-family: var(--font-serif); font-size: 24px; height: 56px; margin-bottom: 12px; place-items: center; width: 56px; }
@@ -3307,3 +3309,5 @@ a:focus-visible {
   .atelier-shell .upload-empty { padding: 32px 20px; }
   .atelier-shell .upload-icon { height: 44px; margin-bottom: 14px; width: 44px; }
 }
+
+.catalogue-recovery-panel { padding: 2rem; max-width: 50rem; margin: auto; }

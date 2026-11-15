@@ -1,4 +1,4 @@
-import { checkUploadRateLimit } from "@/lib/rate-limit";
+import { checkUploadRateLimit, RateLimitConfigurationError } from "@/lib/rate-limit";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { completeUploadForUser, HighResolutionUploadError } from "@/lib/highres/uploads";
@@ -20,6 +20,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return Response.json({ id: slot.id, role: slot.role, width: slot.width, height: slot.height, checksum: slot.checksum }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) {
     if (error instanceof AuthConfigurationError) return Response.json({ error: "Authentication is not configured." }, { status: 503 });
+    if (error instanceof RateLimitConfigurationError) {
+      console.error("highres_upload_complete_rate_limit_unavailable");
+      return Response.json({ error: "Uploads are temporarily unavailable. Please try again shortly." }, { status: 503 });
+    }
     if (error instanceof HighResolutionUploadError) return Response.json({ error: error.message }, { status: error.status });
     console.error("highres_upload_complete_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
     return Response.json({ error: "We couldn't validate this upload." }, { status: 400 });

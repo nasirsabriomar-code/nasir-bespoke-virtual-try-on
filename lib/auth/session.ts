@@ -145,3 +145,13 @@ export function getSessionTokenFromRequest(request: Request) {
 export async function requireRequestUser(request: Request) {
   return getCurrentUserFromToken(getSessionTokenFromRequest(request));
 }
+
+export function clearLegacySessionCookie(response: { cookies: { set: (name: string, value: string, options: ReturnType<typeof getSessionCookieOptions> & { maxAge: number }) => unknown } }) {
+  const legacyCookieName = getLegacySessionCookieName();
+  if (legacyCookieName) {
+    response.cookies.set(legacyCookieName, "", {
+      ...getSessionCookieOptions(),
+      maxAge: 0,
+    });
+  }
+}

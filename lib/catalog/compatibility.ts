@@ -20,7 +20,11 @@ export function validateCatalogSelection(selection: CatalogSelection) {
     throw new CatalogCompatibilityError("Please choose a lower garment for this look.");
   }
 
-  if (selection.lower && selection.lower.category !== "no-change" && !upper.compatibleCategories.includes(selection.lower.category)) {
+  if (
+    selection.lower
+    && selection.lower.category !== "no-change"
+    && (!upper.compatibleCategories.includes(selection.lower.category) || !selection.lower.compatibleCategories.includes(upper.category))
+  ) {
     throw new CatalogCompatibilityError("That lower garment is not compatible with the selected men's look.");
   }
 

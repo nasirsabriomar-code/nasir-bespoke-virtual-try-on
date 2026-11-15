@@ -1,4 +1,5 @@
 import { HighResolutionUploadError } from "@/lib/highres/upload-error";
+import { AuthConfigurationError } from "@/lib/auth/config";
 import { readBoundedBody, RequestBodyTooLargeError } from "@/lib/request-body";
 import { checkUploadRateLimit } from "@/lib/rate-limit";
 import { withUploadLease } from "@/lib/highres/upload-control";
@@ -13,10 +14,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  if (!await requireRequestUser(request)) return Response.json({ error: "Sign in required." }, { status: 401 });
-  const manifest = await recoveryManifest();
-  return Response.json({ assets: manifest.map(({ id, checksum, contentType }) => ({ id, checksum, contentType })) },
-    { headers: { "Cache-Control": "no-store, private" } });
+  try {
+    if (!await requireRequestUser(request)) return Response.json({ error: "Sign in required." }, { status: 401 });
+    const manifest = await recoveryManifest();
+    return Response.json({ assets: manifest.map(({ id, checksum, contentType }) => ({ id, checksum, contentType })) },
+      { headers: { "Cache-Control": "no-store, private" } });
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) return Response.json({ error: "Authentication is not configured." }, { status: 503 });
+    console.error("catalogue_recovery_manifest_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
+    return Response.json({ error: "Catalogue recovery is temporarily unavailable." }, { status: 503 });
+  }
 }
 
 async function restore(request: Request) {

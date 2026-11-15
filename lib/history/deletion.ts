@@ -10,13 +10,14 @@ import { generationExpired } from "./retention-policy";
 export async function eraseGeneration(event: UsageEvent, deadline = Date.now() + 120_000) {
   // Queue first. A storage failure must not make the record visible again.
   await queueGenerationDeletion(event);
-  for (const [asset, reference] of Object.entries(event.assets ?? {})) {
+  const assetEntries = Object.entries(event.assets ?? {});
+  for (const [asset, reference] of assetEntries) {
     if (!isGenerationAssetPath(reference.pathname, event.id, asset as Parameters<typeof isGenerationAssetPath>[2])) {
       throw new Error("Invalid deletion asset path");
     }
-    if (Date.now() >= deadline) throw new Error("Deletion deadline reached");
-    await r2Delete(reference.pathname);
   }
+  if (Date.now() >= deadline) throw new Error("Deletion deadline reached");
+  await Promise.all(assetEntries.map(([, reference]) => r2Delete(reference.pathname)));
   if (Date.now() >= deadline) throw new Error("Deletion deadline reached");
   await removeGenerationReplays(event.username, event.id);
   await deleteGenerationReviews(event.id);

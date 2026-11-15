@@ -99,3 +99,33 @@ test("expired slots reject both late chunks and completion before storage access
   await assert.rejects(completeUploadForUser("owner", slot.id), /expired/);
   assert.equal(calls, 0);
 });
+
+
+test("getUploadSlots batches lookup and r2Put drains failed response bodies", async (t) => {
+  delete process.env.DATABASE_URL;
+  process.env.R2_ACCOUNT_ID = "a".repeat(32);
+  process.env.R2_BUCKET_NAME = "test-bucket";
+  process.env.R2_ACCESS_KEY_ID = "test-access";
+  process.env.R2_SECRET_ACCESS_KEY = "test-secret";
+
+  const { getUploadSlots } = await import("@/lib/highres/ledger");
+  const { r2Put } = await import("@/lib/r2-storage");
+
+  const slotA = await createUploadSlot({ username: "staff", role: "person", filename: "p.png", contentType: "image/png", bytes: 1024 });
+  const slotB = await createUploadSlot({ username: "staff", role: "fabric", filename: "f.png", contentType: "image/png", bytes: 1024 });
+  const fetched = await getUploadSlots([slotA.id, slotB.id, "00000000-0000-0000-0000-000000000000"]);
+  assert.equal(fetched[0]?.id, slotA.id);
+  assert.equal(fetched[1]?.id, slotB.id);
+  assert.equal(fetched[2], null);
+
+  let canceled = false;
+  t.mock.method(globalThis, "fetch", async () => ({
+    ok: false,
+    status: 500,
+    body: { cancel: async () => { canceled = true; } },
+    text: async () => "error",
+  }) as unknown as Response);
+
+  await assert.rejects(() => r2Put("test-key", new Uint8Array([1, 2, 3]), "image/png"), /R2 upload failed with status 500/);
+  assert.equal(canceled, true);
+});

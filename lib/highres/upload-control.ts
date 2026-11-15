@@ -7,12 +7,17 @@ import { HighResolutionUploadError } from "./upload-error";
 // Expiring leases cannot remain stuck after a function crashes.
 const TTL_MS = 330_000;
 const memory = new Map<string, Map<string, number>>();
+let redisCache: { key: string; redis: Redis } | null = null;
 function redis() {
   if (process.env.NODE_ENV !== "production") return null;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new HighResolutionUploadError("Upload controls are unavailable.", 503);
-  return new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3000) });
+  const key = createHash("sha256").update(`${url}:${token}`).digest("hex");
+  if (!redisCache || redisCache.key !== key) {
+    redisCache = { key, redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3000) }) };
+  }
+  return redisCache.redis;
 }
 const ACQUIRE = `
 local clock = redis.call('time')

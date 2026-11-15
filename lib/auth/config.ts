@@ -23,12 +23,16 @@ function isBcryptHash(value: string) {
   return /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(value);
 }
 
+let usersCache: { rawKey: string; users: AuthorizedUser[] } | null = null;
+
 export function getAuthorizedUsers(): AuthorizedUser[] {
   const encoded = process.env.AUTH_USERS_JSON_BASE64;
   const raw = encoded
     ? Buffer.from(encoded, "base64").toString("utf8")
     : process.env.AUTH_USERS_JSON;
   if (!raw) throw new AuthConfigurationError();
+  const rawKey = `${encoded ? "b64" : "json"}:${raw}`;
+  if (usersCache && usersCache.rawKey === rawKey) return usersCache.users;
 
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -37,7 +41,7 @@ export function getAuthorizedUsers(): AuthorizedUser[] {
     }
 
     const usernames = new Set<string>();
-    return parsed.map((entry) => {
+    const users: AuthorizedUser[] = parsed.map((entry) => {
       if (!entry || typeof entry !== "object") throw new AuthConfigurationError();
 
       const record = entry as Record<string, unknown>;
@@ -59,8 +63,10 @@ export function getAuthorizedUsers(): AuthorizedUser[] {
       }
 
       usernames.add(username);
-      return { username, displayName, passwordHash, role, authVersion };
+      return { username, displayName, passwordHash, role: role as "staff" | "admin", authVersion };
     });
+    usersCache = { rawKey, users };
+    return users;
   } catch (error) {
     if (error instanceof AuthConfigurationError) throw error;
     throw new AuthConfigurationError();

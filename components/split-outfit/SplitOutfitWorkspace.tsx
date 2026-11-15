@@ -304,7 +304,7 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
     <div className="split-outfit-workspace" aria-label="Split Outfit Customization Workspace">
       {familySelector}
       <div className="split-builder" ref={builderRef}>
-        <BuilderStepList rows={rows} onSelect={onStepChange} flashIds={flashIds} />
+        <BuilderStepList rows={rows} onSelect={onStepChange} flashIds={flashIds} disabled={isGenerating} />
         <div className="split-builder-main">
           <section className="split-builder-step" aria-labelledby="split-step-heading">
             <div className="split-builder-step-heading">
@@ -325,11 +325,11 @@ export function SplitOutfitWorkspace({ state, onChange, onGenerate, isGenerating
             {statusSlot}
           </section>
           <div className="split-builder-footer">
-            <button type="button" className="split-builder-back" onClick={() => previous && onStepChange(previous)} disabled={!previous}>
+            <button type="button" className="split-builder-back" onClick={() => previous && onStepChange(previous)} disabled={isGenerating || !previous}>
               ← Back
             </button>
             {next ? (
-              <button type="button" className="level1-generate split-builder-next" onClick={() => onStepChange(next)}>
+              <button type="button" className="level1-generate split-builder-next" onClick={() => onStepChange(next)} disabled={isGenerating}>
                 Next: {nextLabel} →
               </button>
             ) : null}

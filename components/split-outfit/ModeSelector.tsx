@@ -1,5 +1,6 @@
 "use client";
 
+import { handleRadioGroupKeyDown } from "@/components/hooks/useRadioGroupNav";
 import type { VisualTryOnMode } from "@/lib/split-outfit/types";
 
 type ModeSelectorProps = {
@@ -20,6 +21,8 @@ export function ModeSelector({ mode, onModeChange, disabled = false }: ModeSelec
         className="mode-segmented-control"
         role="radiogroup"
         aria-label="Creation Mode: Full Outfit or Split Outfit"
+        tabIndex={-1}
+        onKeyDown={handleRadioGroupKeyDown}
       >
         <button
           type="button"

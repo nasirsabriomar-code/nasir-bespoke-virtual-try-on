@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import {
-  getLegacySessionCookieName,
   getSessionCookieName,
   getSessionCookieOptions,
   getSessionTokenFromRequest,
   revokeSessionToken,
+  clearLegacySessionCookie,
 } from "@/lib/auth/session";
 import { isSameOriginRequest } from "@/lib/request-security";
 
@@ -40,12 +40,6 @@ export async function POST(request: Request) {
     ...getSessionCookieOptions(),
     maxAge: 0,
   });
-  const legacyCookieName = getLegacySessionCookieName();
-  if (legacyCookieName) {
-    response.cookies.set(legacyCookieName, "", {
-      ...getSessionCookieOptions(),
-      maxAge: 0,
-    });
-  }
+  clearLegacySessionCookie(response);
   return response;
 }

@@ -8,12 +8,17 @@ const memory = state.__nasirReviews ??= new Map();
 function reviewKey(id: string, username: string) {
   return `nasir-tryon:review:v1:${createHash("sha256").update(username).digest("hex")}:${id}`;
 }
+let redisCache: { key: string; redis: Redis } | null = null;
 function redis() {
   if (process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development") return null;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error("Review storage is unavailable.");
-  return new Redis({ url, token, retry: { retries: 0 }, signal: () => AbortSignal.timeout(3000) });
+  const key = createHash("sha256").update(`${url}:${token}`).digest("hex");
+  if (!redisCache || redisCache.key !== key) {
+    redisCache = { key, redis: new Redis({ url, token, retry: { retries: 0 }, signal: () => AbortSignal.timeout(3000) }) };
+  }
+  return redisCache.redis;
 }
 export async function getGenerationReview(id: string, username: string): Promise<GenerationReview> {
   const store = redis();

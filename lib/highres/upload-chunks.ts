@@ -32,10 +32,6 @@ export async function writeUploadChunk(username: string, id: string, index: numb
       throw error;
     }
     if (bytes.byteLength !== expected) throw new HighResolutionUploadError("The upload part is incomplete.", 400);
-    // A slow request may have started before another request completed the slot.
-    const current = await getUploadSlot(id);
-    if (!current || current.status !== "authorized") throw new HighResolutionUploadError("This upload is already complete.", 409);
-    if (new Date(current.expiresAt).getTime() < Date.now()) throw new HighResolutionUploadError("This upload session expired.", 410);
     await r2Put(uploadChunkPath(slot, index), bytes, "application/octet-stream");
     const after = await getUploadSlot(id);
     if (!after || after.status !== "authorized" || new Date(after.expiresAt).getTime() < Date.now()) {
@@ -48,15 +44,21 @@ export async function writeUploadChunk(username: string, id: string, index: numb
 }
 
 export async function readUploadChunks(slot: UploadSlot) {
-  const parts: Uint8Array[] = [];
-  for (let index = 0; index < Math.ceil(slot.bytes / UPLOAD_CHUNK_BYTES); index++) {
-    const response = await r2Get(uploadChunkPath(slot, index));
-    if (!response.ok) throw new HighResolutionUploadError("The upload is incomplete. Please choose the image again.", 400);
-    const part = new Uint8Array(await response.arrayBuffer());
-    if (part.byteLength !== expectedChunkBytes(slot, index)) throw new HighResolutionUploadError("The upload part size changed.", 400);
-    parts.push(part);
-  }
-  return new Uint8Array(Buffer.concat(parts));
+  const count = Math.ceil(slot.bytes / UPLOAD_CHUNK_BYTES);
+  const parts = new Array<Uint8Array>(count);
+  let nextIndex = 0;
+  const concurrency = Math.min(4, count);
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (nextIndex < count) {
+      const index = nextIndex++;
+      const response = await r2Get(uploadChunkPath(slot, index));
+      if (!response.ok) throw new HighResolutionUploadError("The upload is incomplete. Please choose the image again.", 400);
+      const part = new Uint8Array(await response.arrayBuffer());
+      if (part.byteLength !== expectedChunkBytes(slot, index)) throw new HighResolutionUploadError("The upload part size changed.", 400);
+      parts[index] = part;
+    }
+  }));
+  return Buffer.concat(parts);
 }
 
 export async function removeUploadChunks(slot: UploadSlot) {

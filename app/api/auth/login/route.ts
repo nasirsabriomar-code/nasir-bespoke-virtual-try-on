@@ -3,9 +3,9 @@ import { AuthConfigurationError } from "@/lib/auth/config";
 import { verifyCredentials } from "@/lib/auth/credentials";
 import {
   createSessionToken,
-  getLegacySessionCookieName,
   getSessionCookieName,
   getSessionCookieOptions,
+  clearLegacySessionCookie,
 } from "@/lib/auth/session";
 import {
   checkLoginRateLimit,
@@ -77,13 +77,7 @@ export async function POST(request: Request) {
       await createSessionToken(user.username),
       getSessionCookieOptions(),
     );
-    const legacyCookieName = getLegacySessionCookieName();
-    if (legacyCookieName) {
-      response.cookies.set(legacyCookieName, "", {
-        ...getSessionCookieOptions(),
-        maxAge: 0,
-      });
-    }
+    clearLegacySessionCookie(response);
     return response;
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) return jsonError("Invalid sign-in request.", 413);

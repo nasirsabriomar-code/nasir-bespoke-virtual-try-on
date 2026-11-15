@@ -1,3 +1,4 @@
+import { hasRealWaistcoat, isWaistcoatRequiredForState } from "./shared-engine";
 import type { SplitOutfitState } from "./types";
 
 export type BuilderStepId = "customer" | "jacket" | "trousers" | "inner" | "shoes" | "extras" | "review";
@@ -37,10 +38,6 @@ export type BuilderRow = {
   swatch: RowSwatch;
 };
 
-function hasRealWaistcoat(state: SplitOutfitState) {
-  return Boolean(state.waistcoatId && state.waistcoatId !== "SUIT_WAISTCOAT_NONE");
-}
-
 /** Uploaded cloth wins; a chosen piece without cloth uses its reference photograph. */
 function clothSwatch(chosen: boolean, preview: string | null): RowSwatch {
   if (preview) return { kind: "image", url: preview };
@@ -50,6 +47,7 @@ function clothSwatch(chosen: boolean, preview: string | null): RowSwatch {
 export function buildBuilderRows(input: BuilderRowInput): BuilderRow[] {
   const { state, names, fabricPreviews } = input;
   const realWaistcoat = hasRealWaistcoat(state);
+  const innerComplete = Boolean(state.shirtId) && (!isWaistcoatRequiredForState(state) || realWaistcoat);
   const rows: Record<BuilderStepId, Pick<BuilderRow, "complete" | "detail" | "swatch">> = {
     customer: { complete: Boolean(input.personPreview), detail: null, swatch: input.personPreview ? { kind: "image", url: input.personPreview } : null },
     jacket: { complete: Boolean(state.upperId), detail: names.upper ?? null, swatch: clothSwatch(Boolean(state.upperId), fabricPreviews.jacket) },
@@ -59,7 +57,7 @@ export function buildBuilderRows(input: BuilderRowInput): BuilderRow[] {
       swatch: input.trousersLinked && fabricPreviews.jacket ? { kind: "linked", url: fabricPreviews.jacket } : clothSwatch(Boolean(state.lowerId), fabricPreviews.trousers),
     },
     inner: {
-      complete: Boolean(state.shirtId),
+      complete: innerComplete,
       detail: names.shirt ? (realWaistcoat && names.waistcoat ? `${names.shirt} + ${names.waistcoat} waistcoat` : names.shirt) : null,
       swatch: clothSwatch(Boolean(state.shirtId), fabricPreviews.shirt),
     },
@@ -71,11 +69,12 @@ export function buildBuilderRows(input: BuilderRowInput): BuilderRow[] {
 }
 
 export function missingSteps(state: SplitOutfitState, hasPerson: boolean): BuilderStepId[] {
+  const innerDone = Boolean(state.shirtId) && (!isWaistcoatRequiredForState(state) || hasRealWaistcoat(state));
   const required: [BuilderStepId, boolean][] = [
     ["customer", hasPerson],
     ["jacket", Boolean(state.upperId)],
     ["trousers", Boolean(state.lowerId)],
-    ["inner", Boolean(state.shirtId)],
+    ["inner", innerDone],
     ["shoes", Boolean(state.footwearId)],
   ];
   return required.filter(([, done]) => !done).map(([id]) => id);

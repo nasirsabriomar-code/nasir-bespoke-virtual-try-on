@@ -197,53 +197,54 @@ function getExactlyOneFile(formData: FormData, name: string) {
   return values.length === 1 && values[0] instanceof File ? values[0] : null;
 }
 
+const ALLOWED_MULTIPART_FIELDS = new Set([
+  "person",
+  "outfit",
+  "fabric",
+  "lowerFabric",
+  "shirtFabric",
+  "waistcoatFabric",
+  "backgroundControl",
+  "fabricGuidance",
+  "selectionMode",
+  "upperGarmentId",
+  "lowerGarmentId",
+  "garmentSubtypeId",
+  "upperStyleId",
+  "lowerStyleId",
+  "turbanStyleId",
+  "shoeStyleId",
+  "turbanId",
+  "shoeId",
+  "bespokeConfiguration",
+  "categoryId",
+  "designId",
+  "variantId",
+  "fabricRegion",
+  "quality",
+  "splitRecipe",
+]);
+
+const LEVEL1_ALLOWED_FIELDS = new Set(["backgroundControl", "fabricGuidance", "person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "variantId", "fabricRegion", "quality"]);
+const SPLIT_ALLOWED_FIELDS = new Set(["backgroundControl", "fabricGuidance", "person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
+
+function hasDisallowedFields(names: Iterable<string>, allowed: Set<string>) {
+  for (const name of names) {
+    if (!allowed.has(name)) return true;
+  }
+  return false;
+}
+
 function hasUnexpectedFields(formData: FormData) {
-  for (const [name] of formData.entries()) {
-    if (![
-      "person",
-      "outfit",
-      "fabric",
-      "lowerFabric",
-      "shirtFabric",
-      "waistcoatFabric",
-      "backgroundControl",
-      "fabricGuidance",
-      "selectionMode",
-      "upperGarmentId",
-      "lowerGarmentId",
-      "garmentSubtypeId",
-      "upperStyleId",
-      "lowerStyleId",
-      "turbanStyleId",
-      "shoeStyleId",
-      "turbanId",
-      "shoeId",
-      "bespokeConfiguration",
-      "categoryId",
-      "designId",
-      "variantId",
-      "fabricRegion",
-      "quality",
-      "splitRecipe",
-    ].includes(name)) return true;
-  }
-  return false;
+  return hasDisallowedFields(formData.keys(), ALLOWED_MULTIPART_FIELDS);
 }
 
-function hasLevel1ForbiddenFields(formData: FormData) {
-  const level1Fields = new Set(["backgroundControl", "fabricGuidance", "person", "fabric", "lowerFabric", "selectionMode", "categoryId", "designId", "variantId", "fabricRegion", "quality"]);
-  for (const [name] of formData.entries()) {
-    if (!level1Fields.has(name)) return true;
-  }
-  return false;
+function hasLevel1ForbiddenFields(names: Iterable<string>) {
+  return hasDisallowedFields(names, LEVEL1_ALLOWED_FIELDS);
 }
 
-function hasSplitForbiddenFields(formData: FormData) {
-  const splitFields = new Set(["backgroundControl", "fabricGuidance", "person", "fabric", "lowerFabric", "shirtFabric", "waistcoatFabric", "selectionMode", "splitRecipe", "fabricRegion", "quality"]);
-  for (const [name] of formData.entries()) {
-    if (!splitFields.has(name)) return true;
-  }
-  return false;
+function hasSplitForbiddenFields(names: Iterable<string>) {
+  return hasDisallowedFields(names, SPLIT_ALLOWED_FIELDS);
 }
 
 function getExactlyOneText(formData: FormData, name: string, required: boolean) {
@@ -448,8 +449,8 @@ async function handleHighResolutionRequest(
     const body = parsed as HighResolutionRequest;
     if (body.fabricGuidance !== undefined && typeof body.fabricGuidance !== "string") return jsonError("Invalid fabric reference settings.", 400);
     if (body.backgroundControl !== undefined && typeof body.backgroundControl !== "string") return jsonError("Invalid garment edit region.", 400);
-    parseFabricGuidance(body.fabricGuidance);
-    parseBackgroundControl(body.backgroundControl);
+    const fabricGuidance = parseFabricGuidance(body.fabricGuidance);
+    const backgroundControl = parseBackgroundControl(body.backgroundControl);
     const uploads = body.uploads;
     if (!uploads || typeof uploads !== "object" || Array.isArray(uploads) || "quality" in body) {
       return jsonError("Please upload your images again and use the fixed medium-quality studio pipeline.", 400);
@@ -460,6 +461,19 @@ async function handleHighResolutionRequest(
       const value = uploads[role];
       if (value !== undefined && (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value))) return jsonError("An uploaded image reference is invalid.", 400);
       if (typeof value === "string") ids[role] = value;
+    }
+    const fields: Record<string, string | undefined> = {};
+    const presentNames = new Set<string>(Object.keys(ids));
+    for (const field of HIGHRES_TEXT_FIELDS) {
+      const value = body[field];
+      if (value !== undefined) {
+        if (typeof value !== "string") return jsonError("The try-on selection is invalid.", 400);
+        const trimmed = value.trim();
+        if (trimmed) {
+          fields[field] = trimmed;
+          presentNames.add(field);
+        }
+      }
     }
     const required = requiredRolesForRequest(mode, {
       outfit: Boolean(ids.outfit),
@@ -477,7 +491,7 @@ async function handleHighResolutionRequest(
     const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
     if (required.some((role) => !slotByRole.has(role))) return jsonError("Uploaded images did not match the requested roles.", 400);
     // Reject busy or rate-limited accounts before downloading full-resolution
-    // inputs. Keep this lease through preparation and the multipart handoff.
+    // inputs. Keep this lease through preparation and execution.
     admissionLease = await acquireGenerationLock(user.username);
     if (!admissionLease) {
       if (existingKey) {
@@ -501,30 +515,34 @@ async function handleHighResolutionRequest(
       slotByRole.get("shirtFabric") ? uploadSlotToFile(slotByRole.get("shirtFabric")!) : Promise.resolve(undefined),
       slotByRole.get("waistcoatFabric") ? uploadSlotToFile(slotByRole.get("waistcoatFabric")!) : Promise.resolve(undefined),
     ]);
-    const formData = new FormData();
-    for (const field of HIGHRES_TEXT_FIELDS) {
-      const value = body[field];
-      if (value !== undefined) {
-        if (typeof value !== "string") return jsonError("The try-on selection is invalid.", 400);
-        formData.set(field, value);
-      }
-    }
-    formData.set("person", person.file);
-    if (fabric) formData.set("fabric", fabric.file);
-    if (outfit) formData.set("outfit", outfit.file);
-    if (lowerFabric) formData.set("lowerFabric", lowerFabric.file);
-    if (shirtFabric) formData.set("shirtFabric", shirtFabric.file);
-    if (waistcoatFabric) formData.set("waistcoatFabric", waistcoatFabric.file);
-    const headers = new Headers(request.headers);
-    headers.delete("content-type");
-    headers.delete("content-length");
-    return await handleMultipartRequest(new Request(request.url, { method: "POST", headers, body: formData }), dependencies, state, {
+    return await executeTryOnSubmission({
+      request,
+      requestId: crypto.randomUUID(),
+      user,
+      idempotencyKey: existingKey,
+      dependencies,
+      state,
+      highResolution: true,
       lease: admissionLease,
       rateHeaders,
       claimUploads: async () => {
         consumedSlots = await consumeUploadSlots(user.username, requiredIds);
         return Boolean(consumedSlots);
       },
+      fields,
+      presentNames,
+      files: {
+        person: person.file,
+        ...(fabric ? { fabric: fabric.file } : {}),
+        ...(outfit ? { outfit: outfit.file } : {}),
+        ...(lowerFabric ? { lowerFabric: lowerFabric.file } : {}),
+        ...(shirtFabric ? { shirtFabric: shirtFabric.file } : {}),
+        ...(waistcoatFabric ? { waistcoatFabric: waistcoatFabric.file } : {}),
+      },
+      hasLowerFabricField: Boolean(lowerFabric),
+      fabricGuidance,
+      backgroundControl,
+      qualityValue: undefined,
     });
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) return jsonError("The try-on selection is too large.", 413);
@@ -580,20 +598,31 @@ function generationRateRejection(rateLimit: GenerationRateLimit, headers: Header
   });
 }
 
-type HighResolutionHandoff = {
-  lease: GenerationLease;
+type ValidatedSubmissionInput = {
+  request: Request;
+  requestId: string;
+  user: NonNullable<Awaited<ReturnType<RouteDependencies["authenticate"]>>>;
+  idempotencyKey: string | null | undefined;
+  dependencies: RouteDependencies;
+  state: RequestState;
+  highResolution: boolean;
+  lease: GenerationLease | null;
   rateHeaders: HeadersInit;
-  /** Atomically consumes the request's uploads. False when any was already used or expired. */
-  claimUploads: () => Promise<boolean>;
+  claimUploads?: () => Promise<boolean>;
+  fields: Record<string, string | undefined>;
+  presentNames: Iterable<string>;
+  files: Partial<Record<"person" | "outfit" | "fabric" | "lowerFabric" | "shirtFabric" | "waistcoatFabric", File | null>>;
+  hasLowerFabricField: boolean;
+  fabricGuidance: ReturnType<typeof parseFabricGuidance>;
+  backgroundControl: ReturnType<typeof parseBackgroundControl>;
+  qualityValue: string | null | undefined;
 };
 
 async function handleMultipartRequest(
   request: Request,
   dependencies: RouteDependencies,
   state: RequestState,
-  handoff?: HighResolutionHandoff,
 ): Promise<Response> {
-  const highResolution = Boolean(handoff);
   const requestId = crypto.randomUUID();
 
   if (!isSameOriginRequest(request)) {
@@ -643,26 +672,115 @@ async function handleMultipartRequest(
     return jsonError("The uploaded images are too large. Please choose smaller images.", 413);
   }
 
+  let lease: GenerationLease | null = null;
+  try {
+    const admission = await checkUploadRateLimit(user.username, "complete");
+    if (!admission.allowed) return generationRateRejection(admission, generationRateHeaders(admission));
+    lease = await acquireGenerationLock(user.username);
+    if (!lease) return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
+
+    const formData = await new Response(await readBoundedBody(request, MAX_REQUEST_BYTES), {
+      headers: { "content-type": contentType },
+    }).formData();
+    if (hasUnexpectedFields(formData)) {
+      return jsonError("Please upload a person photo and fabric photo, then choose a men's garment and accessories.", 400);
+    }
+    const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
+    if (selectionModeValue === null) {
+      return jsonError("Please choose a valid generation mode.", 400);
+    }
+    const rawGuidance = getExactlyOneText(formData, "fabricGuidance", false);
+    if (rawGuidance === null) return jsonError("Invalid fabric reference settings.", 400);
+    const fabricGuidance = parseFabricGuidance(rawGuidance);
+    const rawBackground = getExactlyOneText(formData, "backgroundControl", false);
+    if (rawBackground === null) return jsonError("Invalid garment edit region.", 400);
+    const backgroundControl = parseBackgroundControl(rawBackground);
+    const qualityValue = getExactlyOneText(formData, "quality", false);
+    const fieldNames = [
+      "selectionMode", "upperGarmentId", "lowerGarmentId", "garmentSubtypeId",
+      "upperStyleId", "lowerStyleId", "turbanStyleId", "shoeStyleId", "turbanId", "shoeId",
+      "bespokeConfiguration", "categoryId", "designId", "variantId", "fabricRegion", "splitRecipe",
+    ] as const;
+    const fields: Record<string, string | undefined> = {};
+    for (const name of fieldNames) {
+      const value = getExactlyOneText(formData, name, false);
+      if (value === null) return jsonError("The try-on selection is invalid.", 400);
+      fields[name] = value;
+    }
+
+    return await executeTryOnSubmission({
+      request,
+      requestId,
+      user,
+      idempotencyKey,
+      dependencies,
+      state,
+      highResolution: false,
+      lease,
+      rateHeaders: {},
+      fields,
+      presentNames: [...formData.keys()],
+      files: {
+        person: getExactlyOneFile(formData, "person"),
+        outfit: getExactlyOneFile(formData, "outfit"),
+        fabric: getExactlyOneFile(formData, "fabric"),
+        lowerFabric: getExactlyOneFile(formData, "lowerFabric"),
+        shirtFabric: getExactlyOneFile(formData, "shirtFabric"),
+        waistcoatFabric: getExactlyOneFile(formData, "waistcoatFabric"),
+      },
+      hasLowerFabricField: formData.has("lowerFabric"),
+      fabricGuidance,
+      backgroundControl,
+      qualityValue,
+    });
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return jsonError("The uploaded images are too large. Please choose smaller images.", 413);
+    }
+    if (error instanceof UploadValidationError) {
+      return jsonError(error.message, error.code === "file_too_large" ? 413 : 400);
+    }
+    if (error instanceof GenerationGuardUnavailableError || error instanceof RateLimitConfigurationError) {
+      console.error("generation_control_unavailable", { requestId, route: "try-on" });
+      return jsonError("Generation is temporarily unavailable. Please try again shortly.", 503);
+    }
+    throw error;
+  } finally {
+    if (lease) {
+      await releaseGenerationLock(lease).catch((error) => {
+        console.error("generation_lock_release_failed", {
+          requestId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      });
+    }
+  }
+}
+
+async function executeTryOnSubmission(input: ValidatedSubmissionInput): Promise<Response> {
+  const {
+    request,
+    requestId,
+    user,
+    idempotencyKey,
+    dependencies,
+    state,
+    highResolution,
+    fields,
+    presentNames,
+    files,
+    hasLowerFabricField,
+    fabricGuidance,
+    backgroundControl,
+    qualityValue,
+  } = input;
   const startedAt = Date.now();
   let generationAttempted = false;
-  let lease: GenerationLease | null = handoff?.lease ?? null;
-  let rateHeaders: HeadersInit = handoff?.rateHeaders ?? {};
+  let lease: GenerationLease | null = input.lease;
+  let rateHeaders: HeadersInit = input.rateHeaders;
   try {
-    if (!handoff) {
-      const admission = await checkUploadRateLimit(user.username, "complete");
-      if (!admission.allowed) return generationRateRejection(admission, generationRateHeaders(admission));
-      lease = await acquireGenerationLock(user.username);
-      if (!lease) return jsonError("A try-on is already in progress. Please wait for it to finish.", 409);
-    }
-    // Only the private, server-built high-resolution handoff may exceed the
-    // legacy HTTP limit. A browser header cannot select that trusted path.
-    const formData = highResolution
-      ? await request.formData()
-      : await new Response(await readBoundedBody(request, MAX_REQUEST_BYTES), {
-        headers: { "content-type": contentType },
-      }).formData();
-    const selectionModeValue = getExactlyOneText(formData, "selectionMode", false);
-    if (selectionModeValue === null || (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit" && selectionModeValue !== "level1" && selectionModeValue !== "split")) {
+    const selectionModeValue = fields.selectionMode;
+    if (selectionModeValue && selectionModeValue !== "catalog" && selectionModeValue !== "outfit" && selectionModeValue !== "level1" && selectionModeValue !== "split") {
       return jsonError("Please choose a valid generation mode.", 400, rateHeaders);
     }
     const selectionMode: SelectionMode = selectionModeValue === "level1"
@@ -673,42 +791,35 @@ async function handleMultipartRequest(
       ? "outfit"
       : selectionModeValue === "catalog"
         ? "catalog"
-        : getExactlyOneFile(formData, "outfit") ? "outfit" : "catalog";
-    const rawGuidance = getExactlyOneText(formData, "fabricGuidance", false);
-    if (rawGuidance === null) return jsonError("Invalid fabric reference settings.", 400);
-    const fabricGuidance = parseFabricGuidance(rawGuidance);
-    const rawBackground = getExactlyOneText(formData, "backgroundControl", false);
-    if (rawBackground === null) return jsonError("Invalid garment edit region.", 400);
-    const backgroundControl = parseBackgroundControl(rawBackground);
-    const personFile = getExactlyOneFile(formData, "person");
-    const outfitFile = getExactlyOneFile(formData, "outfit");
-    const fabricFile = getExactlyOneFile(formData, "fabric");
-    const lowerFabricFile = getExactlyOneFile(formData, "lowerFabric");
-    const shirtFabricFile = getExactlyOneFile(formData, "shirtFabric");
-    const waistcoatFabricFile = getExactlyOneFile(formData, "waistcoatFabric");
-    const hasLowerFabricField = formData.has("lowerFabric");
-    const upperGarmentId = getExactlyOneText(formData, "upperGarmentId", false);
-    const lowerGarmentId = getExactlyOneText(formData, "lowerGarmentId", false);
-    const garmentSubtypeId = getExactlyOneText(formData, "garmentSubtypeId", false);
-    const upperStyleId = getExactlyOneText(formData, "upperStyleId", false);
-    const lowerStyleId = getExactlyOneText(formData, "lowerStyleId", false);
-    const turbanStyleId = getExactlyOneText(formData, "turbanStyleId", false);
-    const shoeStyleId = getExactlyOneText(formData, "shoeStyleId", false);
-    const turbanId = getExactlyOneText(formData, "turbanId", false);
-    const shoeId = getExactlyOneText(formData, "shoeId", false);
-    const bespokeConfigurationText = getExactlyOneText(formData, "bespokeConfiguration", false);
-    const categoryId = getExactlyOneText(formData, "categoryId", false);
-    const designId = getExactlyOneText(formData, "designId", false);
-    const variantId = getExactlyOneText(formData, "variantId", false);
-    const splitRecipeText = getExactlyOneText(formData, "splitRecipe", false);
+        : files.outfit ? "outfit" : "catalog";
+    const personFile = files.person ?? null;
+    const outfitFile = files.outfit ?? null;
+    const fabricFile = files.fabric ?? null;
+    const lowerFabricFile = files.lowerFabric ?? null;
+    const shirtFabricFile = files.shirtFabric ?? null;
+    const waistcoatFabricFile = files.waistcoatFabric ?? null;
+    const upperGarmentId = fields.upperGarmentId;
+    const lowerGarmentId = fields.lowerGarmentId;
+    const garmentSubtypeId = fields.garmentSubtypeId;
+    const upperStyleId = fields.upperStyleId;
+    const lowerStyleId = fields.lowerStyleId;
+    const turbanStyleId = fields.turbanStyleId;
+    const shoeStyleId = fields.shoeStyleId;
+    const turbanId = fields.turbanId;
+    const shoeId = fields.shoeId;
+    const bespokeConfigurationText = fields.bespokeConfiguration;
+    const categoryId = fields.categoryId;
+    const designId = fields.designId;
+    const variantId = fields.variantId;
+    const splitRecipeText = fields.splitRecipe;
 
-    const invalidCommonInput = !personFile || (selectionMode !== "split" && !fabricFile) || bespokeConfigurationText === null || hasUnexpectedFields(formData);
+    const invalidCommonInput = !personFile || (selectionMode !== "split" && !fabricFile);
     const invalidModeInput = selectionMode === "outfit"
       ? !outfitFile
       : selectionMode === "level1"
-        ? !categoryId || !designId || hasLevel1ForbiddenFields(formData)
+        ? !categoryId || !designId || hasLevel1ForbiddenFields(presentNames)
         : selectionMode === "split"
-          ? !splitRecipeText || hasSplitForbiddenFields(formData)
+          ? !splitRecipeText || hasSplitForbiddenFields(presentNames)
           : !upperGarmentId || !turbanId || !shoeId;
     if (invalidCommonInput || invalidModeInput) {
       return jsonError(
@@ -724,8 +835,8 @@ async function handleMultipartRequest(
       );
     }
 
-    const fabricRegionValue = getExactlyOneText(formData, "fabricRegion", false);
-    if (fabricRegionValue === null || (fabricRegionValue && !["upper", "lower", "both", "custom", "jacket"].includes(fabricRegionValue))) {
+    const fabricRegionValue = fields.fabricRegion;
+    if (fabricRegionValue && !["upper", "lower", "both", "custom", "jacket"].includes(fabricRegionValue)) {
       return jsonError("Please choose a valid fabric application: upper, lower, both, customization, or jacket.", 400, rateHeaders);
     }
     const fabricRegion: FabricRegion = fabricRegionValue === "upper" || fabricRegionValue === "lower" || fabricRegionValue === "custom" || fabricRegionValue === "jacket" ? fabricRegionValue : "both";
@@ -748,7 +859,6 @@ async function handleMultipartRequest(
       return jsonError("Shirt and waistcoat fabrics are only available in Split Outfit.", 400, rateHeaders);
     }
 
-    const qualityValue = getExactlyOneText(formData, "quality", false);
     if (qualityValue === null || (qualityValue && qualityValue !== "medium")) {
       return jsonError("Studio try-ons use the fixed medium quality setting.", 400, rateHeaders);
     }
@@ -862,7 +972,7 @@ async function handleMultipartRequest(
       if (blocked) return blocked;
     }
 
-    if (!handoff) {
+    if (!highResolution) {
       try {
         lease ??= await acquireGenerationLock(user.username);
       } catch (error) {
@@ -906,7 +1016,7 @@ async function handleMultipartRequest(
       }
     }
 
-    if (handoff && !(await handoff.claimUploads())) {
+    if (input.claimUploads && !(await input.claimUploads())) {
       return jsonError(UPLOADS_UNAVAILABLE_MESSAGE, 409, rateHeaders);
     }
 
@@ -1210,15 +1320,7 @@ async function handleMultipartRequest(
       rateHeaders,
     );
   } finally {
-    if (lease && !handoff) {
-      try {
-        await releaseGenerationLock(lease);
-      } catch (error) {
-        console.error("generation_lock_release_failed", {
-          requestId,
-          errorName: error instanceof Error ? error.name : "UnknownError",
-        });
-      }
-    }
+    // Lock release for highResolution is owned by handleHighResolutionRequest's finally block;
+    // multipart lock release is owned by handleMultipartRequest's finally block.
   }
 }

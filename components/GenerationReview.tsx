@@ -6,22 +6,26 @@ const labels: Record<ReviewReason, string> = { "pattern-too-large": "Pattern too
 async function requestReview(id: string, value?: Review): Promise<Review> {
   return withDeadline(async signal => {
     const response = await fetch(`/api/history/${encodeURIComponent(id)}/review`, { method: value ? "PUT" : "GET", credentials: "same-origin", cache: "no-store", signal, ...(value ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) } : {}) });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Feedback is unavailable.");
-    return payload;
+    const payload = await response.json().catch(() => ({} as Record<string, unknown>));
+    if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Feedback is unavailable.");
+    return payload as Review;
   }, 10000);
 }
 export function GenerationReview({ generationId, onSaved }: { generationId: string; onSaved?: (value: Review) => void }) {
   const [value, setValue] = useState<Review>({ decision: "unreviewed", favourite: false, reasons: [], updatedAt: "" });
   const [busy, setBusy] = useState(true);
   const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const loaded = loadedId === generationId;
   const [message, setMessage] = useState("");
   useEffect(() => {
     let active = true;
-    requestReview(generationId).then(next => { if (active) { setValue(next); setLoadedId(generationId); } }).catch(() => { if (active) setMessage("Couldn't load your feedback. Reopen this result to retry."); }).finally(() => { if (active) setBusy(false); });
+    requestReview(generationId)
+      .then(next => { if (active) { setValue(next); setLoadedId(generationId); } })
+      .catch(() => { if (active) setMessage("Couldn't load your feedback."); })
+      .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [generationId]);
+  }, [generationId, loadAttempt]);
   async function save() {
     if (!loaded || busy) return;
     setBusy(true); setMessage("");
@@ -41,5 +45,6 @@ export function GenerationReview({ generationId, onSaved }: { generationId: stri
       <button type="button" onClick={() => void save()}>Save feedback</button>
     </fieldset>
     <p role="status">{busy ? "Loading or saving feedback…" : message}</p>
+    {!loaded && !busy ? <button type="button" onClick={() => { setBusy(true); setMessage(""); setLoadAttempt(n => n + 1); }}>Retry</button> : null}
   </section>;
 }

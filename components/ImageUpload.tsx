@@ -46,6 +46,7 @@ export function ImageUpload({
     const selected = fileList?.[0];
     if (selected && !disabled) onSelect(selected);
     if (inputRef.current) inputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   }
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -131,17 +132,6 @@ export function ImageUpload({
       ) : (
         <div
           className={`upload-dropzone${isDragging ? " is-dragging" : ""}${disabled ? " is-disabled" : ""}`}
-          role="button"
-          tabIndex={disabled ? -1 : 0}
-          aria-label={`Upload ${label.toLowerCase()}. Click or drag and drop an image.`}
-          aria-disabled={disabled}
-          onClick={openPicker}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              openPicker();
-            }
-          }}
           onDragEnter={(event) => {
             event.preventDefault();
             if (!disabled) setIsDragging(true);
@@ -162,19 +152,15 @@ export function ImageUpload({
             <div className="upload-choice-actions">
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openPicker();
-                }}
+                disabled={disabled}
+                onClick={openPicker}
               >
                 Choose from device
               </button>
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openCamera();
-                }}
+                disabled={disabled}
+                onClick={openCamera}
               >
                 Use camera
               </button>

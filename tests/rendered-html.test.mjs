@@ -44,14 +44,19 @@ test("Level 1 catalogue CSS enforces 4:5 aspect ratio and object-fit contain wit
 });
 
 test("Level 1 catalogue component contains full-screen design viewer with accessibility attributes", async () => {
-  const component = await source("components/Level1Catalogue.tsx");
+  const [component, modalHook] = await Promise.all([
+    source("components/Level1Catalogue.tsx"),
+    source("components/hooks/useModalDialog.ts"),
+  ]);
+  assert.match(component, /level1-card-select-btn/);
   assert.match(component, /level1-card-inspect-btn/);
   assert.match(component, /level1-viewer-dialog/);
   assert.match(component, /role="dialog"/);
   assert.match(component, /aria-modal="true"/);
   assert.match(component, /aria-labelledby="viewer-design-name"/);
   assert.match(component, /Inspect full silhouette and tailoring details/);
-  assert.match(component, /Escape/);
+  assert.match(component, /useModalDialog/);
+  assert.match(modalHook, /Escape/);
 });
 
 test("generated try-on results open a click-to-zoom preview", async () => {
@@ -63,7 +68,7 @@ test("generated try-on results open a click-to-zoom preview", async () => {
   assert.match(result, /ZoomableImage/);
   assert.match(preview, /Click the image to zoom/);
   assert.match(preview, /createPortal/);
-  assert.match(preview, /Escape/);
+  assert.match(preview, /useModalDialog/);
   assert.match(css, /\.result-preview-root/);
   assert.match(css, /\.result-preview-image/);
 });
@@ -75,8 +80,9 @@ test("Split component cards render approved photos instead of silhouettes when a
 });
 
 test("UsageHistory renders through a React portal with proper stacking and accessibility", async () => {
-  const [component, css] = await Promise.all([
+  const [component, modalHook, css] = await Promise.all([
     source("components/UsageHistory.tsx"),
+    source("components/hooks/useModalDialog.ts"),
     source("app/globals.css"),
   ]);
   assert.match(component, /createPortal/);
@@ -85,7 +91,8 @@ test("UsageHistory renders through a React portal with proper stacking and acces
   assert.match(component, /role="dialog"/);
   assert.match(component, /aria-modal="true"/);
   assert.match(component, /aria-labelledby="history-title"/);
-  assert.match(component, /overflow = "hidden"/);
+  assert.match(component, /useModalDialog/);
+  assert.match(modalHook, /overflow = "hidden"/);
   assert.match(css, /\.history-modal-root\s*\{[^}]*z-index:\s*99999/);
   assert.match(css, /\.history-panel\s*\{[^}]*overflow-y:\s*auto/);
 });

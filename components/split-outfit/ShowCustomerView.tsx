@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { ZoomableImage } from "@/components/ZoomableImage";
+import { useModalDialog } from "@/components/hooks/useModalDialog";
 import type { SessionResult, SwatchPiece } from "@/lib/session-results";
 
 type Props = {
@@ -30,16 +31,12 @@ export function ShowCustomerView({ results, initialIndex, onClose }: Props) {
   const swipeStart = useRef<number | null>(null);
   const current = results[index];
 
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    doneRef.current?.focus();
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, []);
+  useModalDialog({
+    open: Boolean(current),
+    onClose,
+    dialogRef,
+    initialFocusRef: doneRef,
+  });
 
   const go = useCallback((delta: number) => {
     setShowBefore(false);
@@ -48,20 +45,12 @@ export function ShowCustomerView({ results, initialIndex, onClose }: Props) {
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
       if (event.key === "ArrowLeft") go(-1);
       if (event.key === "ArrowRight") go(1);
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      // Keep focus inside the dialog while it is open.
-      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex]:not([tabindex='-1'])")];
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [go, onClose]);
+  }, [go]);
 
   if (!current) return null;
 

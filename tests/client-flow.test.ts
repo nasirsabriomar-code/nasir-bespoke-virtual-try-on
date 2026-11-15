@@ -178,3 +178,12 @@ test("pending generation keeps the customer photo token", () => {
   const parsed = parsePendingGeneration(JSON.stringify({ key: "123e4567-e89b-42d3-a456-426614174000", createdAt: now - 1000, personToken: "blob:http://x/abc", summary: { garment: "g", fabric: "f", shoes: "s" } }), now);
   assert.equal(parsed?.personToken, "blob:http://x/abc");
 });
+
+
+test("extractHistoryId extracts UUIDs from history asset URLs only", async () => {
+  const { extractHistoryId } = await import("@/lib/history/extract-id");
+  const id = "12345678-1234-4123-8123-123456789abc";
+  assert.equal(extractHistoryId(`/api/history/${id}/asset/result`), id);
+  assert.equal(extractHistoryId("blob:https://example.com/123"), null);
+  assert.equal(extractHistoryId(null), null);
+});

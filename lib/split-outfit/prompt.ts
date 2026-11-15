@@ -7,8 +7,6 @@ import {
   type SplitImageMap,
 } from "./image-map";
 
-export type SplitFabricRegion = "upper" | "lower" | "both";
-
 function pieceBinding(name: string, construction: number, fabric: number | null, fragment: string, extra = "") {
   if (fabric) {
     return `${name} [Image ${construction} = cut; Image ${fabric} = cloth — exact shade and texture of Image ${fabric}, as if cut from that cloth]${extra}: ${fragment}`;

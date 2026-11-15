@@ -74,7 +74,14 @@ export function parseSubmittedBespokeConfiguration(value: string): SubmittedBesp
   if (typeof record.profileId !== "string" || !record.selections || typeof record.selections !== "object" || Array.isArray(record.selections)) {
     throw new BespokeConfigurationError("The bespoke configuration is malformed.");
   }
-  return { profileId: record.profileId, selections: record.selections as Record<string, string> };
+  const selections: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(record.selections as Record<string, unknown>)) {
+    if (typeof entry !== "string") {
+      throw new BespokeConfigurationError("The bespoke configuration is malformed.");
+    }
+    selections[key] = entry;
+  }
+  return { profileId: record.profileId, selections };
 }
 
 function groupIsVisible(group: ConfigurationGroup, selections: Record<string, string>) {
@@ -111,10 +118,10 @@ export function resolveBespokeConfiguration(
     }
     const selected = group.options.find((item) => item.id === optionId && item.active);
     if (!selected) throw new BespokeConfigurationError(`Please choose a valid option for ${group.name.toLowerCase()}.`);
-    if (selected.requires && !matchesRules(selections, selected.requires)) {
+    if (selected.requires?.length && !matchesRules(selections, selected.requires)) {
       throw new BespokeConfigurationError(`${selected.name} is not compatible with the current tailoring choices.`);
     }
-    if (selected.conflictsWith && matchesRules(selections, selected.conflictsWith)) {
+    if (selected.conflictsWith?.length && matchesRules(selections, selected.conflictsWith)) {
       throw new BespokeConfigurationError(`${selected.name} conflicts with the current tailoring choices.`);
     }
     selections[group.id] = selected.id;

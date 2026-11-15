@@ -1,8 +1,6 @@
 import "server-only";
 
-import { existsSync, createReadStream } from "node:fs";
-import path from "node:path";
-import { Readable } from "node:stream";
+import { readLocalCatalogAssetCache } from "@/lib/catalog/local-cache";
 import { r2Get } from "@/lib/r2-storage";
 import type { SplitOptionReference } from "./types";
 
@@ -11,10 +9,6 @@ export class SplitAssetStorageError extends Error {
     super(message);
     this.name = "SplitAssetStorageError";
   }
-}
-
-function extensionFor(contentType: string) {
-  return contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
 }
 
 /**
@@ -45,23 +39,8 @@ export async function getPrivateSplitAsset(reference: SplitOptionReference) {
     if (!response.ok || !response.body) return null;
     return { reference, blob: { statusCode: response.status, stream: response.body, blob: { contentType: response.headers.get("content-type") ?? reference.contentType } } };
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      const exts = [extensionFor(reference.contentType), "png", "jpg", "jpeg", "webp"];
-      for (const ext of exts) {
-        const localCachePath = path.join(process.cwd(), ".cache/catalog-assets", `${reference.assetId}.${ext}`);
-        if (existsSync(localCachePath)) {
-          const stream = Readable.toWeb(createReadStream(localCachePath));
-          return {
-            reference,
-            blob: {
-              statusCode: 200,
-              stream: stream as unknown as ReadableStream,
-              blob: { contentType: reference.contentType },
-            },
-          };
-        }
-      }
-    }
+    const cached = readLocalCatalogAssetCache(reference.assetId, reference.contentType);
+    if (cached) return { reference, blob: cached };
     throw error;
   }
 }

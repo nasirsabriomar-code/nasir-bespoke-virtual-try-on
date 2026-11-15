@@ -2,8 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element -- private asset routes must be requested directly with the session cookie. */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { useModalDialog } from "@/components/hooks/useModalDialog";
 import { restoreLookFromGeneration, type RestoredLook } from "@/lib/history/restore-look";
 import { GenerationReview } from "@/components/GenerationReview";
 import type { GenerationReview as Review } from "@/lib/history/review-types";
@@ -148,16 +149,33 @@ function formatLook(event: HistoryEvent) {
 
 type UsageHistoryProps = {
   onRestoreLook?: (look: RestoredLook) => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 };
 
-export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
+export function UsageHistory({
+  onRestoreLook,
+  isOpen: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+}: UsageHistoryProps = {}) {
   const mounted = useSyncExternalStore(
     emptySubscribe,
     () => true,
     () => false,
   );
   const [favouritesOnly, setFavouritesOnly] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = controlledOpen ?? internalOpen;
+  const setIsOpen = useCallback(
+    (next: boolean | ((current: boolean) => boolean)) => {
+      const resolved = typeof next === "function" ? next(isOpen) : next;
+      if (onOpenChange) onOpenChange(resolved);
+      else setInternalOpen(resolved);
+    },
+    [isOpen, onOpenChange],
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [history, setHistory] = useState<HistoryResponse | null>(null);
@@ -169,25 +187,26 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
   const detailsBackRef = useRef<HTMLButtonElement | null>(null);
   const thumbnailRef = useRef<HTMLButtonElement | null>(null);
   const listScrollRef = useRef(0);
+  const fetchControllerRef = useRef<AbortController | null>(null);
 
-  // Lock background scroll and handle Escape key while modal is open
+  const handleClose = useCallback(() => {
+    if (selectedEvent) {
+      setSelectedEvent(null);
+    } else {
+      setIsOpen(false);
+    }
+  }, [selectedEvent, setIsOpen]);
+
+  useModalDialog({
+    open: isOpen,
+    onClose: handleClose,
+    dialogRef: panelRef,
+    initialFocusRef: selectedEvent ? detailsBackRef : closeButtonRef,
+  });
+
+  // Restore scroll position and focus between list and details views
   useEffect(() => {
     if (!isOpen) return;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (selectedEvent) {
-          setSelectedEvent(null);
-        } else {
-          setIsOpen(false);
-        }
-      }
-    }
-
-    window.addEventListener("keydown", onKeyDown);
     if (selectedEvent) {
       if (panelRef.current) panelRef.current.scrollTop = 0;
       detailsBackRef.current?.focus({ preventScroll: true });
@@ -195,51 +214,63 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
       if (panelRef.current) panelRef.current.scrollTop = listScrollRef.current;
       (thumbnailRef.current ?? closeButtonRef.current)?.focus({ preventScroll: true });
     }
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
   }, [isOpen, selectedEvent]);
 
-  async function openHistory() {
-    const nextOpen = !isOpen;
-    setIsOpen(nextOpen);
-    if (!nextOpen || isLoading) return;
+  // Fetch history whenever the modal opens, aborting any in-flight request on close
+  useEffect(() => {
+    if (!isOpen) {
+      fetchControllerRef.current?.abort();
+      fetchControllerRef.current = null;
+      return;
+    }
+
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
     thumbnailRef.current = null;
     listScrollRef.current = 0;
-    setSelectedEvent(null);
 
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/history?limit=100", {
-        credentials: "same-origin",
-        cache: "no-store",
-      });
-      if (response.status === 401) {
-        window.location.replace("/login");
-        return;
+    void (async () => {
+      await Promise.resolve();
+      if (controller.signal.aborted) return;
+      setSelectedEvent(null);
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/history?limit=100", {
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (response.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
+        const payload = (await response.json().catch(() => ({}))) as Partial<HistoryResponse> & {
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error || "Usage history is unavailable.");
+        if (controller.signal.aborted) return;
+        setHistory({
+          events: Array.isArray(payload.events) ? (payload.events as HistoryEvent[]) : [],
+          total: typeof payload.total === "number" ? payload.total : 0,
+          retained: typeof payload.retained === "number" ? payload.retained : 1_000,
+        });
+      } catch (historyError) {
+        if (controller.signal.aborted) return;
+        setError(
+          historyError instanceof Error
+            ? historyError.message
+            : "Usage history is unavailable. Please try again.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
       }
-      const payload = (await response.json().catch(() => ({}))) as Partial<HistoryResponse> & {
-        error?: string;
-      };
-      if (!response.ok) throw new Error(payload.error || "Usage history is unavailable.");
-      setHistory({
-        events: Array.isArray(payload.events) ? (payload.events as HistoryEvent[]) : [],
-        total: typeof payload.total === "number" ? payload.total : 0,
-        retained: typeof payload.retained === "number" ? payload.retained : 1_000,
-      });
-    } catch (historyError) {
-      setError(
-        historyError instanceof Error
-          ? historyError.message
-          : "Usage history is unavailable. Please try again.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [isOpen]);
 
   async function deleteSelectedGeneration() {
     if (isDeleting || !selectedEvent || !window.confirm("Permanently delete this generation and its stored customer photos?")) return;
@@ -265,14 +296,22 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
       const response = await fetch(`/api/history?limit=100&offset=${history.events.length}`, {
         credentials: "same-origin", cache: "no-store",
       });
+      if (response.status === 401) {
+        window.location.replace("/login");
+        return;
+      }
       const payload = (await response.json().catch(() => ({}))) as Partial<HistoryResponse> & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Usage history is unavailable.");
       const events = Array.isArray(payload.events) ? payload.events as HistoryEvent[] : [];
-      setHistory((current) => current ? {
-        events: [...current.events, ...events.filter((event) => !current.events.some((existing) => existing.id === event.id))],
-        total: typeof payload.total === "number" ? payload.total : current.total,
-        retained: typeof payload.retained === "number" ? payload.retained : current.retained,
-      } : current);
+      setHistory((current) => {
+        if (!current) return current;
+        const seenIds = new Set(current.events.map((existing) => existing.id));
+        return {
+          events: [...current.events, ...events.filter((event) => !seenIds.has(event.id))],
+          total: typeof payload.total === "number" ? payload.total : current.total,
+          retained: typeof payload.retained === "number" ? payload.retained : current.retained,
+        };
+      });
     } catch (historyError) {
       setError(historyError instanceof Error ? historyError.message : "Usage history is unavailable. Please try again.");
     } finally {
@@ -280,11 +319,24 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
     }
   }
 
+  const visibleEvents = history
+    ? history.events.filter((event) => !favouritesOnly || event.review?.favourite)
+    : [];
+
   return (
-    <div className="history-control">
-      <button type="button" className="history-button" onClick={openHistory} aria-expanded={isOpen}>
-        History
-      </button>
+    <>
+      {hideTrigger ? null : (
+        <div className="history-control">
+          <button
+            type="button"
+            className="history-button"
+            onClick={() => setIsOpen((open) => !open)}
+            aria-expanded={isOpen}
+          >
+            History
+          </button>
+        </div>
+      )}
 
       {isOpen && mounted
         ? createPortal(
@@ -348,7 +400,7 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                             </tr>
                           </thead>
                           <tbody>
-                            {history.events.filter(event => !favouritesOnly || event.review?.favourite).map((event) => (
+                            {visibleEvents.length > 0 ? visibleEvents.map((event) => (
                               <tr key={event.id}>
                                 <td data-label="Preview">
                                   {event.assets?.result ? (
@@ -385,7 +437,13 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
                                 </td>
                                 <td data-label="Time">{event.durationMs > 0 ? `${Math.round(event.durationMs / 1000)}s` : "—"}</td>
                               </tr>
-                            ))}
+                            )) : (
+                              <tr>
+                                <td colSpan={8} className="history-status">
+                                  No favourite try-ons in the loaded history.
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -588,6 +646,6 @@ export function UsageHistory({ onRestoreLook }: UsageHistoryProps = {}) {
             document.body,
           )
         : null}
-    </div>
+    </>
   );
 }

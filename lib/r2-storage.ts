@@ -94,9 +94,12 @@ export async function r2Put(pathname: string, body: Blob | Uint8Array, contentTy
     method: "PUT",
     signal: AbortSignal.timeout(15_000),
     headers: { "Content-Type": contentType },
-    body: body instanceof Blob ? body : Buffer.from(body),
+    body: (body instanceof Blob ? body : Buffer.from(body.buffer, body.byteOffset, body.byteLength)) as BodyInit,
   });
-  if (!response.ok) throw new Error(`R2 upload failed with status ${response.status}.`);
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error(`R2 upload failed with status ${response.status}.`);
+  }
   if (pathname.startsWith("nasir-bespoke/catalogue/")) invalidateCatalogueAvailability(pathname);
 }
 
@@ -120,5 +123,8 @@ export async function r2Get(pathname: string) {
 
 export async function r2Delete(pathname: string) {
   const response = await fetch(presignR2Url(pathname, "DELETE"), { method: "DELETE", signal: AbortSignal.timeout(15_000) });
-  if (!response.ok && response.status !== 404) throw new Error(`R2 delete failed with status ${response.status}.`);
+  if (!response.ok && response.status !== 404) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error(`R2 delete failed with status ${response.status}.`);
+  }
 }

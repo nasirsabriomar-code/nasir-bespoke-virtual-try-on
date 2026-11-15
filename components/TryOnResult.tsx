@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ResultComparison, type ComparisonReference } from "@/components/ResultComparison";
 import { GenerationReview } from "@/components/GenerationReview";
 import { ZoomableImage } from "@/components/ZoomableImage";
+import { extractHistoryId } from "@/lib/history/extract-id";
 import type { ResultSummary } from "@/lib/result-summary";
 
 type TryOnResultProps = {
@@ -58,7 +59,14 @@ export function TryOnResult({
           >
             Try-On
           </button>
-          <button type="button" aria-pressed={view === "compare"} onClick={() => setView("compare")}>Side by side</button>
+          <button
+            type="button"
+            className={view === "compare" ? "is-active" : ""}
+            aria-pressed={view === "compare"}
+            onClick={() => setView("compare")}
+          >
+            Side by side
+          </button>
         </div>
       </div>
 
@@ -94,7 +102,10 @@ export function TryOnResult({
           Start Over
         </button>
       </div>
-      {resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)?.[1] ? <GenerationReview key={resultUrl} generationId={resultUrl.match(/\/api\/history\/([0-9a-f-]{36})\//i)![1]} /> : <p>Persistent feedback is available for results saved to History. Download this unsaved image before leaving the page.</p>}
+      {(() => {
+        const historyId = extractHistoryId(resultUrl);
+        return historyId ? <GenerationReview key={resultUrl} generationId={historyId} /> : <p>Persistent feedback is available for results saved to History. Download this unsaved image before leaving the page.</p>;
+      })()}
       <p className="result-disclaimer">AI visualization. Actual garment fit may vary.</p>
     </div>
   );

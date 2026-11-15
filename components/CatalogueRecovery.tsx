@@ -11,7 +11,8 @@ export function CatalogueRecovery() {
     try {
       const response = await fetch("/api/catalogue-recovery", { cache: "no-store" });
       if (!response.ok) throw new Error("Sign in to restore approved references.");
-      const { assets } = await response.json() as { assets: { id: string; checksum: string }[] };
+      const payload = (await response.json().catch(() => ({}))) as { assets?: { id: string; checksum: string }[] };
+      const assets = Array.isArray(payload.assets) ? payload.assets : [];
       let restored = 0, unmatched = 0;
       for (const file of Array.from(files)) {
         const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))]
@@ -23,7 +24,7 @@ export function CatalogueRecovery() {
           const result = await fetch("/api/catalogue-recovery?id=" + encodeURIComponent(asset.id), {
             method: "POST", credentials: "same-origin", body: file,
           });
-          const payload = await result.json() as { error?: string };
+          const payload = await result.json().catch(() => ({} as { error?: string }));
           if (!result.ok) throw new Error(payload.error || "Restoration failed.");
           restored++;
         }
@@ -32,7 +33,7 @@ export function CatalogueRecovery() {
     } catch (error) { setStatus(error instanceof Error ? error.message : "Restoration failed."); }
     finally { setBusy(false); }
   }
-  return <main style={{ padding: "2rem", maxWidth: "50rem", margin: "auto" }}>
+  return <main className="catalogue-recovery-panel">
     <h1>Restore approved catalogue references</h1>
     <p>Only exact matches to the approved catalogue are accepted. Existing references are verified before any upload.</p>
     <label>Approved image backups <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy}

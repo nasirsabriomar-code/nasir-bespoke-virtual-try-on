@@ -1,8 +1,16 @@
 import "server-only";
 
-import { evaluateOption, isSelectable, reconcileSelections, type ReconcileGroup } from "@/lib/rules/engine";
-import type { RepairNotice, Selections, Verdict } from "@/lib/rules/types";
+import { evaluateOption, isSelectable, type ReconcileGroup } from "@/lib/rules/engine";
+import type { RepairNotice, Verdict } from "@/lib/rules/types";
 import { SPLIT_CATALOGUE_BY_FAMILY, SPLIT_SLOTS } from "./catalogue";
+import {
+  deriveActiveMaterialSlotsFromResolver,
+  hasRealWaistcoat,
+  hasRequiredSplitSelections,
+  isWaistcoatRequiredForState,
+  reconcileFromGroups,
+  toSelections,
+} from "./shared-engine";
 import type {
   SplitComponentCategory,
   SplitComponentOption,
@@ -48,17 +56,7 @@ function getSlotValue(state: SplitOutfitState, slot: SplitSlot): string | string
   }
 }
 
-/** Maps the named-field state onto the generic Selections record the rule engine consumes. */
-export function toSelections(state: SplitOutfitState): Selections {
-  return {
-    upper: state.upperId ?? "",
-    lower: state.lowerId ?? "",
-    "inner-shirt": state.shirtId ?? "",
-    "inner-waistcoat": state.waistcoatId ?? "",
-    footwear: state.footwearId ?? "",
-    accessory: state.accessoryIds,
-  };
-}
+export { toSelections };
 
 const optionIndexCache = new Map<SplitOutfitFamily, Map<string, SplitComponentOption>>();
 
@@ -128,7 +126,17 @@ export function validateRecipe(state: SplitOutfitState):
 
     const id = typeof value === "string" ? value : null;
     if (!id) {
-      if (slot.required) violations.push({ slotId: slot.id, optionId: "", reason: "This selection is required." });
+      if (slot.required || (slot.id === "inner-waistcoat" && isWaistcoatRequiredForState(state))) {
+        violations.push({
+          slotId: slot.id,
+          optionId: "",
+          reason: slot.id === "inner-waistcoat" ? "A three-piece suit requires a waistcoat." : "This selection is required.",
+        });
+      }
+      continue;
+    }
+    if (slot.id === "inner-waistcoat" && isWaistcoatRequiredForState(state) && !hasRealWaistcoat(state)) {
+      violations.push({ slotId: slot.id, optionId: id, reason: "A three-piece suit includes a waistcoat." });
       continue;
     }
     const option = findSplitOption(state.family, id);
@@ -153,19 +161,7 @@ export function reconcile(state: SplitOutfitState): { state: SplitOutfitState; n
     options: optionsForSlot(state.family, slot.id).map((option) => ({ id: option.id, rules: option.rules })),
   }));
 
-  const { selections, notices } = reconcileSelections(groups, toSelections(state));
-
-  const next: SplitOutfitState = {
-    family: state.family,
-    upperId: (selections.upper as string) || null,
-    lowerId: (selections.lower as string) || null,
-    shirtId: (selections["inner-shirt"] as string) || null,
-    waistcoatId: (selections["inner-waistcoat"] as string) || null,
-    footwearId: (selections.footwear as string) || null,
-    accessoryIds: (selections.accessory as string[]) ?? [],
-  };
-
-  return { state: next, notices };
+  return reconcileFromGroups(groups, state);
 }
 
 /**
@@ -174,35 +170,13 @@ export function reconcile(state: SplitOutfitState): { state: SplitOutfitState; n
  * and fabric sources as separate literals that can drift from the data.
  */
 export function deriveActiveMaterialSlots(state: SplitOutfitState): MaterialSlotState[] {
-  const slots: MaterialSlotState[] = [];
   const family = state.family;
-
-  const pushSlotsFor = (option: SplitComponentOption | null) => {
-    if (!option?.materialRequirements) return;
-    for (const requirement of option.materialRequirements) {
-      slots.push({
-        slotId: requirement.slotId,
-        label: requirement.label,
-        componentName: option.customer.name,
-        fabricSource: requirement.defaultFabricSource,
-        description: requirement.description,
-      });
-    }
-  };
-
-  pushSlotsFor(findSplitOption(family, state.upperId));
-  pushSlotsFor(findSplitOption(family, state.lowerId));
-  pushSlotsFor(findSplitOption(family, state.shirtId));
-  pushSlotsFor(findSplitOption(family, state.waistcoatId));
-
   const catalogue = SPLIT_CATALOGUE_BY_FAMILY[family];
-  for (const accessoryOption of catalogue?.accessories ?? []) {
-    if (state.accessoryIds.includes(accessoryOption.id)) pushSlotsFor(accessoryOption);
-  }
-
-  pushSlotsFor(findSplitOption(family, state.footwearId));
-
-  return slots;
+  return deriveActiveMaterialSlotsFromResolver(
+    state,
+    (id) => findSplitOption(family, id),
+    () => (catalogue?.accessories ?? []).filter((option) => state.accessoryIds.includes(option.id)),
+  );
 }
 
 /**
@@ -225,7 +199,7 @@ export function buildSplitOutfitSummary(state: SplitOutfitState): SplitOutfitSum
   // valid — a recipe that looks "filled" but contains an incompatible
   // selection (e.g. a leftover waistcoat after switching to a two-piece
   // jacket) must never be reported complete.
-  const requiredFilled = Boolean(upper && lower && shirt && footwear);
+  const requiredFilled = Boolean(upper && lower && shirt && footwear) && hasRequiredSplitSelections(state);
   const isComplete = requiredFilled && validateRecipe(state).valid;
 
   return {

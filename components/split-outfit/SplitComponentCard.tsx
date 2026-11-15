@@ -185,7 +185,8 @@ export function SplitComponentCard({
   verdict,
   isMultiSelect = false,
 }: SplitComponentCardProps) {
-  const [photoFailed, setPhotoFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const photoFailed = Boolean(option.reference?.url && failedUrl === option.reference.url);
   const isRecommended = verdict?.status === "recommended";
   const isDiscouraged = verdict?.status === "discouraged";
   const reason = verdict?.status === "recommended" || verdict?.status === "discouraged" ? verdict.reason : undefined;
@@ -209,7 +210,7 @@ export function SplitComponentCard({
               className="split-card-photo"
               src={option.reference!.url}
               alt=""
-              onError={() => setPhotoFailed(true)}
+              onError={() => setFailedUrl(option.reference?.url ?? null)}
             />
           ) : (
             // A missing or failed reference shows the drawn silhouette, never alt text over an empty box.

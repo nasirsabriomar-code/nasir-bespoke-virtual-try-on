@@ -376,7 +376,7 @@ export const GARMENT_BLUEPRINTS: GarmentBlueprint[] = [
     promptInstruction: "Create tailored men's trousers with a natural waist, crease, pockets, waistband, hem, and realistic drape; coordinate them with the selected upper garment.",
     pieceType: "lower",
     linkedBlueprintIds: [],
-    compatibleCategories: ["coat-blazer", "shirt", "nehru-jacket", "waistcoat", "sherwani", "indo-western"],
+    compatibleCategories: ["suit", "coat-blazer", "shirt", "nehru-jacket", "waistcoat", "sherwani", "indo-western", "kurta"],
     styleOptions: trouserStyles,
     active: true,
     sortOrder: 90,

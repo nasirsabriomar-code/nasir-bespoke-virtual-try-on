@@ -144,6 +144,19 @@ export async function getUploadSlot(id: string) {
   return rows[0] ? rowToSlot(rows[0] as Record<string, unknown>) : null;
 }
 
+export async function getUploadSlots(ids: string[]): Promise<(UploadSlot | null)[]> {
+  if (!ids.length) return [];
+  const sql = getSql();
+  if (!sql) return ids.map((id) => memoryUploads.get(id) ?? null);
+  await ensureSchema();
+  const rows = await sql`SELECT * FROM nasir_tryon_uploads WHERE id = ANY(${ids}::uuid[])`;
+  const byId = new Map(rows.map((row) => {
+    const slot = rowToSlot(row as Record<string, unknown>);
+    return [slot.id, slot];
+  }));
+  return ids.map((id) => byId.get(id) ?? null);
+}
+
 export async function markUploadComplete(id: string, metadata: Pick<UploadSlot, "checksum" | "width" | "height">) {
   const sql = getSql();
   if (!sql) {
@@ -168,13 +181,13 @@ function isUsableSlot(slot: UploadSlot | null, username: string): slot is Upload
 
 /** Read-only eligibility check. Consumption still happens atomically in consumeUploadSlots. */
 export async function findUsableUploadSlots(username: string, ids: string[]) {
-  const slots = await Promise.all([...new Set(ids)].map(getUploadSlot));
+  const slots = await getUploadSlots([...new Set(ids)]);
   return slots.every((slot) => isUsableSlot(slot, username)) ? slots as UploadSlot[] : null;
 }
 
 export async function consumeUploadSlots(username: string, ids: string[]) {
   const unique = [...new Set(ids)];
-  const slots = await Promise.all(unique.map(getUploadSlot));
+  const slots = await getUploadSlots(unique);
   if (!slots.every((slot) => isUsableSlot(slot, username))) return null;
   const sql = getSql();
   if (!sql) {

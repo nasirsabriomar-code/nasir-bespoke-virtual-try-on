@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { Redis } from "@upstash/redis";
 import { applyCatalogueAvailability } from "@/lib/catalog/availability";
+import { isTrustedLevel1AssetPath } from "@/lib/catalog/level1-paths";
 import { DEFAULT_LEVEL1_CATALOGUE } from "@/lib/catalog/level1-seed";
 import {
   type CuratedAsset,
@@ -142,12 +143,7 @@ export async function getActiveLevel1Asset(assetId: string) {
   const catalogue = await getLevel1Catalogue();
   const asset = catalogue.assets.find((item) => item.id === assetId);
   if (!asset || asset.status !== "active" || !asset.privatePath || !asset.contentType) return null;
-  const trustedDesignPrefix = `nasir-bespoke/catalogue/level1/v1/${asset.designId}/`;
-  const trustedAssetPrefix = `nasir-bespoke/catalogue/level1/v1/${asset.id}/`;
-  if (
-    (!asset.privatePath.startsWith(trustedDesignPrefix) && !asset.privatePath.startsWith(trustedAssetPrefix))
-    || asset.privatePath.includes("..")
-  ) return null;
+  if (!isTrustedLevel1AssetPath(asset)) return null;
   return asset;
 }
 

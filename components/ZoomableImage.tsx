@@ -2,8 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element -- private generation images must be requested with the session cookie. */
 
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
+import { useModalDialog } from "@/components/hooks/useModalDialog";
 
 const ZOOM_STEPS = [1, 2, 3] as const;
 
@@ -18,25 +19,17 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
   const [scaleIndex, setScaleIndex] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; originX: number; originY: number; moved: boolean } | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const scale = ZOOM_STEPS[scaleIndex] ?? 1;
+  const closePreview = useCallback(() => setOpen(false), []);
 
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useModalDialog({
+    open,
+    onClose: closePreview,
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+  });
 
   function cycleZoom() {
     setScaleIndex((current) => {
@@ -87,13 +80,13 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
 
       {open
         ? createPortal(
-            <div className="result-preview-root" role="dialog" aria-modal="true" aria-labelledby="result-preview-title">
-              <button type="button" className="result-preview-dismiss" aria-label="Close preview" onClick={() => setOpen(false)} />
+            <div ref={dialogRef} className="result-preview-root" role="dialog" aria-modal="true" aria-labelledby="result-preview-title">
+              <button type="button" className="result-preview-dismiss" aria-label="Close preview" onClick={closePreview} />
               <div className="result-preview-stage">
                 <div className="result-preview-toolbar">
                   <p id="result-preview-title">Preview</p>
-                  <p className="result-preview-hint">{scale === 1 ? "Click the image to zoom" : "Click to zoom further · drag to pan"}</p>
-                  <button type="button" className="result-preview-close" ref={closeButtonRef} onClick={() => setOpen(false)}>
+                  <p className="result-preview-hint">{scale === 1 ? "Click the image to zoom" : "Click to zoom further · drag or use arrow keys to pan"}</p>
+                  <button type="button" className="result-preview-close" ref={closeButtonRef} onClick={closePreview}>
                     Close
                   </button>
                 </div>
@@ -101,7 +94,26 @@ export function ZoomableImage({ src, alt, className }: ZoomableImageProps) {
                   <button type="button" style={{ background: "transparent", border: 0, padding: 0 }}
                     aria-label={"Zoom " + alt}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cycleZoom(); }
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        cycleZoom();
+                        return;
+                      }
+                      if (scale <= 1) return;
+                      const step = 32;
+                      if (event.key === "ArrowLeft") {
+                        event.preventDefault();
+                        setOffset((current) => ({ ...current, x: current.x + step }));
+                      } else if (event.key === "ArrowRight") {
+                        event.preventDefault();
+                        setOffset((current) => ({ ...current, x: current.x - step }));
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setOffset((current) => ({ ...current, y: current.y + step }));
+                      } else if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setOffset((current) => ({ ...current, y: current.y - step }));
+                      }
                     }}
                     onClick={onImageClick}
                     onPointerDown={onPointerDown}

@@ -374,3 +374,23 @@ test("Client engine reconcile matches the server engine reconcile", () => {
   assert.deepEqual(clientResult.state, serverResult.state);
   assert.deepEqual(clientResult.notices, serverResult.notices);
 });
+
+
+test("Client engine buildSummaryFromView enforces three-piece waistcoat requirement", () => {
+  const view = getSplitCatalogueView("suit");
+  const missingWaistcoat: SplitOutfitState = {
+    ...DEFAULT_SPLIT_OUTFIT_STATE,
+    upperId: "SUIT_UPPER_THREE_PIECE",
+    waistcoatId: "SUIT_WAISTCOAT_NONE",
+  };
+  assert.equal(clientEngine.buildSummaryFromView(view, missingWaistcoat).isComplete, false);
+});
+
+test("reconcileSelections preserves multiple valid accessories when multi is true", () => {
+  const withMultipleAccessories: SplitOutfitState = {
+    ...DEFAULT_SPLIT_OUTFIT_STATE,
+    accessoryIds: ["SUIT_ACC_TIE", "SUIT_ACC_POCKET_SQUARE"],
+  };
+  const { state: reconciled } = reconcile(withMultipleAccessories);
+  assert.deepEqual(reconciled.accessoryIds, ["SUIT_ACC_TIE", "SUIT_ACC_POCKET_SQUARE"]);
+});

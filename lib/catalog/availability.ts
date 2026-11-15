@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { cachedCatalogueProbe } from "./availability-cache";
+import { isTrustedLevel1AssetPath } from "./level1-paths";
 import type { Level1Catalogue, Level1CatalogueView } from "./level1-types";
 import { presignR2Url } from "@/lib/r2-storage";
 
@@ -19,9 +20,9 @@ async function cachedStorage(path: string) {
 /** Read-only checks with a short process-local cache; generation still reads the actual asset. */
 export async function applyCatalogueAvailability(catalogue: Level1Catalogue, view: Level1CatalogueView, probe = cachedStorage): Promise<Level1CatalogueView> {
   const assets = new Map(catalogue.assets.map(asset => [asset.id, asset]));
-  const paths = [...new Set(catalogue.assets.filter(asset => asset.status === "active" && asset.privatePath && !asset.privatePath.includes("..")
-    && (asset.privatePath.startsWith(`nasir-bespoke/catalogue/level1/v1/${asset.designId}/`)
-      || asset.privatePath.startsWith(`nasir-bespoke/catalogue/level1/v1/${asset.id}/`))).map(asset => asset.privatePath!))];
+  const paths = [...new Set(catalogue.assets
+    .filter((asset) => asset.status === "active" && isTrustedLevel1AssetPath(asset))
+    .map((asset) => asset.privatePath!))];
   const available = new Set<string>();
   const unavailable = new Set<string>();
   let next = 0;

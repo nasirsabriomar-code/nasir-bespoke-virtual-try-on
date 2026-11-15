@@ -76,7 +76,13 @@ export async function activateSession(sessionId: string, username: string, ttlSe
     if (result !== "OK") throw new SessionStoreConfigurationError();
     return;
   }
-  memorySessions.set(key, { usernameHash: userHash, expiresAt: Date.now() + ttlSeconds * 1000 });
+  const now = Date.now();
+  if (memorySessions.size > 500) {
+    for (const [entryKey, entry] of memorySessions) {
+      if (entry.expiresAt <= now) memorySessions.delete(entryKey);
+    }
+  }
+  memorySessions.set(key, { usernameHash: userHash, expiresAt: now + ttlSeconds * 1000 });
 }
 
 export async function isSessionActive(sessionId: string, username: string) {

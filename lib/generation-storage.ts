@@ -56,7 +56,7 @@ export function isGenerationAssetPath(path: string, generationId: string, asset:
     : /^nasir-bespoke\/generations\/[0-9a-f-]{36}\/[a-z0-9-]+\.(jpg|png|webp)$/i.test(path) && path.startsWith(`nasir-bespoke/generations/${generationId}/${asset}.`);
 }
 
-async function putPrivate(path: string, body: Blob, contentType: string) {
+async function putPrivate(path: string, body: Blob | Uint8Array, contentType: string) {
   for (let attempt = 1; ; attempt += 1) {
     try {
       await r2Put(path, body, contentType);
@@ -68,33 +68,36 @@ async function putPrivate(path: string, body: Blob, contentType: string) {
   }
 }
 
-async function describeAsset(body: Blob, contentType: string) {
-  const bytes = new Uint8Array(await body.arrayBuffer());
+async function describeAsset(body: Blob | Uint8Array, contentType: string) {
+  const bytes = body instanceof Uint8Array ? body : new Uint8Array(await body.arrayBuffer());
   const mime = contentType === "image/png" || contentType === "image/webp" || contentType === "image/jpeg"
     ? contentType
     : undefined;
   const dimensions = mime ? detectImageDimensions(bytes.subarray(0, 512 * 1024), mime) : null;
   return {
-    bytes: bytes.byteLength,
-    checksum: createHash("sha256").update(bytes).digest("hex"),
-    ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+    rawBytes: bytes,
+    metadata: {
+      bytes: bytes.byteLength,
+      checksum: createHash("sha256").update(bytes).digest("hex"),
+      ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+    },
   };
 }
 
 export async function storeGenerationAssets(input: GenerationAssetInput): Promise<GenerationAssetRefs | null> {
   if (!isGenerationStorageConfigured()) return null;
 
-  const store = async (refs: GenerationAssetRefs, asset: GenerationAssetKey, body: Blob, contentType: string) => {
+  const store = async (refs: GenerationAssetRefs, asset: GenerationAssetKey, body: Blob | Uint8Array, contentType: string) => {
     const path = pathname(input.generationId, asset, contentType);
-    const metadata = await describeAsset(body, contentType);
-    await putPrivate(path, body, contentType);
+    const { rawBytes, metadata } = await describeAsset(body, contentType);
+    await putPrivate(path, rawBytes, contentType);
     refs[asset] = { pathname: path, contentType, ...metadata };
   };
 
   // The paid result goes first, and only its failure fails the save. A missing
   // input or reference copy must never cost the customer's finished image.
   const refs: GenerationAssetRefs = {};
-  await store(refs, "result", new Blob([new Uint8Array(input.resultBytes)]), input.resultContentType);
+  await store(refs, "result", input.resultBytes, input.resultContentType);
 
   const entries: Array<[GenerationAssetKey, Blob, string]> = [
     ["person", input.person, input.person.type || "image/jpeg"],
@@ -105,7 +108,7 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
     ...(input.waistcoatFabric ? [["waistcoat-fabric", input.waistcoatFabric, input.waistcoatFabric.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]] : []),
     ...input.references.map(({ role, file }) => [role, file, file.type || "image/jpeg"] as [GenerationAssetKey, Blob, string]),
   ];
-  for (const [asset, body, contentType] of entries) {
+  await Promise.all(entries.map(async ([asset, body, contentType]) => {
     try {
       await store(refs, asset, body, contentType);
     } catch (error) {
@@ -115,7 +118,7 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
         errorName: error instanceof Error ? error.name : "UnknownError",
       });
     }
-  }
+  }));
   return refs;
 }
 

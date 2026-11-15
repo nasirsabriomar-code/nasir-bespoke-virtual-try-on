@@ -99,9 +99,11 @@ export async function findCatalogSelection(selection: {
   let lower = selection.lowerGarmentId
     ? catalog.blueprints.find((item) => item.id === selection.lowerGarmentId && item.pieceType === "lower")
     : undefined;
+  if (selection.lowerGarmentId && !lower) return null;
   const subtype = selection.garmentSubtypeId
     ? catalog.blueprints.find((item) => item.id === selection.garmentSubtypeId && item.category === "suit")
     : undefined;
+  if (selection.garmentSubtypeId && !subtype) return null;
   const turban = catalog.accessories.find((item) => item.id === selection.turbanId && item.category === "turban");
   const shoes = catalog.accessories.find((item) => item.id === selection.shoeId && item.category === "shoes");
   const linkedSource = subtype ?? upper;

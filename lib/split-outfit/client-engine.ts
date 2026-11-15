@@ -4,8 +4,14 @@
 // /api/split-catalog, so it structurally cannot leak prompt text to the
 // client bundle. All matching logic is the same pure lib/rules/engine used
 // server-side; only the data source differs.
-import { evaluateOption, reconcileSelections, type ReconcileGroup } from "@/lib/rules/engine";
-import type { RepairNotice, Selections, Verdict } from "@/lib/rules/types";
+import { evaluateOption, type ReconcileGroup } from "@/lib/rules/engine";
+import type { RepairNotice, Verdict } from "@/lib/rules/types";
+import {
+  deriveActiveMaterialSlotsFromResolver,
+  hasRequiredSplitSelections,
+  reconcileFromGroups,
+  toSelections,
+} from "./shared-engine";
 import type {
   MaterialSlotState,
   SplitCatalogueView,
@@ -15,16 +21,7 @@ import type {
   SplitOutfitSummaryView,
 } from "./types";
 
-export function toSelections(state: SplitOutfitState): Selections {
-  return {
-    upper: state.upperId ?? "",
-    lower: state.lowerId ?? "",
-    "inner-shirt": state.shirtId ?? "",
-    "inner-waistcoat": state.waistcoatId ?? "",
-    footwear: state.footwearId ?? "",
-    accessory: state.accessoryIds,
-  };
-}
+export { toSelections };
 
 function slotByCategory(view: SplitCatalogueView, categoryId: SplitComponentCategory) {
   return view.slots.find((slot) => slot.id === categoryId);
@@ -60,19 +57,7 @@ export function reconcile(view: SplitCatalogueView, state: SplitOutfitState): { 
     options: slot.options.map((option) => ({ id: option.id, rules: option.rules })),
   }));
 
-  const { selections, notices } = reconcileSelections(groups, toSelections(state));
-
-  const next: SplitOutfitState = {
-    family: state.family,
-    upperId: (selections.upper as string) || null,
-    lowerId: (selections.lower as string) || null,
-    shirtId: (selections["inner-shirt"] as string) || null,
-    waistcoatId: (selections["inner-waistcoat"] as string) || null,
-    footwearId: (selections.footwear as string) || null,
-    accessoryIds: (selections.accessory as string[]) ?? [],
-  };
-
-  return { state: next, notices };
+  return reconcileFromGroups(groups, state);
 }
 
 /** No selected option (in any slot) may have an "incompatible" verdict. */
@@ -89,34 +74,12 @@ function isSelectionValid(view: SplitCatalogueView, state: SplitOutfitState): bo
 }
 
 function deriveActiveMaterialSlots(view: SplitCatalogueView, state: SplitOutfitState): MaterialSlotState[] {
-  const slots: MaterialSlotState[] = [];
-
-  const pushSlotsFor = (option: SplitComponentOptionView | null) => {
-    if (!option?.materialRequirements) return;
-    for (const requirement of option.materialRequirements) {
-      slots.push({
-        slotId: requirement.slotId,
-        label: requirement.label,
-        componentName: option.customer.name,
-        fabricSource: requirement.defaultFabricSource,
-        description: requirement.description,
-      });
-    }
-  };
-
-  pushSlotsFor(findOptionInView(view, state.upperId));
-  pushSlotsFor(findOptionInView(view, state.lowerId));
-  pushSlotsFor(findOptionInView(view, state.shirtId));
-  pushSlotsFor(findOptionInView(view, state.waistcoatId));
-
   const accessorySlot = slotByCategory(view, "accessory");
-  for (const accessoryOption of accessorySlot?.options ?? []) {
-    if (state.accessoryIds.includes(accessoryOption.id)) pushSlotsFor(accessoryOption);
-  }
-
-  pushSlotsFor(findOptionInView(view, state.footwearId));
-
-  return slots;
+  return deriveActiveMaterialSlotsFromResolver(
+    state,
+    (id) => findOptionInView(view, id),
+    () => (accessorySlot?.options ?? []).filter((option) => state.accessoryIds.includes(option.id)),
+  );
 }
 
 /**
@@ -135,7 +98,7 @@ export function buildSummaryFromView(view: SplitCatalogueView, state: SplitOutfi
 
   const activeMaterialSlots = deriveActiveMaterialSlots(view, state);
 
-  const requiredFilled = Boolean(upper && lower && shirt && footwear);
+  const requiredFilled = Boolean(upper && lower && shirt && footwear) && hasRequiredSplitSelections(state);
   const isRecipeValid = isSelectionValid(view, state);
 
   return {

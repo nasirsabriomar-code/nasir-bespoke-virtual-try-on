@@ -1,4 +1,4 @@
-import { checkUploadRateLimit } from "@/lib/rate-limit";
+import { checkUploadRateLimit, RateLimitConfigurationError } from "@/lib/rate-limit";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { createUploadSlot, type UploadRole } from "@/lib/highres/ledger";
@@ -41,6 +41,10 @@ export async function POST(request: Request) {
     if (error instanceof RequestBodyTooLargeError) return Response.json({ error: "Upload request is too large." }, { status: 413 });
     if (error instanceof SyntaxError) return Response.json({ error: "Invalid upload request." }, { status: 400 });
     if (error instanceof AuthConfigurationError) return Response.json({ error: "Authentication is not configured." }, { status: 503 });
+    if (error instanceof RateLimitConfigurationError) {
+      console.error("highres_upload_slot_rate_limit_unavailable");
+      return Response.json({ error: "Uploads are temporarily unavailable. Please try again shortly." }, { status: 503 });
+    }
     if (error instanceof HighResolutionUploadError) return Response.json({ error: error.message }, { status: error.status });
     console.error("highres_upload_slot_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
     return Response.json({ error: "We couldn't prepare this upload. Please try again." }, { status: 503 });

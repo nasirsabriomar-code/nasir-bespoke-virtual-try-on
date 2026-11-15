@@ -1,4 +1,4 @@
-import { checkUploadRateLimit } from "@/lib/rate-limit";
+import { checkUploadRateLimit, RateLimitConfigurationError } from "@/lib/rate-limit";
 import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { HighResolutionUploadError } from "@/lib/highres/uploads";
@@ -22,6 +22,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     return Response.json({ uploaded: true }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) {
     if (error instanceof AuthConfigurationError) return Response.json({ error: "Authentication is not configured." }, { status: 503 });
+    if (error instanceof RateLimitConfigurationError) {
+      console.error("highres_upload_part_rate_limit_unavailable");
+      return Response.json({ error: "Uploads are temporarily unavailable. Please try again shortly." }, { status: 503 });
+    }
     if (error instanceof HighResolutionUploadError) return Response.json({ error: error.message }, { status: error.status });
     console.error("highres_upload_part_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
     return Response.json({ error: "We couldn't upload this image part. Please try again." }, { status: 503 });

@@ -1,3 +1,4 @@
+import { AuthConfigurationError } from "@/lib/auth/config";
 import { requireRequestUser } from "@/lib/auth/session";
 import { getUploadSlot } from "@/lib/highres/ledger";
 
@@ -18,5 +19,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (!slot || slot.username !== user.username) return Response.json({ error: "Upload not found." }, { status: 404 });
     if (Date.parse(slot.expiresAt) <= Date.now()) return Response.json({ error: "Upload expired." }, { status: 410 });
     return Response.json({ id: slot.id, status: slot.status, bytes: slot.bytes, role: slot.role, expiresAt: slot.expiresAt }, { headers: { "Cache-Control": "no-store, private" } });
-  } catch { return Response.json({ error: "Upload status is unavailable." }, { status: 503 }); }
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) return Response.json({ error: "Authentication is not configured." }, { status: 503 });
+    console.error("highres_upload_status_failed", { errorName: error instanceof Error ? error.name : "UnknownError" });
+    return Response.json({ error: "Upload status is unavailable." }, { status: 503 });
+  }
 }

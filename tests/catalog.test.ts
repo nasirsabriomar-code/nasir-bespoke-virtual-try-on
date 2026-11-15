@@ -80,3 +80,22 @@ test("prompt composer supports outfit-only mode and catalog mode without an outf
   assert.match(catalogPrompt, /Image 3 — selected upper/);
   assert.doesNotMatch(catalogPrompt, /customer-supplied outfit construction/);
 });
+
+
+test("trousers-tailored is compatible with suit and kurta and invalid lower/subtype IDs fail closed", async () => {
+  const { findCatalogSelection } = await import("@/lib/catalog/store");
+  const tailored = getBlueprint("trousers-tailored");
+  assert.ok(tailored.compatibleCategories?.includes("suit"));
+  assert.ok(tailored.compatibleCategories?.includes("kurta"));
+
+  const suit = getBlueprint("suit-base");
+  assert.doesNotThrow(() => validateCatalogSelection({
+    upper: suit,
+    lower: tailored,
+    turban: getAccessory("turban-none"),
+    shoes: getAccessory("shoes-oxford"),
+  }));
+
+  assert.equal(await findCatalogSelection({ upperGarmentId: "suit-base", lowerGarmentId: "nonexistent-lower", turbanId: "turban-none", shoeId: "shoes-oxford" }), null);
+  assert.equal(await findCatalogSelection({ upperGarmentId: "suit-base", garmentSubtypeId: "nonexistent-subtype", turbanId: "turban-none", shoeId: "shoes-oxford" }), null);
+});

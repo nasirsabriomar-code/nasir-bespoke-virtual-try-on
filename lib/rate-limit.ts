@@ -47,6 +47,11 @@ function canUseMemoryLimiter() {
 
 function memoryLimit(name: LimitName, identifier: string, limit: number, windowMs: number): LimitCheck {
   const now = Date.now();
+  if (memoryEntries.size > 500) {
+    for (const [entryKey, entry] of memoryEntries) {
+      if (entry.resetAt <= now) memoryEntries.delete(entryKey);
+    }
+  }
   const key = `${name}:${identifier}`;
   const current = memoryEntries.get(key);
   if (!current || current.resetAt <= now) {
@@ -71,6 +76,7 @@ function memoryLimit(name: LimitName, identifier: string, limit: number, windowM
 }
 
 let redisCache: { key: string; redis: Redis } | null = null;
+const ratelimitCache = new Map<string, Ratelimit>();
 
 function getRedis() {
   if (process.env.NODE_ENV === "development" || (process.env.NODE_ENV === "test" && process.env.RATE_LIMIT_BACKEND === "memory")) return null;
@@ -84,6 +90,7 @@ function getRedis() {
   const key = createHash("sha256").update(`${url}:${token}`).digest("hex");
   if (!redisCache || redisCache.key !== key) {
     redisCache = { key, redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3000) }) };
+    ratelimitCache.clear();
   }
   return redisCache.redis;
 }
@@ -95,13 +102,18 @@ async function persistentLimit(
   limit: number,
   duration: "1 m" | "15 m" | "1 h" | "1 d",
 ): Promise<LimitCheck> {
-  const limiter = new Ratelimit({
-    redis,
-    limiter: Ratelimit.fixedWindow(limit, duration),
-    prefix: `nasir-tryon:${name}`,
-    analytics: false,
-    timeout: 3_000,
-  });
+  const cacheKey = `${name}:${limit}:${duration}`;
+  let limiter = ratelimitCache.get(cacheKey);
+  if (!limiter) {
+    limiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.fixedWindow(limit, duration),
+      prefix: `nasir-tryon:${name}`,
+      analytics: false,
+      timeout: 3_000,
+    });
+    ratelimitCache.set(cacheKey, limiter);
+  }
   const response = await limiter.limit(identifier);
   await response.pending;
   if (response.reason === "timeout") throw new RateLimitConfigurationError();

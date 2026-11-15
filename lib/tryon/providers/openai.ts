@@ -167,25 +167,42 @@ export async function prepareProviderReferences(input: TryOnInput, defaultTreatm
   const applied: FabricGuidance = {};
   const details: { part: ImagePart; fullIndex: number; role: FabricRole }[] = [];
   const lines: string[] = [];
-  const parts: ImagePart[] = [];
-  for (const [index, part] of inputParts(input).entries()) {
+  const rawParts = inputParts(input);
+  const processed = await Promise.all(rawParts.map(async (part, index) => {
     const role = STEM_TO_FABRIC[part.stem];
-    if (!isFabricStem(part.stem) || !role) { parts.push(part); continue; }
+    if (!isFabricStem(part.stem) || !role) return { part, role: null as FabricRole | null, options: null as FabricReferenceOptions | null, detail: null as ImagePart | null, index };
     const reference = input.fabricGuidance?.[role];
     const mode = reference?.mode && reference.mode !== "studio-default" ? reference.mode : defaultTreatment;
     const options: FabricReferenceOptions = { ...reference, mode };
-    applied[role] = options;
-    const imageIndex = index + 1;
-    if (options.pattern) lines.push(`Pattern guidance for Image ${imageIndex} (${role}): ${FABRIC_PATTERN_GUIDANCE[options.pattern]}`);
+    if (options.mode === "legacy-crop") {
+      return { part: { ...part, image: await centerFabricRepeat(part.image) }, role, options, detail: null, index };
+    }
+    const [upright, detailImage] = await Promise.all([
+      uprightImage(part.image),
+      options.mode === "full-detail" ? cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) : Promise.resolve(null),
+    ]);
+    return {
+      part: { ...part, image: upright },
+      role,
+      options,
+      detail: detailImage ? { stem: `${part.stem}-detail`, image: detailImage } : null,
+      index,
+    };
+  }));
+
+  const parts: ImagePart[] = [];
+  for (const item of processed) {
+    parts.push(item.part);
+    if (!item.role || !item.options) continue;
+    applied[item.role] = item.options;
+    const imageIndex = item.index + 1;
+    if (item.options.pattern) lines.push(`Pattern guidance for Image ${imageIndex} (${item.role}): ${FABRIC_PATTERN_GUIDANCE[item.options.pattern]}`);
     const measurements = [
-      options.repeatWidthCm === undefined ? null : `width ${options.repeatWidthCm} cm`,
-      options.repeatHeightCm === undefined ? null : `height ${options.repeatHeightCm} cm`,
+      item.options.repeatWidthCm === undefined ? null : `width ${item.options.repeatWidthCm} cm`,
+      item.options.repeatHeightCm === undefined ? null : `height ${item.options.repeatHeightCm} cm`,
     ].filter(Boolean);
     if (measurements.length) lines.push(`Measured physical repeat for Image ${imageIndex}: ${measurements.join(", ")}. Use this as garment pattern-scale guidance, not a garment sizing measurement.`);
-    if (options.mode === "legacy-crop") { parts.push({ ...part, image: await centerFabricRepeat(part.image) }); continue; }
-    parts.push({ ...part, image: await uprightImage(part.image) });
-    if (options.mode === "full-swatch") continue;
-    details.push({ part: { stem: `${part.stem}-detail`, image: await cropFabricDetail(part.image, options.crop ?? DEFAULT_DETAIL_CROP) }, fullIndex: imageIndex, role });
+    if (item.detail) details.push({ part: item.detail, fullIndex: imageIndex, role: item.role });
   }
   for (const detail of details) {
     const number = parts.length + 1;
@@ -267,12 +284,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
       model,
       images: imageInputs.map((image) => ({ name: image.name, type: image.type, bytes: image.size })),
     });
-    const edit = async (size: string, images: File[]) => {
-      const maskFile = background ? await (async () => {
-        const metadata = await sharp(Buffer.from(await images[0].arrayBuffer())).metadata();
-        const mask = await sharp(background.mask).resize(metadata.width!, metadata.height!, { kernel: sharp.kernel.nearest }).png().toBuffer();
-        return new File([new Uint8Array(mask)], "garment-mask.png", { type: "image/png" });
-      })() : undefined;
+    const edit = async (size: string, images: File[], maskFile?: File) => {
       providerAttempts++;
       // SDK 7.4.0 serializes these fields but its types predate the higher quality tiers and 2.6 complexity.
       const params: Omit<ImageEditParamsNonStreaming, "quality"> & Pick<ImageGenerationConfig, "quality" | "complexity"> = {
@@ -290,13 +302,18 @@ export class OpenAITryOnProvider implements TryOnProvider {
       return client.images.edit(params as ImageEditParamsNonStreaming);
     };
     const editWithSizeFallback = async (images: File[]) => {
+      const maskFile = background ? await (async () => {
+        const metadata = await sharp(Buffer.from(await images[0].arrayBuffer())).metadata();
+        const mask = await sharp(background.mask).resize(metadata.width!, metadata.height!, { kernel: sharp.kernel.nearest }).png().toBuffer();
+        return new File([new Uint8Array(mask)], "garment-mask.png", { type: "image/png" });
+      })() : undefined;
       try {
-        return { response: await edit(requestedSize, images), resolvedSize: requestedSize };
+        return { response: await edit(requestedSize, images, maskFile), resolvedSize: requestedSize };
       } catch (error) {
         if (this.config.canvasProfile === "stable" || !(isSizeRejection(error) || isExperimentalCanvasRejection(error))) throw error;
         fallbackReasons.push("size");
         const fallbackSize = resolveFallbackCanvas(person.width, person.height);
-        return { response: await edit(fallbackSize, images), resolvedSize: fallbackSize };
+        return { response: await edit(fallbackSize, images, maskFile), resolvedSize: fallbackSize };
       }
     };
 

@@ -9,6 +9,7 @@ import { uploadOriginal } from "@/lib/highres/client-upload";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GenerationState } from "@/components/GenerationState";
+import { handleRadioGroupKeyDown } from "@/components/hooks/useRadioGroupNav";
 import { ImageUpload } from "@/components/ImageUpload";
 import { Level1Catalogue } from "@/components/Level1Catalogue";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -149,13 +150,18 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
   const generationKeyRef = useRef<string | null>(null);
   const pendingRef = useRef<PendingGeneration | null>(null);
   const [pendingGeneration, setPendingGeneration] = useState<PendingGeneration | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     void fetch("/api/level1-catalog", { cache: "no-store" })
       .then(async (response) => {
-        const payload: unknown = await response.json();
+        if (response.status === 401) {
+          window.location.replace("/login");
+          return null;
+        }
+        const payload: unknown = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(readResponseError(payload, "We couldn't load the catalogue."));
         if (!isLevel1CatalogueView(payload)) {
           throw new Error("We couldn't load the catalogue.");
@@ -163,7 +169,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         return payload;
       })
       .then((nextCatalogue) => {
-        if (!active) return;
+        if (!active || !nextCatalogue) return;
         setCatalogue(nextCatalogue);
         const suitCategory = nextCatalogue.categories.find((category) => category.id === "suit");
         const firstCategory = suitCategory ?? nextCatalogue.categories[0];
@@ -298,6 +304,14 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
     return summaryDiffers(latestResult.summary, draft);
   }, [latestResult, mode, splitFabrics, splitOutfit, trousersLinked]);
 
+  const setRoleImage = useCallback((role: UploadRole, next: { file: File; previewUrl: string } | null) => {
+    const setter = role === "person" ? setPerson : role === "fabric" ? setFabric : setLowerFabric;
+    setter((current) => {
+      revokeUrl(current?.previewUrl);
+      return next;
+    });
+  }, [revokeUrl]);
+
   const changeImage = useCallback(async (role: UploadRole, file: File) => {
     setError(null);
     try {
@@ -306,52 +320,18 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       if (role !== "person") setFabricGuidance(current => { const next = { ...current }; delete next[role]; return next; });
       const previewUrl = URL.createObjectURL(prepared);
       objectUrls.current.add(previewUrl);
-      if (role === "person") {
-        setPerson((current) => {
-          revokeUrl(current?.previewUrl);
-          return { file: prepared, previewUrl };
-        });
-      } else if (role === "fabric") {
-        setFabric((current) => {
-          revokeUrl(current?.previewUrl);
-          return { file: prepared, previewUrl };
-        });
-      } else {
-        setLowerFabric((current) => {
-          revokeUrl(current?.previewUrl);
-          return { file: prepared, previewUrl };
-        });
-      }
+      setRoleImage(role, { file: prepared, previewUrl });
       clearResult();
     } catch (selectionError: unknown) {
       setError(selectionError instanceof Error ? selectionError.message : "We couldn't prepare this image. Please choose another one.");
     }
-  }, [clearResult, revokeUrl]);
+  }, [clearResult, setRoleImage]);
 
   const removeImage = useCallback((role: UploadRole) => {
     setError(null);
     clearResult();
-
-    if (role === "person") {
-      setPerson((current) => {
-        revokeUrl(current?.previewUrl);
-        return null;
-      });
-      return;
-    }
-
-    if (role === "fabric") {
-      setFabric((current) => {
-        revokeUrl(current?.previewUrl);
-        return null;
-      });
-    } else {
-      setLowerFabric((current) => {
-        revokeUrl(current?.previewUrl);
-        return null;
-      });
-    }
-  }, [clearResult, revokeUrl]);
+    setRoleImage(role, null);
+  }, [clearResult, setRoleImage]);
 
   const generate = useCallback(async () => {
     if (mode === "split") {
@@ -428,9 +408,14 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         onBytes: bytes => { transferred.set(role, Math.max(transferred.get(role) ?? 0, bytes)); setUploadProgress(Math.min(100, Math.round(Array.from(transferred.values()).reduce((sum, amount) => sum + amount, 0) * 100 / totalBytes))); },
         onPhase: phase => setGenerationStage(`${phase === "uploading" ? "Uploading" : "Validating"} ${role === "person" ? "customer photo" : "fabric"}`),
       });
-      const personUpload = await upload("person", person.file);
-      const fabricUploads: Partial<Record<FabricRole, string>> = {};
-      for (const reference of activeFabricReferences) fabricUploads[reference.role] = await upload(reference.role, reference.image.file);
+      const [personUpload, ...fabricEntries] = await Promise.all([
+        upload("person", person.file),
+        ...activeFabricReferences.map(async (reference) => [
+          reference.role,
+          await upload(reference.role, reference.image.file),
+        ] as const),
+      ]);
+      const fabricUploads = Object.fromEntries(fabricEntries) as Partial<Record<FabricRole, string>>;
       const { fabric: fabricUpload, lowerFabric: lowerFabricUpload, shirtFabric: shirtFabricUpload, waistcoatFabric: waistcoatFabricUpload } = fabricUploads;
       setUploadProgress(100);
       uploadController.current = null;
@@ -547,7 +532,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
 
   const removeSplitFabric = useCallback((piece: keyof SplitPieceFabrics) => {
     ++splitUploadTickets.current[piece];
-    if (piece === "trousers" && trousersLinked) setTrousersLinked(false);
+    if ((piece === "trousers" || piece === "jacket") && trousersLinked) setTrousersLinked(false);
     setSplitFabrics((current) => {
       const previous = current[piece];
       if (previous) revokeUrl(previous.previewUrl);
@@ -678,7 +663,11 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           <span><strong>NASIR BESPOKE</strong><small>Private atelier</small></span>
         </div>
         <div className="atelier-mobile-actions">
-          <UsageHistory onRestoreLook={restoreLook} />
+          <div className="history-control">
+            <button type="button" className="history-button" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen}>
+              History
+            </button>
+          </div>
           <LogoutButton />
         </div>
       </header>
@@ -689,7 +678,11 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
         </div>
         <nav className="atelier-nav" aria-label="Primary navigation">
           <span className="atelier-nav-link is-active"><span aria-hidden="true">✦</span>New Creation</span>
-          <UsageHistory onRestoreLook={restoreLook} />
+          <div className="history-control">
+            <button type="button" className="history-button" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen}>
+              History
+            </button>
+          </div>
         </nav>
         <div className="atelier-sidebar-footer">
           <div className="atelier-user">
@@ -769,6 +762,8 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
           className="comparison-toggle fabric-region-toggle"
           role="radiogroup"
           aria-label="Apply fabric colour to"
+          tabIndex={-1}
+          onKeyDown={handleRadioGroupKeyDown}
         >
           <button
             type="button"
@@ -884,7 +879,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
               className="button button-primary level1-generate"
               type="button"
               onClick={generate}
-              disabled={isGenerating || !person || !fabric || !selectedDesign || !selectedReferenceReady}
+              disabled={isGenerating || !person || !fabric || !selectedDesign || !selectedReferenceReady || (!isJacketCategory && fabricRegion === "custom" && !reuseFabricForLower && !lowerFabric)}
             >
               {isGenerating ? "Constructing your look…" : "Generate Try-On"}
             </button>
@@ -940,6 +935,7 @@ export function TryOnApp({ displayName, accountId }: TryOnAppProps) {
       {showCustomerOpen && mode === "split" && sessionResults.length ? (
         <ShowCustomerView results={sessionResults} initialIndex={sessionResults.length - 1} onClose={() => setShowCustomerOpen(false)} />
       ) : null}
+      <UsageHistory isOpen={historyOpen} onOpenChange={setHistoryOpen} hideTrigger onRestoreLook={restoreLook} />
       <p className="privacy-note">Photos and results are kept in private History, visible to signed-in staff. AI visualization; actual garment fit may vary.</p>
       </section>
     </main>

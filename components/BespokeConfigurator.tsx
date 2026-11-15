@@ -22,7 +22,16 @@ function visible(group: ConfigurationGroup, value: Record<string, string>) {
 }
 
 function allowed(option: ConfigurationOption, value: Record<string, string>) {
-  return (!option.requires || matchesRules(value, option.requires)) && !(option.conflictsWith && matchesRules(value, option.conflictsWith));
+  return (
+    (!option.requires?.length || matchesRules(value, option.requires)) &&
+    !(option.conflictsWith?.length && matchesRules(value, option.conflictsWith))
+  );
+}
+
+function recordsEqual(a: Record<string, string>, b: Record<string, string>) {
+  const keysA = Object.keys(a);
+  if (keysA.length !== Object.keys(b).length) return false;
+  return keysA.every((key) => a[key] === b[key]);
 }
 
 function normalize(profile: ConfigurationProfile, current: Record<string, string>) {
@@ -55,12 +64,10 @@ export function isBespokeConfigurationComplete(profile: ConfigurationProfile, va
 
 export function BespokeConfigurator({ profile, value, onChange, disabled = false }: Props) {
   const normalized = useMemo(() => normalize(profile, value), [profile, value]);
-  const serializedValue = JSON.stringify(value);
-  const serializedNormalized = JSON.stringify(normalized);
 
   useEffect(() => {
-    if (serializedValue !== serializedNormalized) onChange(normalized);
-  }, [normalized, onChange, serializedNormalized, serializedValue]);
+    if (!recordsEqual(value, normalized)) onChange(normalized);
+  }, [normalized, onChange, value]);
 
   const availableGroups = useMemo(() => unlockedGroups(profile, normalized), [normalized, profile]);
   const groupsBySection = useMemo(() => SECTION_ORDER.map((section) => ({
