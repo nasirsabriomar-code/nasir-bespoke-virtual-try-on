@@ -13,7 +13,8 @@ export function createOpenAIClient() {
 
   return new OpenAI({
     apiKey,
-    // Keep one generation inside the route's 180-second execution window.
+    // Default per-attempt ceiling. OpenAITryOnProvider passes a smaller
+    // per-request timeout so every attempt fits the route's 300-second limit.
     // Image generation is expensive; retrying it can duplicate paid work and
     // make a request appear hung for several minutes.
     timeout: 165_000,

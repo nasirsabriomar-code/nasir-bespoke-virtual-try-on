@@ -16,6 +16,17 @@ import { detectImageDimensions, type SupportedImageMime } from "@/lib/validation
 const EXPERIMENTAL_MAX_PIXELS = 3840 * 2160;
 const STABLE_MAX_PIXELS = 2560 * 1440;
 const PROVIDER_COMPATIBILITY_EDGE = 3840;
+/**
+ * The try-on route may run for 300s (app/api/try-on/route.ts). Uploads are read
+ * before the provider call and results are stored after it, so the provider gets
+ * at most 240s in total across every attempt. A retry that cannot finish inside
+ * what is left is not started: Vercel would kill it after OpenAI had billed it.
+ */
+export const PROVIDER_TIME_BUDGET_MS = 240_000;
+export const PROVIDER_ATTEMPT_TIMEOUT_MS = 165_000;
+export const MIN_RETRY_WINDOW_MS = 60_000;
+export type ProviderTiming = { budgetMs: number; attemptTimeoutMs: number; minRetryWindowMs: number };
+const DEFAULT_TIMING: ProviderTiming = { budgetMs: PROVIDER_TIME_BUDGET_MS, attemptTimeoutMs: PROVIDER_ATTEMPT_TIMEOUT_MS, minRetryWindowMs: MIN_RETRY_WINDOW_MS };
 
 type ImagePart = {
   image: TryOnInput["person"];
@@ -260,12 +271,15 @@ export async function prepareProviderPacket(input: TryOnInput, config: ImageGene
 
 export class OpenAITryOnProvider implements TryOnProvider {
   private readonly config: ImageGenerationConfig;
+  private readonly timing: ProviderTiming;
 
   constructor(
     private readonly clientFactory: typeof createOpenAIClient = createOpenAIClient,
     config?: ImageGenerationConfig,
+    timing: Partial<ProviderTiming> = {},
   ) {
     this.config = config ?? resolveImageGenerationConfig();
+    this.timing = { ...DEFAULT_TIMING, ...timing };
   }
 
   async generate(input: TryOnInput): Promise<TryOnOutput> {
@@ -279,6 +293,14 @@ export class OpenAITryOnProvider implements TryOnProvider {
     let providerAttempts = 0;
     const fallbackReasons: string[] = [];
     const providerStart = Date.now();
+    const remainingMs = () => providerStart + this.timing.budgetMs - Date.now();
+    /** Rethrows instead of starting a paid retry that the route's time limit would cut off. */
+    const assertRetryFits = (error: unknown) => {
+      if (remainingMs() < this.timing.minRetryWindowMs) {
+        console.warn("try_on_provider_retry_skipped", { requestId: input.requestId, model, remainingMs: remainingMs(), fallbackReasons });
+        throw error;
+      }
+    };
     console.info("try_on_provider_inputs", {
       requestId: input.requestId,
       model,
@@ -299,7 +321,8 @@ export class OpenAITryOnProvider implements TryOnProvider {
         n: 1,
         ...(complexity && isModelGeneration26(model) ? { complexity } : {}),
       };
-      return client.images.edit(params as ImageEditParamsNonStreaming);
+      const timeout = Math.max(1_000, Math.min(this.timing.attemptTimeoutMs, remainingMs()));
+      return client.images.edit(params as ImageEditParamsNonStreaming, { timeout });
     };
     const editWithSizeFallback = async (images: File[]) => {
       const maskFile = background ? await (async () => {
@@ -311,6 +334,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
         return { response: await edit(requestedSize, images, maskFile), resolvedSize: requestedSize };
       } catch (error) {
         if (this.config.canvasProfile === "stable" || !(isSizeRejection(error) || isExperimentalCanvasRejection(error))) throw error;
+        assertRetryFits(error);
         fallbackReasons.push("size");
         const fallbackSize = resolveFallbackCanvas(person.width, person.height);
         return { response: await edit(fallbackSize, images, maskFile), resolvedSize: fallbackSize };
@@ -323,6 +347,7 @@ export class OpenAITryOnProvider implements TryOnProvider {
       ({ response, resolvedSize } = await editWithSizeFallback(imageInputs));
     } catch (error) {
       if (!isInvalidImageFile(error)) throw error;
+      assertRetryFits(error);
       fallbackReasons.push("image-format");
       const compatibilityInputs = await Promise.all(parts.map((part, index) => providerSafeUpload(part, Boolean(background && index === 0))));
       console.warn("try_on_provider_image_fallback", {
