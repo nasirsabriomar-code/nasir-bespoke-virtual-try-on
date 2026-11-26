@@ -8,11 +8,11 @@ const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   // Permit only the configured R2 account for signed uploads and history images.
-  `connect-src 'self' https://vercel.com https://*.private.blob.vercel-storage.com${r2Origin}${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
+  `connect-src 'self' https://vercel.com${r2Origin}${process.env.NODE_ENV === "development" ? " ws: wss: http: https:" : ""}`,
   "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  `img-src 'self' blob: data: https://*.private.blob.vercel-storage.com${r2Origin}`,
+  `img-src 'self' blob: data:${r2Origin}`,
   "media-src 'none'",
   "object-src 'none'",
   `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,

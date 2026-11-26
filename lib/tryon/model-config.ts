@@ -32,7 +32,15 @@ export function isModelGeneration26(model: ImageModelId) {
 /** Reads and validates the image-generation settings. Throws on any unknown value. */
 type ImageEnv = Record<string, string | undefined>;
 
+let warnedLegacyQuality = false;
+
 export function resolveImageGenerationConfig(env: ImageEnv = process.env): ImageGenerationConfig {
+  // TRY_ON_QUALITY predates IMAGE_QUALITY and is ignored. Say so once, so a deployment
+  // that still sets it does not silently run at a quality nobody chose.
+  if (!warnedLegacyQuality && env.TRY_ON_QUALITY?.trim() && !env.IMAGE_QUALITY?.trim()) {
+    warnedLegacyQuality = true;
+    console.warn("image_config_legacy_quality_ignored", { using: "IMAGE_QUALITY", fallback: "medium" });
+  }
   const model = pick("IMAGE_MODEL", env.IMAGE_MODEL, IMAGE_MODELS, DEFAULT_IMAGE_MODEL)!;
   const quality = pick("IMAGE_QUALITY", env.IMAGE_QUALITY, IMAGE_QUALITIES, "medium")!;
   const canvasProfile = pick("IMAGE_CANVAS_PROFILE", env.IMAGE_CANVAS_PROFILE, CANVAS_PROFILES, "experimental")!;
