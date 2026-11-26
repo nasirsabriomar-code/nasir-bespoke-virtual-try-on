@@ -90,6 +90,7 @@ type HistoryEvent = {
     "split-shirt"?: { contentType: string };
     "split-waistcoat"?: { contentType: string };
     "split-footwear"?: { contentType: string };
+    "result-thumb"?: { contentType: string };
     "shirt-fabric"?: { contentType: string };
     "waistcoat-fabric"?: { contentType: string };
   };
@@ -416,7 +417,7 @@ export function UsageHistory({
                                     >
                                       <img
                                         className="history-thumbnail"
-                                        src={`/api/history/${encodeURIComponent(event.id)}/asset/result`}
+                                        src={`/api/history/${encodeURIComponent(event.id)}/asset/${event.assets?.["result-thumb"] ? "result-thumb" : "result"}`}
                                         alt={`${formatLook(event)} generated result`}
                                         loading="lazy"
                                       />

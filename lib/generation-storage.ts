@@ -1,10 +1,11 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import sharp from "sharp";
 import { isR2Configured, presignR2Url, r2Get, r2Put } from "@/lib/r2-storage";
 import { detectImageDimensions } from "@/lib/validation";
 
-export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
+export type GenerationAssetKey = "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result" | "result-thumb" | "upper" | "lower" | "subtype" | "turban" | "shoes" | "upper-style" | "lower-style" | "turban-style" | "shoe-style" | "bespoke-detail-1" | "bespoke-detail-2" | "curated-design" | "curated-detail" | "split-upper" | "split-lower" | "split-shirt" | "split-waistcoat" | "split-footwear";
 
 export type GenerationAssetRefs = Partial<Record<GenerationAssetKey, {
   pathname: string;
@@ -23,12 +24,14 @@ export type GenerationAssetInput = {
   lowerFabric?: File;
   shirtFabric?: File;
   waistcoatFabric?: File;
-  references: Array<{ role: Exclude<GenerationAssetKey, "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result">; file: File }>;
+  references: Array<{ role: Exclude<GenerationAssetKey, "person" | "outfit" | "fabric" | "lower-fabric" | "shirt-fabric" | "waistcoat-fabric" | "result" | "result-thumb">; file: File }>;
   resultBytes: Uint8Array;
   resultContentType: string;
 };
 
 const PUT_ATTEMPTS = 3;
+/** Longest edge of the history-list preview. The list shows it at 60px tall, so 320px covers 3x screens. */
+export const RESULT_THUMB_EDGE = 320;
 const PUT_RETRY_DELAY_MS = 150;
 
 export class GenerationStorageConfigurationError extends Error {
@@ -68,6 +71,18 @@ async function putPrivate(path: string, body: Blob | Uint8Array, contentType: st
   }
 }
 
+/**
+ * A small WebP preview for the history list. The full PNG stays the master copy;
+ * the list used to download every full result (several MB each) just to show a 60px tile.
+ */
+export async function createResultThumbnail(bytes: Uint8Array) {
+  return new Uint8Array(await sharp(bytes, { failOn: "error", limitInputPixels: 40_000_000 })
+    .rotate()
+    .resize({ width: RESULT_THUMB_EDGE, height: RESULT_THUMB_EDGE, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 78 })
+    .toBuffer());
+}
+
 async function describeAsset(body: Blob | Uint8Array, contentType: string) {
   const bytes = body instanceof Uint8Array ? body : new Uint8Array(await body.arrayBuffer());
   const mime = contentType === "image/png" || contentType === "image/webp" || contentType === "image/jpeg"
@@ -98,6 +113,17 @@ export async function storeGenerationAssets(input: GenerationAssetInput): Promis
   // input or reference copy must never cost the customer's finished image.
   const refs: GenerationAssetRefs = {};
   await store(refs, "result", input.resultBytes, input.resultContentType);
+
+  // The preview is a convenience. If it fails, the history list falls back to the full result.
+  try {
+    await store(refs, "result-thumb", await createResultThumbnail(input.resultBytes), "image/webp");
+  } catch (error) {
+    console.error("generation_asset_store_failed", {
+      generationId: input.generationId,
+      asset: "result-thumb",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
 
   const entries: Array<[GenerationAssetKey, Blob, string]> = [
     ["person", input.person, input.person.type || "image/jpeg"],

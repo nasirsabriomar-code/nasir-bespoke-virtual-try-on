@@ -21,6 +21,7 @@ const ASSET_KEYS = new Set<GenerationAssetKey>([
   "shirt-fabric",
   "waistcoat-fabric",
   "result",
+  "result-thumb",
   "upper",
   "lower",
   "subtype",
