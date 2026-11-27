@@ -147,6 +147,26 @@ test("#2 a result that can never be stored is reported as a failure", async (t) 
   await assert.rejects(storeGenerationAssets(assetInput(crypto.randomUUID())));
 });
 
+test("a small WebP preview is stored beside the full result for the history list", async (t) => {
+  const id = crypto.randomUUID();
+  const r2 = mockR2(t, () => false);
+  const resultBytes = new Uint8Array(await sharp({ create: { width: 1440, height: 2560, channels: 3, background: { r: 40, g: 50, b: 60 } } }).png().toBuffer());
+  const refs = await storeGenerationAssets({ ...assetInput(id), resultBytes });
+  assert.equal(refs?.result?.bytes, resultBytes.byteLength);
+  assert.equal(refs?.["result-thumb"]?.contentType, "image/webp");
+  assert.ok(r2.objects.has(`nasir-bespoke/generations/${id}/result-thumb.webp`));
+  const preview = await sharp(Buffer.from(r2.objects.get(`nasir-bespoke/generations/${id}/result-thumb.webp`)!)).metadata();
+  assert.ok(Math.max(preview.width ?? 0, preview.height ?? 0) <= 320);
+});
+
+test("a result that cannot be previewed is still saved without a preview", async (t) => {
+  const id = crypto.randomUUID();
+  mockR2(t, () => false);
+  const refs = await storeGenerationAssets(assetInput(id));
+  assert.ok(refs?.result);
+  assert.equal(refs?.["result-thumb"], undefined);
+});
+
 test("#11 an OpenAI SDK timeout is reported as a timeout", async () => {
   const response = await handleTryOnRequest(new Request("http://localhost/api/try-on", {
     method: "POST", headers: headers(), body: catalogForm(),
